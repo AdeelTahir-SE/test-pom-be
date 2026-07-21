@@ -27,6 +27,8 @@ interface AddTaskModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   workers: { id: string; name: string }[];
+  /** Prefill date field (DD.MM.YYYY) from the office day navigator. */
+  defaultDate?: string;
   onAddTask: (taskData: {
     workerId: string;
     opravilo: string;
@@ -37,22 +39,26 @@ interface AddTaskModalProps {
   }) => void;
 }
 
-export function AddTaskModal({ isOpen, onOpenChange, workers, onAddTask }: AddTaskModalProps) {
+export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", onAddTask }: AddTaskModalProps) {
   const { t } = useLanguage();
   const [step, setStep] = useState<1 | 2>(1);
   const [opravilo, setOpravilo] = useState("");
   const [kraj, setKraj] = useState("");
   const [narocnik, setNarocnik] = useState("");
-  const [datum, setDatum] = useState("");
+  const [datum, setDatum] = useState(defaultDate);
   const [workerId, setWorkerId] = useState("");
   const [steps, setSteps] = useState<TaskStepInput[]>([newStep()]);
+
+  React.useEffect(() => {
+    if (isOpen) setDatum(defaultDate);
+  }, [isOpen, defaultDate]);
 
   const resetAll = () => {
     setStep(1);
     setOpravilo("");
     setKraj("");
     setNarocnik("");
-    setDatum("");
+    setDatum(defaultDate);
     setWorkerId("");
     setSteps([newStep()]);
   };
@@ -109,10 +115,10 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, onAddTask }: AddTa
           border: "none",
           boxShadow: "none",
           padding: 0,
-          maxWidth: "380px",
-          width: "90%",
+          maxWidth: "420px",
+          width: "92%",
         }}
-        className="outline-none max-h-[85vh] overflow-y-auto"
+        className="outline-none max-h-[92vh] overflow-y-auto"
       >
         <div className={auraCard}>
           {step === 1 ? (
@@ -201,30 +207,21 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, onAddTask }: AddTa
                 </h3>
               </div>
 
-              <div className="flex flex-col gap-3">
-                {steps.map((s) => (
-                  <div key={s.id} className="flex flex-col gap-2 p-3 rounded-xl border border-slate-100 bg-slate-50/50">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1">
-                        <AuraLabel>{t("modalStepLabel")}</AuraLabel>
-                        <AuraInput
-                          type="text"
-                          value={s.text}
-                          onChange={(e) => updateStepText(s.id, e.target.value.slice(0, 30))}
-                          maxLength={30}
-                          placeholder={t("modalStepPlaceholder")}
-                        />
-                        <span className="text-[10px] text-slate-400">{s.text.length}/30</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeStep(s.id)}
-                        className="shrink-0 mt-4 p-1.5 text-slate-300 hover:text-red-500 bg-transparent border-none outline-none"
-                        aria-label={t("modalDeleteStep")}
-                        title={t("modalDeleteStep")}
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
+              <div className="flex flex-col gap-2">
+                {steps.map((s, index) => (
+                  <div key={s.id} className="flex items-start gap-2">
+                    <span className="text-[10px] text-slate-400 font-semibold mt-2.5 w-4 shrink-0">
+                      {index + 1}.
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <AuraInput
+                        type="text"
+                        value={s.text}
+                        onChange={(e) => updateStepText(s.id, e.target.value.slice(0, 30))}
+                        maxLength={30}
+                        placeholder={t("modalStepPlaceholder")}
+                      />
+                      <span className="text-[10px] text-slate-400">{s.text.length}/30</span>
                     </div>
                     <AuraIconButton
                       active={s.requiresAttachment}
@@ -234,9 +231,17 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, onAddTask }: AddTa
                           <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
                         </svg>
                       }
-                      label={t("modalStepAttachmentToggle")}
                       title={t("modalStepAttachmentTitle")}
                     />
+                    <button
+                      type="button"
+                      onClick={() => removeStep(s.id)}
+                      className="shrink-0 mt-1.5 p-1.5 text-slate-300 hover:text-red-500 bg-transparent border-none outline-none"
+                      aria-label={t("modalDeleteStep")}
+                      title={t("modalDeleteStep")}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
                 ))}
               </div>

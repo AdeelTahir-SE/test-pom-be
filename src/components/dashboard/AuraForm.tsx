@@ -184,7 +184,8 @@ export function AuraIconButton({
       onClick={onClick}
       title={title}
       className={cn(
-        "flex items-center gap-2 flex-1 text-left transition-all",
+        "flex items-center gap-2 text-left transition-all shrink-0",
+        label ? "flex-1" : "",
         active && "font-medium"
       )}
     >

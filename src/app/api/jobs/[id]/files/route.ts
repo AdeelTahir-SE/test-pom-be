@@ -71,7 +71,7 @@ interface PreparedUpload {
 // (Supabase Storage add-on §6 Atomic Upload Rule).
 export const POST = withAuth<{ id: string }>(async (request, auth, { params }) => {
   const db = getAdminClient();
-  await loadJobWithAccess(db, auth, params.id);
+  const { job } = await loadJobWithAccess(db, auth, params.id);
 
   const formData = await request.formData();
   const files = formData.getAll("files").filter((f): f is File => f instanceof File);
@@ -227,7 +227,11 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
       jobId: params.id,
       eventType: record.attachment_type === "image" ? "image_uploaded" : "document_uploaded",
       userId: auth.userId,
-      metadata: { file_name: record.file_name, attachment_type: record.attachment_type },
+      metadata: {
+        file_name: record.file_name,
+        attachment_type: record.attachment_type,
+        job_seq: job.company_seq,
+      },
     });
   }
 
@@ -262,7 +266,11 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
         jobId: params.id,
         eventType: "ocr_completed",
         userId: null,
-        metadata: { status: "success", ocr_text_length: text.length },
+        metadata: {
+          status: "success",
+          ocr_text_length: text.length,
+          job_seq: job.company_seq,
+        },
       });
 
       return updated;

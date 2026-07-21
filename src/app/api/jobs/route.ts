@@ -117,7 +117,7 @@ export const POST = withAuth(
       jobId: job.id,
       eventType: "job_created",
       userId: auth.userId,
-      metadata: { title: job.title },
+      metadata: { title: job.title, job_seq: job.company_seq },
     });
 
     if (input.worker_id) {

@@ -10,21 +10,34 @@ export const dynamic = "force-dynamic";
 
 // GET /api/office-reminders — owner/manager only; Workers never see this
 // column (Dashboard spec: "Workers never see this column"). Hidden reminders
-// are excluded; a future remind_on stays invisible until that day (Card
-// Creation spec: "becomes visible only on that day"). Ordered by
-// order_index — cards are vertically reorderable within their own column.
+// are excluded. Default (no query): a future remind_on stays invisible until
+// that day (Card Creation: "becomes visible only on that day"). Optional
+// `?date=YYYY-MM-DD` returns the day-board view for the office navigator
+// (exact remind_on match for other days; today's board keeps due/overdue).
+// Ordered by order_index — cards are vertically reorderable within column.
 export const GET = withAuth(
-  async (_request, auth) => {
+  async (request, auth) => {
     const db = getAdminClient();
     const today = new Date().toISOString().slice(0, 10);
+    const dateParam = new URL(request.url).searchParams.get("date");
+    const forDate =
+      dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : today;
 
-    const { data, error } = await db
+    let query = db
       .from("office_reminders")
       .select("*")
       .eq("company_id", auth.companyId)
       .is("hidden_at", null)
-      .or(`remind_on.is.null,remind_on.lte.${today}`)
       .order("order_index", { ascending: true });
+
+    if (forDate === today) {
+      query = query.or(`remind_on.is.null,remind_on.lte.${today}`);
+    } else {
+      // Planning / historical day: only reminders scheduled for that date.
+      query = query.eq("remind_on", forDate);
+    }
+
+    const { data, error } = await query;
     if (error) {
       throw new ApiError("internal", "Failed to load office reminders.", error.message);
     }

@@ -42,6 +42,10 @@ export interface CompanyRow {
   name: string;
   business_module: BusinessModule;
   subscription_active: boolean;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  paypal_subscription_id: string | null;
+  subscription_status: string | null;
   created_at: string;
 }
 

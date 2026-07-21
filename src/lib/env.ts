@@ -44,4 +44,29 @@ export const env = {
   get resendFromAddress() {
     return process.env.RESEND_FROM_ADDRESS || "onboarding@resend.dev";
   },
+  get stripeSecretKey() {
+    return required("STRIPE_SECRET_KEY");
+  },
+  get stripeWebhookSecret() {
+    return required("STRIPE_WEBHOOK_SECRET");
+  },
+  get stripePriceIdMonthly() {
+    return required("STRIPE_PRICE_ID_MONTHLY");
+  },
+  /** Public site origin for Checkout success/cancel + Portal return URLs. */
+  get appUrl() {
+    return (
+      optional("NEXT_PUBLIC_APP_URL") ||
+      optional("APP_URL") ||
+      "http://localhost:3000"
+    );
+  },
+  /**
+   * When true, company APIs reject callers whose company.subscription_active
+   * is false (except billing + auth/me). Default false so existing tenants
+   * keep working until you flip this on in production.
+   */
+  get stripeEnforceSubscription() {
+    return process.env.STRIPE_ENFORCE_SUBSCRIPTION === "true";
+  },
 };

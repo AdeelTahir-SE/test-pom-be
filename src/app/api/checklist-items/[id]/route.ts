@@ -24,7 +24,7 @@ async function loadForMutation(db: SupabaseClient, auth: CompanyUserContext, ite
 
   const { data: job, error: jobError } = await db
     .from("jobs")
-    .select("id, status")
+    .select("id, status, company_seq")
     .eq("id", item.job_id)
     .maybeSingle();
   if (jobError || !job) {
@@ -113,7 +113,7 @@ export const PATCH = withAuth<{ id: string }>(async (request, auth, { params }) 
       jobId: job.id,
       eventType: "checklist_completed",
       userId: auth.userId,
-      metadata: { label: updated.label },
+      metadata: { label: updated.label, job_seq: job.company_seq },
     });
   }
 

@@ -166,6 +166,30 @@ describe("Phase 11 — Office Reminders (PISARNA)", () => {
     expect(ids).toContain(noDate.body.data!.reminder.id);
   });
 
+  it("date query returns reminders scheduled for that day (day navigator)", async () => {
+    const owner = await registerCompany();
+    createdCompanies.push(owner);
+    const futureDay = isoDateOffset(12);
+
+    const future = await api.post<{ data?: { reminder: ReminderDto } }>("/api/office-reminders", {
+      token: owner.accessToken,
+      body: { title: "Inspection in 12 days", remind_on: futureDay },
+    });
+    await api.post("/api/office-reminders", {
+      token: owner.accessToken,
+      body: { title: "Today only", remind_on: isoDateOffset(0) },
+    });
+
+    const dayRes = await api.get<{ data?: { reminders: ReminderDto[] } }>(
+      `/api/office-reminders?date=${futureDay}`,
+      { token: owner.accessToken }
+    );
+    expect(dayRes.status).toBe(200);
+    const dayList = dayRes.body.data!.reminders;
+    expect(dayList.map((r) => r.title)).toEqual(["Inspection in 12 days"]);
+    expect(dayList[0]?.id).toBe(future.body.data!.reminder.id);
+  });
+
   it("hiding a reminder removes it from the list but keeps the record", async () => {
     const owner = await registerCompany();
     createdCompanies.push(owner);

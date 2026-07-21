@@ -9,6 +9,7 @@ export interface CurrentUser {
   email: string;
   full_name: string;
   role: "owner" | "manager" | "worker";
+  phone?: string | null;
   is_active: boolean;
 }
 
@@ -17,6 +18,15 @@ export interface CurrentCompany {
   name: string;
   business_module: string;
   subscription_active: boolean;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+  subscription_status?: string | null;
+}
+
+export interface OfficeContact {
+  full_name: string;
+  email: string | null;
+  phone: string | null;
 }
 
 // Session bootstrap for a protected page: verifies the stored token against
@@ -26,6 +36,7 @@ export function useCurrentUser() {
   const router = useRouter();
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [company, setCompany] = useState<CurrentCompany | null>(null);
+  const [officeContact, setOfficeContact] = useState<OfficeContact | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -35,7 +46,11 @@ export function useCurrentUser() {
         router.replace("/login");
         return;
       }
-      const res = await api.get<{ user: CurrentUser; company: CurrentCompany }>("/api/auth/me");
+      const res = await api.get<{
+        user: CurrentUser;
+        company: CurrentCompany;
+        office_contact: OfficeContact | null;
+      }>("/api/auth/me");
       if (cancelled) return;
       if (res.status !== 200 || !res.data) {
         setSession(null, null);
@@ -44,6 +59,7 @@ export function useCurrentUser() {
       }
       setUser(res.data.user);
       setCompany(res.data.company);
+      setOfficeContact(res.data.office_contact ?? null);
       setLoading(false);
     }
     load();
@@ -58,5 +74,5 @@ export function useCurrentUser() {
     router.replace("/login");
   }, [router]);
 
-  return { user, company, loading, logout };
+  return { user, company, officeContact, loading, logout };
 }

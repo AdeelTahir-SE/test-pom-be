@@ -99,7 +99,11 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     jobId: params.id,
     eventType: "message_sent",
     userId: auth.userId,
-    metadata: { is_urgent: message.is_urgent, content: message.content },
+    metadata: {
+      is_urgent: message.is_urgent,
+      content: message.content,
+      job_seq: job.company_seq,
+    },
   });
 
   await notifyUser(db, {

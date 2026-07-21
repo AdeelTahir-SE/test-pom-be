@@ -120,7 +120,7 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     jobId: params.id,
     eventType: "voice_message_transcribed",
     userId: auth.userId,
-    metadata: { transcribed: transcript !== null, content },
+    metadata: { transcribed: transcript !== null, content, job_seq: job.company_seq },
   });
 
   await notifyUser(db, {

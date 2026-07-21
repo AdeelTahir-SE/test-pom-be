@@ -27,7 +27,7 @@ interface ApiJobMessage {
 export default function WorkerDashboard() {
   const { t } = useLanguage();
   const router = useRouter();
-  const { user, loading: authLoading, logout } = useCurrentUser();
+  const { user, officeContact, loading: authLoading, logout } = useCurrentUser();
 
   const [job, setJob] = useState<ApiJob | null>(null);
   const [checklist, setChecklist] = useState<ApiChecklistItem[]>([]);
@@ -112,6 +112,29 @@ export default function WorkerDashboard() {
     setTimeout(() => {
       setToastMessage(null);
     }, 2000);
+  };
+
+  const officePhone = officeContact?.phone?.trim() || "";
+  const officeEmail = officeContact?.email?.trim() || "";
+  const telHref = officePhone
+    ? `tel:${officePhone.replace(/[^\d+]/g, "")}`
+    : undefined;
+  const mailHref = officeEmail ? `mailto:${officeEmail}` : undefined;
+
+  const handleCallOffice = () => {
+    if (!telHref) {
+      showToast(t("workerNoOfficePhone"));
+      return;
+    }
+    window.location.href = telHref;
+  };
+
+  const handleEmailOffice = () => {
+    if (!mailHref) {
+      showToast(t("workerNoOfficeEmail"));
+      return;
+    }
+    window.location.href = mailHref;
   };
 
   const handleToggleTask = async (id: string) => {
@@ -396,7 +419,7 @@ export default function WorkerDashboard() {
                   <span className="text-[11px] font-medium text-slate-700 uppercase tracking-wide">{t("workerInfo")}</span>
                 </button>
 
-                <button onClick={() => window.location.href = "tel:+38640123456"} className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-white/70 transition-colors cursor-pointer">
+                <button onClick={handleCallOffice} className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-white/70 transition-colors cursor-pointer">
                   <span style={{ width: "36px", height: "36px", borderRadius: "12px", border: "0.7px solid rgba(96, 165, 250, 0.5)", boxShadow: "0px 8px 18px -12px rgba(15, 23, 42, 0.35), inset 0px 1px 0px 1px #FFFFFF", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <svg width="16" height="16" viewBox="0 0 20 18" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <path d="M18.0818 19.7117C11.3845 22.5175 0.98909 3.99501 7.53545 0.865835L9.45091 0L12.6255 5.68084L10.7318 6.53585C8.74182 7.51418 12.8864 14.9359 14.9218 14.0309C15.0045 13.9967 16.7918 13.1917 16.7982 13.1884L20 18.8509C19.9927 18.8542 18.1918 19.6659 18.0818 19.7117ZM9.50182 17.825C8.16 18.7184 6.31455 18.8 5.75273 17.9134C5.32545 17.2392 5.47 16.4734 5.63727 15.5859C5.82 14.6184 6.02727 13.5209 5.36909 12.4942C4.26091 10.7642 1.82636 10.8417 0 11.9359L0.869091 13.155C1.62273 12.7034 2.49091 12.5092 3.13545 12.6475C4.63818 12.9709 4.18182 14.7525 4.07182 15.3384C3.87909 16.3575 3.66273 17.5134 4.37818 18.645C5.50818 20.4309 8.54091 20.375 10.5927 18.9084C10.2182 18.5692 9.85545 18.2059 9.50182 17.825Z" fill="#6D778E"/>
@@ -405,7 +428,7 @@ export default function WorkerDashboard() {
                   <span className="text-[11px] font-medium text-slate-700 uppercase tracking-wide">{t("workerCall")}</span>
                 </button>
 
-                <button onClick={() => window.location.href = "mailto:pisarna@dnevnik.app"} className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-white/70 transition-colors cursor-pointer">
+                <button onClick={handleEmailOffice} className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-white/70 transition-colors cursor-pointer">
                   <span style={{ width: "36px", height: "36px", borderRadius: "12px", border: "0.7px solid rgba(96, 165, 250, 0.5)", boxShadow: "0px 8px 18px -12px rgba(15, 23, 42, 0.35), inset 0px 1px 0px 1px #FFFFFF", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <svg width="16" height="16" viewBox="0 0 20 19" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <path d="M10.035 19C3.52417 19 0 15.0232 0 9.88904C0 4.40256 3.96833 0 11.0633 0C16.2417 0 20 3.29335 20 7.83049C20 14.9359 11.3917 16.8118 11.8233 12.7583C11.2317 13.662 10.2783 14.6782 8.44583 14.6782C6.34917 14.6782 5.04583 13.1759 5.04583 10.7576C5.04583 7.13316 7.48 4.07061 10.3617 4.07061C11.7442 4.07061 12.695 4.78507 13.0925 5.88204L13.4792 4.551H15.4275C15.2242 5.22957 13.4933 11.5055 13.4933 11.5055C12.9533 13.6799 14.6183 13.7182 16.095 12.5634C18.8692 10.4591 19.0125 4.95634 15.2633 2.66127C11.2458 0.3034 2.10083 1.76249 2.10083 9.7512C2.10083 14.3275 5.3925 17.4023 10.2917 17.4023C13.155 17.4023 14.91 16.6438 16.3708 15.8135L17.3517 17.1984C15.9258 17.9862 13.6342 19 10.035 19ZM8.08167 7.33298C7.48583 8.42587 7.10083 9.84173 7.10083 10.9411C7.10083 13.8854 10.0358 13.9042 11.4775 11.1361C12.0708 9.99914 12.4533 8.54984 12.4533 7.44226C12.4533 5.06319 9.54083 4.64153 8.08167 7.33298Z" fill="#6D778E"/>
@@ -573,6 +596,7 @@ export default function WorkerDashboard() {
         onOpenChange={setIsDetailModalOpen}
         worker={selectedWorkerCard}
         jobId={job?.id ?? null}
+        cardNumber={job ? jobNumber(job) : null}
         onRefresh={loadAll}
         jobStatus={job?.status}
         onChangeJobStatus={handleChangeJobStatus}

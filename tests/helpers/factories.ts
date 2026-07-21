@@ -176,7 +176,9 @@ export async function cleanupPlatformAdmin(userId: string): Promise<void> {
 
 // Direct DB read for asserting Timeline side effects before the Phase 6
 // GET /jobs/[id]/timeline endpoint exists.
-export async function getTimelineEvents(jobId: string): Promise<{ event_type: string }[]> {
+export async function getTimelineEvents(
+  jobId: string
+): Promise<{ event_type: string; metadata: Record<string, unknown> | null }[]> {
   const db = getAdminClient();
   const { data, error } = await db
     .from("timeline_events")
@@ -184,7 +186,7 @@ export async function getTimelineEvents(jobId: string): Promise<{ event_type: st
     .eq("job_id", jobId)
     .order("created_at", { ascending: true });
   if (error) throw new Error(`Failed to read timeline_events: ${error.message}`);
-  return data ?? [];
+  return (data as { event_type: string; metadata: Record<string, unknown> | null }[]) ?? [];
 }
 
 // Real OCR can't be exercised in this sandbox (outbound network to Mistral

@@ -41,87 +41,87 @@ interface TaskRowProps {
   disabled?: boolean;
 }
 
-function TaskRow({ task, onToggle, disabled }: TaskRowProps) {
-  if (disabled) {
-    return (
-      <div className="flex items-center gap-[6px] w-full text-left">
-        {/* Checkbox */}
-        <div
-          className="shrink-0 flex items-center justify-center"
-          style={{
-            width: "16px",
-            height: "16px",
-            background: task.completed ? "transparent" : "#E1E4E8",
-            borderRadius: "4px",
-            border: task.completed ? "2px solid #41C46D" : "none",
-          }}
-        >
-          {task.completed && (
-            <svg width="10" height="7" viewBox="0 0 10 7" fill="none">
-              <path d="M1 3.5L3.5 6L9 1" stroke="#41C46D" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          )}
-        </div>
+/** Show clip when a file exists OR the step was marked as requiring one. */
+function showsAttachmentIcon(task: TaskItem): boolean {
+  return !!(task.hasAttachment || task.requiresAttachment);
+}
 
-        {/* Task text */}
+function TaskRowTrailing({ task }: { task: TaskItem }) {
+  const showClip = showsAttachmentIcon(task);
+  const clip = task.completed ? <AttachmentIconCompleted /> : <AttachmentIconIncomplete />;
+
+  if (task.completed && task.completedAt) {
+    return (
+      <div className="flex items-center gap-[6px] shrink-0 ml-auto">
+        {showClip && <span className="shrink-0">{clip}</span>}
         <span
-          className="flex-1 truncate"
+          className="shrink-0"
           style={{
             fontFamily: "'PT Sans', sans-serif",
             fontWeight: 400,
-            fontSize: task.completed ? "12px" : "14px",
-            lineHeight: task.completed ? "16px" : "18px",
-            letterSpacing: task.completed ? "-0.2px" : "0.1px",
-            color: task.completed ? "#94A3B8" : "#64748B",
-            textDecoration: "none",
+            fontSize: "12px",
+            lineHeight: "16px",
+            letterSpacing: "0.1px",
+            color: "#D3D3D3",
+            textAlign: "right",
           }}
         >
-          {task.text}
+          {task.completedAt}
         </span>
+      </div>
+    );
+  }
 
-        {/* Attachment icon + Time — for completed tasks with hasAttachment */}
-        {task.completed && task.hasAttachment && task.completedAt && (
-          <div className="flex items-center gap-[6px] shrink-0 ml-auto">
-            <span className="shrink-0"><AttachmentIconCompleted /></span>
-            <span
-              className="shrink-0"
-              style={{
-                fontFamily: "'PT Sans', sans-serif",
-                fontWeight: 400,
-                fontSize: "12px",
-                lineHeight: "16px",
-                letterSpacing: "0.1px",
-                color: "#D3D3D3",
-                textAlign: "right",
-              }}
-            >
-              {task.completedAt}
-            </span>
-          </div>
-        )}
+  if (!task.completed && showClip) {
+    return <span className="shrink-0 ml-auto">{clip}</span>;
+  }
 
-        {/* Time only — for completed tasks without hasAttachment */}
-        {task.completed && !task.hasAttachment && task.completedAt && (
-          <span
-            className="shrink-0 ml-auto"
-            style={{
-              fontFamily: "'PT Sans', sans-serif",
-              fontWeight: 400,
-              fontSize: "12px",
-              lineHeight: "16px",
-              letterSpacing: "0.1px",
-              color: "#D3D3D3",
-              textAlign: "right",
-            }}
-          >
-            {task.completedAt}
-          </span>
-        )}
+  return null;
+}
 
-        {/* Attachment icon only — for incomplete tasks with hasAttachment */}
-        {!task.completed && task.hasAttachment && (
-          <span className="shrink-0 ml-auto"><AttachmentIconIncomplete /></span>
-        )}
+function TaskRow({ task, onToggle, disabled }: TaskRowProps) {
+  const checkbox = (
+    <div
+      className="shrink-0 flex items-center justify-center"
+      style={{
+        width: "16px",
+        height: "16px",
+        background: task.completed ? "transparent" : "#E1E4E8",
+        borderRadius: "4px",
+        border: task.completed ? "2px solid #41C46D" : "none",
+      }}
+    >
+      {task.completed && (
+        <svg width="10" height="7" viewBox="0 0 10 7" fill="none">
+          <path d="M1 3.5L3.5 6L9 1" stroke="#41C46D" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+    </div>
+  );
+
+  const text = (
+    <span
+      className="flex-1 truncate"
+      style={{
+        fontFamily: "'PT Sans', sans-serif",
+        fontWeight: 400,
+        fontSize: task.completed ? "12px" : "14px",
+        lineHeight: task.completed ? "16px" : "18px",
+        letterSpacing: task.completed ? "-0.2px" : "0.1px",
+        color: task.completed ? "#94A3B8" : "#64748B",
+        textDecoration: "none",
+      }}
+    >
+      {task.text}
+    </span>
+  );
+
+  if (disabled) {
+    return (
+      <div className="flex items-center gap-[6px] w-full text-left">
+        {checkbox}
+        {text}
+        <TaskRowTrailing task={task} />
       </div>
     );
   }
@@ -135,83 +135,9 @@ function TaskRow({ task, onToggle, disabled }: TaskRowProps) {
       className="flex items-center gap-[6px] w-full text-left cursor-pointer bg-transparent border-none p-0 outline-none"
       style={{ background: "transparent", border: "none", padding: 0 }}
     >
-      {/* Checkbox */}
-      <div
-        className="shrink-0 flex items-center justify-center"
-        style={{
-          width: "16px",
-          height: "16px",
-          background: task.completed ? "transparent" : "#E1E4E8",
-          borderRadius: "4px",
-          border: task.completed ? "2px solid #41C46D" : "none",
-        }}
-      >
-        {task.completed && (
-          <svg width="10" height="7" viewBox="0 0 10 7" fill="none">
-            <path d="M1 3.5L3.5 6L9 1" stroke="#41C46D" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
-      </div>
-
-      {/* Task text */}
-      <span
-        className="flex-1 truncate"
-        style={{
-          fontFamily: "'PT Sans', sans-serif",
-          fontWeight: 400,
-          fontSize: task.completed ? "12px" : "14px",
-          lineHeight: task.completed ? "16px" : "18px",
-          letterSpacing: task.completed ? "-0.2px" : "0.1px",
-          color: task.completed ? "#94A3B8" : "#64748B",
-          textDecoration: "none",
-        }}
-      >
-        {task.text}
-      </span>
-
-      {/* Attachment icon + Time — for completed tasks with hasAttachment */}
-      {task.completed && task.hasAttachment && task.completedAt && (
-        <div className="flex items-center gap-[6px] shrink-0 ml-auto">
-          <span className="shrink-0"><AttachmentIconCompleted /></span>
-          <span
-            className="shrink-0"
-            style={{
-              fontFamily: "'PT Sans', sans-serif",
-              fontWeight: 400,
-              fontSize: "12px",
-              lineHeight: "16px",
-              letterSpacing: "0.1px",
-              color: "#D3D3D3",
-              textAlign: "right",
-            }}
-          >
-            {task.completedAt}
-          </span>
-        </div>
-      )}
-
-      {/* Time only — for completed tasks without hasAttachment */}
-      {task.completed && !task.hasAttachment && task.completedAt && (
-        <span
-          className="shrink-0 ml-auto"
-          style={{
-            fontFamily: "'PT Sans', sans-serif",
-            fontWeight: 400,
-            fontSize: "12px",
-            lineHeight: "16px",
-            letterSpacing: "0.1px",
-            color: "#D3D3D3",
-            textAlign: "right",
-          }}
-        >
-          {task.completedAt}
-        </span>
-      )}
-
-      {/* Attachment icon only — for incomplete tasks with hasAttachment */}
-      {!task.completed && task.hasAttachment && (
-        <span className="shrink-0 ml-auto"><AttachmentIconIncomplete /></span>
-      )}
+      {checkbox}
+      {text}
+      <TaskRowTrailing task={task} />
     </button>
   );
 }

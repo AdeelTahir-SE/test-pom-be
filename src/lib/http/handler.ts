@@ -1,20 +1,45 @@
 import { NextResponse } from "next/server";
 import { getAuthContext } from "@/lib/auth/context";
 import { ApiError, toErrorResponse } from "@/lib/http/responses";
+import { getAdminClient } from "@/lib/supabase/admin";
+import { env } from "@/lib/env";
 import type { CompanyUserContext, PlatformAdminContext } from "@/types/domain";
 import type { UserRole } from "@/config/constants";
 
-// Generic over the dynamic segment shape (e.g. { id: string }) so accessing
-// params.id gives `string`, not `string | undefined` — a bare
-// Record<string, string> has an implicit index signature, which
-// noUncheckedIndexedAccess (tsconfig) always widens with `| undefined`.
 type RouteParams<P extends Record<string, string> = Record<string, string>> = {
   params: P;
 };
 
-// Wrap a company-scoped handler. Rejects anything that isn't an active
-// company user by construction — a platform admin token never satisfies this,
-// since it never resolves to a CompanyUserContext (see lib/auth/context.ts).
+function isSubscriptionExemptPath(pathname: string): boolean {
+  return (
+    pathname.startsWith("/api/billing/") ||
+    pathname === "/api/auth/me" ||
+    pathname === "/api/auth/logout" ||
+    pathname === "/api/auth/refresh" ||
+    pathname === "/api/health"
+  );
+}
+
+async function assertSubscriptionActive(request: Request, companyId: string) {
+  if (!env.stripeEnforceSubscription) return;
+  const pathname = new URL(request.url).pathname;
+  if (isSubscriptionExemptPath(pathname)) return;
+
+  const db = getAdminClient();
+  const { data: company } = await db
+    .from("companies")
+    .select("subscription_active")
+    .eq("id", companyId)
+    .maybeSingle();
+
+  if (company && company.subscription_active === false) {
+    throw new ApiError(
+      "payment_required",
+      "Company subscription is inactive. Please renew billing to continue."
+    );
+  }
+}
+
 export function withAuth<P extends Record<string, string> = Record<string, string>>(
   handler: (
     request: Request,
@@ -35,6 +60,7 @@ export function withAuth<P extends Record<string, string> = Record<string, strin
       if (opts?.roles && !opts.roles.includes(auth.role)) {
         throw new ApiError("forbidden", "You do not have permission to perform this action.");
       }
+      await assertSubscriptionActive(request, auth.companyId);
       return await handler(request, auth, routeParams);
     } catch (err) {
       return toErrorResponse(err);

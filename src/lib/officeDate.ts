@@ -1,0 +1,102 @@
+/** Local calendar helpers for the office day navigator (DD.MM.YYYY). */
+
+export function startOfLocalDay(d: Date = new Date()): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+export function toIsoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export function formatSiDate(d: Date): string {
+  const day = String(d.getDate()).padStart(2, "0");
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  return `${day}.${m}.${d.getFullYear()}`;
+}
+
+export function addDays(d: Date, days: number): Date {
+  const next = startOfLocalDay(d);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+export function isSameLocalDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+/** Parse form dates: `DD.MM.YYYY`, `D.M.YYYY`, or `YYYY-MM-DD`. */
+export function parseFlexibleDate(raw: string): Date | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (iso) {
+    const d = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  const si = /^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})$/.exec(trimmed);
+  if (si) {
+    const d = new Date(Number(si[3]), Number(si[2]) - 1, Number(si[1]));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  return null;
+}
+
+/** Local calendar day of an ISO datetime or date string. */
+export function isoToLocalDayKey(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    // Already a date-only string
+    if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+    return null;
+  }
+  return toIsoDate(d);
+}
+
+/** Noon local → UTC ISO for `scheduled_at` (avoids timezone day-shift). */
+export function localDayToScheduledAt(d: Date): string {
+  const local = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
+  return local.toISOString();
+}
+
+export function jobBelongsToDay(
+  job: { scheduled_at: string | null; created_at: string },
+  dayKey: string,
+  todayKey: string = toIsoDate(startOfLocalDay())
+): boolean {
+  const scheduledKey = isoToLocalDayKey(job.scheduled_at);
+  if (scheduledKey) return scheduledKey === dayKey;
+  // Undated jobs stay on today's board (legacy cards + open work).
+  return dayKey === todayKey;
+}
+
+export function reminderBelongsToDay(
+  reminder: { remind_on: string | null; created_at: string },
+  dayKey: string,
+  todayKey: string
+): boolean {
+  if (dayKey === todayKey) {
+    // Default product rule: undated or due today/overdue stay on today's board.
+    if (!reminder.remind_on) return true;
+    return reminder.remind_on <= todayKey;
+  }
+  if (reminder.remind_on) return reminder.remind_on === dayKey;
+  return isoToLocalDayKey(reminder.created_at) === dayKey;
+}
+
+export function notificationBelongsToDay(
+  notification: { created_at: string },
+  dayKey: string
+): boolean {
+  return isoToLocalDayKey(notification.created_at) === dayKey;
+}

@@ -17,6 +17,8 @@ import {
 interface AddReminderModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Prefill date field (DD.MM.YYYY) from the office day navigator. */
+  defaultDate?: string;
   onAddReminder: (reminderData: {
     title: string;
     description: string;
@@ -32,13 +34,17 @@ interface AddReminderModalProps {
   }) => void;
 }
 
-export function AddReminderModal({ isOpen, onOpenChange, onAddReminder }: AddReminderModalProps) {
+export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAddReminder }: AddReminderModalProps) {
   const { t } = useLanguage();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [time, setTime] = useState("");
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(defaultDate);
   const [isUrgent, setIsUrgent] = useState(false);
+
+  React.useEffect(() => {
+    if (isOpen) setDate(defaultDate);
+  }, [isOpen, defaultDate]);
 
   // Dynamic icon selections
   const [hasAttachment, setHasAttachment] = useState(false);
@@ -88,7 +94,7 @@ export function AddReminderModal({ isOpen, onOpenChange, onAddReminder }: AddRem
     setTitle("");
     setDescription("");
     setTime("");
-    setDate("");
+    setDate(defaultDate);
     setIsUrgent(false);
     setHasAttachment(false);
     setAttachmentName("");

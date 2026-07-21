@@ -14,6 +14,7 @@ import {
   jobToWorkerCard,
   reminderToCard,
   notificationToMessage,
+  jobNumber,
 } from "@/lib/dashboardMappers";
 import type { Worker, Order, Message } from "@/lib/mockData";
 import { LIMITS } from "@/config/constants";
@@ -31,6 +32,19 @@ import { AddWorkerCard } from "@/components/dashboard/AddWorkerCard";
 import { TeamManagementModal } from "@/components/dashboard/TeamManagementModal";
 import { SearchModal } from "@/components/dashboard/SearchModal";
 import { CompanySettingsModal } from "@/components/dashboard/CompanySettingsModal";
+import { SortableItem } from "@/components/dashboard/SortableItem";
+import { OfficeDayHeader } from "@/components/dashboard/OfficeDayHeader";
+import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import {
+  formatSiDate,
+  jobBelongsToDay,
+  localDayToScheduledAt,
+  notificationBelongsToDay,
+  parseFlexibleDate,
+  startOfLocalDay,
+  toIsoDate,
+} from "@/lib/officeDate";
 
 interface ApiJobMessage {
   id: string;
@@ -46,11 +60,9 @@ interface ColumnHeaderProps {
   title: string;
   onAddClick?: () => void;
   addTitle?: string;
-  onAddWorkerClick?: () => void;
-  addWorkerTitle?: string;
 }
 
-function ColumnHeader({ title, onAddClick, addTitle, onAddWorkerClick, addWorkerTitle }: ColumnHeaderProps) {
+function ColumnHeader({ title, onAddClick, addTitle }: ColumnHeaderProps) {
   return (
     <div className="flex items-center justify-between pl-0 pr-6 mb-2">
       <span
@@ -63,32 +75,6 @@ function ColumnHeader({ title, onAddClick, addTitle, onAddWorkerClick, addWorker
         {title}
       </span>
       <div className="flex items-center gap-2">
-        {onAddWorkerClick && (
-          <button
-            onClick={onAddWorkerClick}
-            title={addWorkerTitle}
-            aria-label={addWorkerTitle}
-            style={{
-              width: "36px",
-              height: "36px",
-              borderRadius: "12px",
-              background: "rgba(255, 255, 255, 0.002)",
-              border: "0.7px solid rgba(96, 165, 250, 0.5)",
-              boxShadow: "0px 8px 18px -12px rgba(15, 23, 42, 0.35), inset 0px 1px 0px 1px #FFFFFF",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-            }}
-            className="hover:bg-slate-50/50 transition-colors"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="#6D778E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              <circle cx="9" cy="7" r="4" stroke="#6D778E" strokeWidth="2" />
-              <path d="M19 8v6M22 11h-6" stroke="#6D778E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-        )}
         {onAddClick && (
           <button
             onClick={onAddClick}
@@ -141,6 +127,9 @@ export default function OfficeDashboard() {
   const [notifications, setNotifications] = useState<ApiNotification[]>([]);
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(() => startOfLocalDay());
+  const selectedDayKey = toIsoDate(selectedDate);
+  const selectedSiDate = formatSiDate(selectedDate);
 
   const [selectedWorkerJobId, setSelectedWorkerJobId] = useState<string | null>(null);
   const [detailKey, setDetailKey] = useState(0);
@@ -158,9 +147,29 @@ export default function OfficeDashboard() {
   const [replyInput, setReplyInput] = useState("");
   const [replyLoading, setReplyLoading] = useState(false);
   const [isRecordingReply, setIsRecordingReply] = useState(false);
+  const [isComposeOpen, setIsComposeOpen] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const autoStopTimerRef = useRef<NodeJS.Timeout | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+
+  // Template/example cards shown in an otherwise-empty column so first-time
+  // users see what a real card looks like, instead of a blank "no items" box.
+  // Dismissing one only hides it for today — it reappears tomorrow if the
+  // column is still empty, so the key includes today's date.
+  const [dismissedDummies, setDismissedDummies] = useState<Record<string, boolean>>({});
+  const todayKey = () => new Date().toISOString().slice(0, 10);
+  const dismissDummy = (column: "teren" | "pisarna" | "komunikacija") => {
+    const key = `dummy_dismissed_${column}_${todayKey()}`;
+    window.localStorage.setItem(key, "1");
+    setDismissedDummies((prev) => ({ ...prev, [column]: true }));
+  };
+  useEffect(() => {
+    const initial: Record<string, boolean> = {};
+    for (const column of ["teren", "pisarna", "komunikacija"] as const) {
+      initial[column] = window.localStorage.getItem(`dummy_dismissed_${column}_${todayKey()}`) === "1";
+    }
+    setDismissedDummies(initial);
+  }, []);
 
   // Mobile/tablet: horizontal snap between the three columns
   const containerRef = useRef<HTMLDivElement>(null);
@@ -195,9 +204,10 @@ export default function OfficeDashboard() {
   };
 
   const loadAll = useCallback(async () => {
+    const dayKey = toIsoDate(selectedDate);
     const [jobsRes, remindersRes, notificationsRes, usersRes, summaryRes] = await Promise.all([
       api.get<{ jobs: ApiJob[] }>("/api/jobs"),
-      api.get<{ reminders: ApiOfficeReminder[] }>("/api/office-reminders"),
+      api.get<{ reminders: ApiOfficeReminder[] }>(`/api/office-reminders?date=${dayKey}`),
       api.get<{ notifications: ApiNotification[] }>("/api/notifications"),
       api.get<{ users: ApiUser[] }>("/api/users"),
       api.get<SummaryData>("/api/dashboard/summary"),
@@ -220,7 +230,7 @@ export default function OfficeDashboard() {
     });
     setChecklistsByJob(nextChecklists);
     setDataLoading(false);
-  }, []);
+  }, [selectedDate]);
 
   useEffect(() => {
     if (!authLoading && user) loadAll();
@@ -230,9 +240,10 @@ export default function OfficeDashboard() {
   // refresh every 30s so office staff see new activity without a manual reload.
   useEffect(() => {
     if (authLoading || !user) return;
+    const dayKey = toIsoDate(selectedDate);
     const interval = setInterval(async () => {
       const [remindersRes, notificationsRes, summaryRes] = await Promise.all([
-        api.get<{ reminders: ApiOfficeReminder[] }>("/api/office-reminders"),
+        api.get<{ reminders: ApiOfficeReminder[] }>(`/api/office-reminders?date=${dayKey}`),
         api.get<{ notifications: ApiNotification[] }>("/api/notifications"),
         api.get<SummaryData>("/api/dashboard/summary"),
       ]);
@@ -241,21 +252,42 @@ export default function OfficeDashboard() {
       if (summaryRes.data) setSummary(summaryRes.data);
     }, 30000);
     return () => clearInterval(interval);
-  }, [authLoading, user]);
+  }, [authLoading, user, selectedDate]);
 
   const workerById = new Map(workers.map((w) => [w.id, w]));
   const jobById = new Map(jobs.map((j) => [j.id, j]));
 
-  const activeJobs = jobs
-    .filter((j) => j.worker_id && j.status !== "completed" && j.status !== "cancelled")
-    .sort((a, b) => (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? ""));
+  // Order comes straight from the API (display_order first when a card has
+  // been manually dragged, then scheduled_at/created_at) — don't re-sort
+  // here or a drag-reorder would visually snap back on the next render.
+  // Day filter uses scheduled_at from the task form; undated jobs stay on today.
+  const boardTodayKey = toIsoDate(startOfLocalDay());
+  const activeJobs = jobs.filter(
+    (j) =>
+      j.worker_id &&
+      j.status !== "completed" &&
+      j.status !== "cancelled" &&
+      jobBelongsToDay(j, selectedDayKey, boardTodayKey)
+  );
+
+  const dayReminders = reminders;
+  const messageNotifications = notifications.filter(
+    (n) =>
+      n.type === "message_received" &&
+      !n.hidden_at &&
+      notificationBelongsToDay(n, selectedDayKey)
+  );
+
+  const dayFieldOverview = (summary?.field_overview ?? []).filter((f) => {
+    const job = jobById.get(f.job_id);
+    return job ? jobBelongsToDay(job, selectedDayKey, boardTodayKey) : false;
+  });
+  const dayUrgent = dayReminders.find((r) => r.is_urgent) ?? null;
 
   const selectedJob = selectedWorkerJobId ? jobById.get(selectedWorkerJobId) : null;
   const selectedWorkerCard: Worker | null = selectedJob
     ? jobToWorkerCard(selectedJob, checklistsByJob[selectedJob.id] ?? [], workerById.get(selectedJob.worker_id!), t)
     : null;
-
-  const messageNotifications = notifications.filter((n) => n.type === "message_received" && !n.hidden_at);
 
   const handleToggleTask = async (workerId: string, taskId: string) => {
     const item = Object.values(checklistsByJob).flat().find((i) => i.id === taskId);
@@ -277,19 +309,38 @@ export default function OfficeDashboard() {
     else alert(res.error?.message ?? "Failed to update job status.");
   };
 
-  const handleAddTask = async (taskData: { workerId: string; opravilo: string; kraj: string; narocnik: string; datum: string }) => {
+  const handleAddTask = async (taskData: {
+    workerId: string;
+    opravilo: string;
+    kraj: string;
+    narocnik: string;
+    datum: string;
+    steps: { text: string; requiresAttachment: boolean }[];
+  }) => {
+    const parsed = parseFlexibleDate(taskData.datum) ?? selectedDate;
     const res = await api.post<{ job: ApiJob }>("/api/jobs", {
       title: taskData.opravilo,
       location: taskData.kraj || undefined,
       customer: taskData.narocnik || undefined,
       worker_id: taskData.workerId,
+      scheduled_at: localDayToScheduledAt(parsed),
     });
-    if (res.status === 201) await loadAll();
+    if (res.status === 201 && res.data) {
+      const jobId = res.data.job.id;
+      for (const step of taskData.steps) {
+        await api.post(`/api/jobs/${jobId}/checklist`, {
+          label: step.text,
+          requires_attachment: step.requiresAttachment,
+        });
+      }
+      await loadAll();
+    }
   };
 
   const handleAddReminder = async (reminderData: {
     title: string; description: string; isUrgent: boolean;
     hasAttachment: boolean; hasEmail: boolean; phoneNumber: string; hasConfirm: boolean; hasDecline: boolean;
+    date?: string;
   }) => {
     const actions: string[] = [];
     if (reminderData.hasAttachment) actions.push("attachment");
@@ -298,12 +349,16 @@ export default function OfficeDashboard() {
     if (reminderData.hasConfirm) actions.push("confirm");
     if (reminderData.hasDecline) actions.push("reject");
 
+    const remindDay =
+      parseFlexibleDate(reminderData.date ?? "") ?? selectedDate;
+
     const res = await api.post<{ reminder: ApiOfficeReminder }>("/api/office-reminders", {
       title: reminderData.title,
       description: reminderData.description || undefined,
       is_urgent: reminderData.isUrgent,
       actions,
       phone: reminderData.phoneNumber || undefined,
+      remind_on: toIsoDate(remindDay),
     });
     if (res.status === 201) await loadAll();
   };
@@ -319,8 +374,9 @@ export default function OfficeDashboard() {
     if (res.status === 201) {
       if (res.data?.temporary_password) {
         // Shown exactly once — the backend never returns it again.
+        const label = workerData.role === "worker" ? "Login code" : "Temporary password";
         alert(
-          `Account created for ${workerData.email}.\nTemporary password: ${res.data.temporary_password}\n\nShare this with them directly — it will not be shown again.`
+          `Account created for ${workerData.email}.\n${label}: ${res.data.temporary_password}\n\nShare this with them directly — it will not be shown again.`
         );
       }
       await loadAll();
@@ -345,9 +401,36 @@ export default function OfficeDashboard() {
     const res = await api.patch(`/api/office-reminders/${id}`, { hidden: true });
     if (res.status === 200) setReminders((prev) => prev.filter((r) => r.id !== id));
   };
+  const handleReminderDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = dayReminders.findIndex((r) => r.id === active.id);
+    const newIndex = dayReminders.findIndex((r) => r.id === over.id);
+    const reordered = arrayMove(dayReminders, oldIndex, newIndex);
+    setReminders(reordered);
+    Promise.all(
+      reordered.map((r, index) =>
+        api.patch(`/api/office-reminders/${r.id}`, { order_index: index }).catch(() => {})
+      )
+    );
+  };
   const handleDismissMessage = async (id: string) => {
     const res = await api.patch(`/api/notifications/${id}`, { hidden: true });
     if (res.status === 200) setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
+  const handleJobDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = activeJobs.findIndex((j) => j.id === active.id);
+    const newIndex = activeJobs.findIndex((j) => j.id === over.id);
+    const reordered = arrayMove(activeJobs, oldIndex, newIndex);
+    const reorderedIds = new Set(reordered.map((j) => j.id));
+    setJobs((prev) => [...reordered, ...prev.filter((j) => !reorderedIds.has(j.id))]);
+    Promise.all(
+      reordered.map((j, index) =>
+        api.patch(`/api/jobs/${j.id}`, { display_order: index }).catch(() => {})
+      )
+    );
   };
 
   const handleOpenReply = async (jobId: string) => {
@@ -492,12 +575,20 @@ export default function OfficeDashboard() {
       </header>
 
       <div className="max-w-7xl mx-auto px-6" style={{ paddingTop: "32px" }}>
-        {/* Heading intentionally omitted — summary cards are the page entry (FE design). */}
+        <OfficeDayHeader
+          title={t("officeHeading")}
+          selectedDate={selectedDate}
+          onDateChange={setSelectedDate}
+          calendarLabel={t("officePickDate")}
+          prevDayLabel={t("officePrevDay")}
+          nextDayLabel={t("officeNextDay")}
+          todayLabel={t("officeJumpToday")}
+        />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6" style={{ marginBottom: "32px" }}>
           <SummaryCard title={t("officeQuickOverview")}>
             <div className="flex flex-col gap-[4px]">
-              {(summary?.field_overview ?? []).length === 0 ? (
+              {dayFieldOverview.length === 0 ? (
                 <p
                   style={{
                     fontFamily: "'PT Sans', sans-serif",
@@ -507,10 +598,10 @@ export default function OfficeDashboard() {
                     color: "#64748B",
                   }}
                 >
-                  {t("officeEmptyField")}
+                  {t("officeQuickOverviewEmpty")}
                 </p>
               ) : (
-                (summary?.field_overview ?? []).map((f) => (
+                dayFieldOverview.map((f) => (
                   <OverviewRow
                     key={f.job_id}
                     progress={`${f.checklist_completed}/${f.checklist_total}`}
@@ -525,7 +616,7 @@ export default function OfficeDashboard() {
 
           <SummaryCard title={t("officeUrgentMatters")} dark>
             <div className="flex flex-col gap-[6px]">
-              {!summary?.urgent_reminder ? (
+              {!dayUrgent ? (
                 <p
                   style={{
                     fontFamily: "'PT Sans', sans-serif",
@@ -539,9 +630,9 @@ export default function OfficeDashboard() {
                 </p>
               ) : (
                 <UrgentRow
-                  time={new Date(summary.urgent_reminder.created_at).toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" })}
-                  title={summary.urgent_reminder.title}
-                  subtitle={summary.urgent_reminder.description ?? undefined}
+                  time={new Date(dayUrgent.created_at).toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" })}
+                  title={dayUrgent.title}
+                  subtitle={dayUrgent.description ?? undefined}
                 />
               )}
             </div>
@@ -559,8 +650,6 @@ export default function OfficeDashboard() {
               title={t("officeColField")}
               onAddClick={() => setIsAddTaskOpen(true)}
               addTitle={t("officeAddTask")}
-              onAddWorkerClick={() => setIsAddWorkerOpen(true)}
-              addWorkerTitle={t("officeAddWorker")}
             />
             <div
               style={{
@@ -577,26 +666,52 @@ export default function OfficeDashboard() {
               className="group hover:-translate-y-1 transition-all duration-300"
             >
               {activeJobs.length === 0 && (
-                <p className="text-xs text-slate-400 text-center py-4">{t("officeEmptyField")}</p>
-              )}
-              {activeJobs.map((job) => {
-                const worker = job.worker_id ? workerById.get(job.worker_id) : undefined;
-                const workerCard = jobToWorkerCard(job, checklistsByJob[job.id] ?? [], worker, t);
-                return (
+                dismissedDummies.teren ? (
+                  <p className="text-xs text-slate-400 text-center py-4">{t("officeEmptyField")}</p>
+                ) : (
                   <WorkerCard
-                    key={job.id}
-                    worker={workerCard}
-                    onToggleTask={handleToggleTask}
-                    date={new Date(job.created_at).toLocaleDateString("sl-SI")}
-                    orderId={`#${job.id.slice(0, 4)}`}
-                    onClick={() => {
-                      setSelectedWorkerJobId(job.id);
-                      setIsWorkerDetailOpen(true);
-                      setDetailKey((k) => k + 1);
+                    worker={{
+                      id: "dummy-teren",
+                      name: "IME",
+                      avatar: "?",
+                      role: "Naročnik",
+                      currentTask: "Dodajte kartico za terence",
+                      location: "Mesto",
+                      status: "v_teku",
+                      tasks: [],
+                      phone: "",
+                      email: "",
                     }}
+                    onToggleTask={() => {}}
+                    date="DATUM"
+                    orderId="09:26"
+                    onDismiss={() => dismissDummy("teren")}
                   />
-                );
-              })}
+                )
+              )}
+              <DndContext collisionDetection={closestCenter} onDragEnd={handleJobDragEnd}>
+                <SortableContext items={activeJobs.map((j) => j.id)} strategy={verticalListSortingStrategy}>
+                  {activeJobs.map((job) => {
+                    const worker = job.worker_id ? workerById.get(job.worker_id) : undefined;
+                    const workerCard = jobToWorkerCard(job, checklistsByJob[job.id] ?? [], worker, t);
+                    return (
+                      <SortableItem key={job.id} id={job.id}>
+                        <WorkerCard
+                          worker={workerCard}
+                          onToggleTask={handleToggleTask}
+                          date={new Date(job.created_at).toLocaleDateString("sl-SI")}
+                          orderId={jobNumber(job)}
+                          onClick={() => {
+                            setSelectedWorkerJobId(job.id);
+                            setIsWorkerDetailOpen(true);
+                            setDetailKey((k) => k + 1);
+                          }}
+                        />
+                      </SortableItem>
+                    );
+                  })}
+                </SortableContext>
+              </DndContext>
             </div>
           </div>
 
@@ -621,29 +736,57 @@ export default function OfficeDashboard() {
               }}
               className="group hover:-translate-y-1 transition-all duration-300"
             >
-              {reminders.length === 0 && (
-                <p className="text-xs text-white/70 text-center py-4">{t("officeEmptyReminders")}</p>
+              {dayReminders.length === 0 && (
+                dismissedDummies.pisarna ? (
+                  <p className="text-xs text-white/70 text-center py-4">{t("officeEmptyReminders")}</p>
+                ) : (
+                  <CommunicationCard
+                    order={{
+                      id: "dummy-pisarna",
+                      title: "Dodajte zaznamke za vodjo",
+                      description: "",
+                      time: "10:30",
+                      createdAt: "ČAS",
+                      priority: "normalna",
+                      status: "caka_potrditev",
+                      workerId: "",
+                      workerName: "IME",
+                    }}
+                    buttonsConfig="none"
+                    onResolve={() => {}}
+                    onDismiss={() => dismissDummy("pisarna")}
+                  />
+                )
               )}
-              {reminders.map((r) => (
-                <CommunicationCard
-                  key={r.id}
-                  order={reminderToCard(r, t)}
-                  buttonsConfig="dynamic"
-                  showRedButton={r.is_urgent}
-                  onResolve={() => handleConfirmReminder(r.id)}
-                  onDismiss={() => handleDismissReminder(r.id)}
-                  onArchive={() => handleDeclineReminder(r.id)}
-                  onCall={() => {
-                    if (r.phone) window.location.href = `tel:${r.phone}`;
-                  }}
-                />
-              ))}
+              <DndContext collisionDetection={closestCenter} onDragEnd={handleReminderDragEnd}>
+                <SortableContext items={dayReminders.map((r) => r.id)} strategy={verticalListSortingStrategy}>
+                  {dayReminders.map((r) => (
+                    <SortableItem key={r.id} id={r.id}>
+                      <CommunicationCard
+                        order={reminderToCard(r, t)}
+                        buttonsConfig="dynamic"
+                        showRedButton={r.is_urgent}
+                        onResolve={() => handleConfirmReminder(r.id)}
+                        onDismiss={() => handleDismissReminder(r.id)}
+                        onArchive={() => handleDeclineReminder(r.id)}
+                        onCall={() => {
+                          if (r.phone) window.location.href = `tel:${r.phone}`;
+                        }}
+                      />
+                    </SortableItem>
+                  ))}
+                </SortableContext>
+              </DndContext>
             </div>
           </div>
 
           {/* COLUMN 3 — KOMUNIKACIJA */}
           <div className="flex flex-col gap-3 office-column-cell">
-            <ColumnHeader title={t("officeColComm")} />
+            <ColumnHeader
+              title={t("officeColComm")}
+              onAddClick={() => setIsComposeOpen(true)}
+              addTitle={t("officeAddMessage")}
+            />
             <div
               style={{
                 background: "linear-gradient(180deg, rgba(241, 241, 255, 0.19) 0%, rgba(241, 241, 255, 0.19) 100%)",
@@ -659,7 +802,24 @@ export default function OfficeDashboard() {
               className="group hover:-translate-y-1 transition-all duration-300"
             >
               {messageNotifications.length === 0 && (
-                <p className="text-xs text-slate-400 text-center py-4">{t("officeEmptyComm")}</p>
+                dismissedDummies.komunikacija ? (
+                  <p className="text-xs text-slate-400 text-center py-4">{t("officeEmptyComm")}</p>
+                ) : (
+                  <OfficeCard
+                    message={{
+                      id: "dummy-komunikacija",
+                      workerId: "",
+                      workerName: "IME",
+                      text: "Kartica tukaj je ustvarjena avtomatsko, ko pride do komunikacije med terenom in pisarno.",
+                      time: "ČAS",
+                      type: "glasovno",
+                      targetTask: "Ni komunikacije",
+                    }}
+                    iconType="mic"
+                    onResolve={() => {}}
+                    onDismiss={() => dismissDummy("komunikacija")}
+                  />
+                )
               )}
               {messageNotifications.map((n) => (
                 <OfficeCard
@@ -733,6 +893,7 @@ export default function OfficeDashboard() {
         onOpenChange={setIsWorkerDetailOpen}
         worker={selectedWorkerCard}
         jobId={selectedWorkerJobId}
+        cardNumber={selectedJob ? jobNumber(selectedJob) : null}
         onRefresh={loadAll}
         jobStatus={selectedJob?.status}
         onChangeJobStatus={selectedWorkerJobId ? (status) => handleChangeJobStatus(selectedWorkerJobId, status) : undefined}
@@ -742,11 +903,13 @@ export default function OfficeDashboard() {
         isOpen={isAddTaskOpen}
         onOpenChange={setIsAddTaskOpen}
         workers={workers.map((w) => ({ id: w.id, name: w.full_name }))}
+        defaultDate={selectedSiDate}
         onAddTask={handleAddTask}
       />
       <AddReminderModal
         isOpen={isAddReminderOpen}
         onOpenChange={setIsAddReminderOpen}
+        defaultDate={selectedSiDate}
         onAddReminder={handleAddReminder}
       />
       <AddWorkerCard
@@ -760,6 +923,11 @@ export default function OfficeDashboard() {
         onOpenChange={setIsTeamOpen}
         currentUserId={user?.id}
         onChanged={loadAll}
+        isOwner={user?.role === "owner"}
+        onAddMember={() => {
+          setIsTeamOpen(false);
+          setIsAddWorkerOpen(true);
+        }}
       />
 
       <SearchModal
@@ -777,8 +945,50 @@ export default function OfficeDashboard() {
         isOpen={isCompanySettingsOpen}
         onOpenChange={setIsCompanySettingsOpen}
         companyName={companyNameOverride ?? company?.name ?? ""}
+        canManageBilling={user?.role === "owner"}
+        subscriptionActive={company?.subscription_active ?? true}
+        hasStripeCustomer={!!company?.stripe_customer_id}
         onSaved={setCompanyNameOverride}
       />
+
+      <Dialog open={isComposeOpen} onOpenChange={setIsComposeOpen}>
+        <DialogContent className="max-w-sm w-[90vw] p-0 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
+            <h4 className="font-bold text-sm text-slate-800">{t("officeComposeTitle")}</h4>
+            <p className="text-[11px] text-slate-500 mt-1">{t("officeComposePickJob")}</p>
+          </div>
+          <div className="max-h-[50vh] overflow-y-auto p-3 space-y-2">
+            {activeJobs.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-6">{t("officeComposeEmpty")}</p>
+            ) : (
+              activeJobs.map((job) => {
+                const worker = job.worker_id ? workerById.get(job.worker_id) : undefined;
+                return (
+                  <button
+                    key={job.id}
+                    type="button"
+                    onClick={() => {
+                      setIsComposeOpen(false);
+                      void handleOpenReply(job.id);
+                    }}
+                    className="w-full text-left px-3 py-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-slate-800 truncate">
+                        {worker?.full_name ?? t("cardUnassigned")}
+                      </span>
+                      <span className="text-[10px] font-semibold text-blue-700 shrink-0">
+                        {jobNumber(job)}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 truncate mt-0.5">{job.title}</p>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!replyJobId} onOpenChange={(open) => !open && setReplyJobId(null)}>
         <DialogContent className="max-w-md w-[90vw] h-[70vh] p-0 flex flex-col overflow-hidden">

@@ -34,12 +34,15 @@ import {
   auraCard,
   auraButton,
 } from "./AuraForm";
+import { describeTimelineEvent } from "@/lib/timeline/describe";
 
 interface WorkerDetailModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   worker: Worker | null;
   jobId: string | null;
+  /** Per-company card id e.g. "#001" — used in timeline lines. */
+  cardNumber?: string | null;
   inlineDrawer?: boolean;
   onRefresh?: () => void;
   jobStatus?: JobStatus;
@@ -112,58 +115,6 @@ const TIMELINE_TYPE_BY_EVENT: Record<string, TimelineItem["type"]> = {
   message_sent: "message",
   voice_message_transcribed: "voice",
 };
-
-// Event-type strings and metadata field names below must match exactly what
-// createTimelineEvent() callers actually emit (see grep across src/app/api)
-// — a mismatched case silently falls through to the raw event_type default.
-function snippet(text: unknown, max = 40): string | null {
-  if (typeof text !== "string" || !text.trim()) return null;
-  const trimmed = text.trim();
-  return trimmed.length > max ? `"${trimmed.slice(0, max)}…"` : `"${trimmed}"`;
-}
-
-function describeTimelineEvent(e: ApiTimelineEvent, t: (key: TranslationKey) => string): string {
-  const meta = e.metadata ?? {};
-  switch (e.event_type) {
-    case "job_created":
-      return `${t("timelineJobCreated")}: ${meta.title ?? ""}`;
-    case "worker_assigned":
-      return meta.worker_name
-        ? `${t("timelineWorkerAssigned")}: ${meta.worker_name}`
-        : t("timelineWorkerAssigned");
-    case "job_updated":
-      return t("timelineJobUpdated");
-    case "status_changed":
-      return meta.to && typeof meta.to === "string" && meta.to in STATUS_LABEL_KEY
-        ? `${t("timelineStatusChanged")}: ${t(STATUS_LABEL_KEY[meta.to as JobStatus])}`
-        : t("timelineStatusChanged");
-    case "job_completed":
-      return t("timelineJobCompleted");
-    case "checklist_completed":
-      return `${t("timelineChecklistCompleted")}: ${meta.label ?? ""}`;
-    case "image_uploaded":
-      return `${t("timelineImageUploaded")}: ${meta.file_name ?? ""}`;
-    case "document_uploaded":
-      return `${t("timelineDocumentUploaded")}: ${meta.file_name ?? ""}`;
-    case "file_hidden":
-      return `${t("timelineFileHidden")}: ${meta.file_name ?? ""}`;
-    case "ocr_completed":
-      return t("timelineOcrCompleted");
-    case "voice_message_transcribed": {
-      const base = meta.transcribed ? t("timelineVoiceTranscribed") : t("timelineVoiceReceived");
-      const s = snippet(meta.content);
-      return s ? `${base}: ${s}` : base;
-    }
-    case "message_sent": {
-      const s = snippet(meta.content);
-      return s ? `${t("timelineMessageSent")}: ${s}` : t("timelineMessageSent");
-    }
-    case "notification_deleted":
-      return t("timelineNotificationDeleted");
-    default:
-      return e.event_type.replace(/_/g, " ");
-  }
-}
 
 function nowTime() {
   return new Date().toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" });
@@ -246,10 +197,12 @@ function SortableTaskItem({ task, onClick, onDelete, deleteLabel }: SortableTask
           )}
         </span>
 
-        {/* Completion time / clip icon */}
+        {/* Completion time / clip icon — show clip when required OR already attached */}
         <div className="flex items-center gap-1.5 ml-auto">
-          {task.attachment && (
-            <Paperclip className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+          {(task.attachment || task.requiresAttachment) && (
+            <Paperclip
+              className={`w-3.5 h-3.5 shrink-0 ${task.attachment ? "text-slate-300" : "text-slate-400"}`}
+            />
           )}
           {task.completed && task.time && (
             <span className="text-xs text-[#D3D3D3] font-normal">{task.time}</span>
@@ -277,6 +230,7 @@ export function WorkerDetailModal({
   onOpenChange,
   worker,
   jobId,
+  cardNumber = null,
   inlineDrawer = false,
   onRefresh,
   jobStatus,
@@ -353,11 +307,11 @@ export function WorkerDetailModal({
         .map((e) => ({
           id: e.id,
           time: new Date(e.created_at).toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" }),
-          text: describeTimelineEvent(e, t),
+          text: describeTimelineEvent(e, t, cardNumber),
           type: TIMELINE_TYPE_BY_EVENT[e.event_type] ?? "other",
         }))
     );
-  }, [jobId, t]);
+  }, [jobId, t, cardNumber]);
 
   React.useEffect(() => {
     if (isOpen && jobId) loadFilesAndTimeline();
