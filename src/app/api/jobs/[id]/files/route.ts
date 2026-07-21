@@ -1,0 +1,273 @@
+import { withAuth } from "@/lib/http/handler";
+import { created, ok, ApiError } from "@/lib/http/responses";
+import { getAdminClient } from "@/lib/supabase/admin";
+import { loadJobWithAccess } from "@/lib/services/jobAccess";
+import { createTimelineEvent } from "@/lib/timeline/events";
+import { sha256Hex, buildStoragePath, uploadToStorage, getSignedUrl } from "@/lib/storage/upload";
+import { processImage } from "@/lib/storage/image";
+import { classifyUpload } from "@/lib/services/files";
+import { extractText } from "@/lib/integrations/mistral";
+import { LIMITS } from "@/config/constants";
+
+export const dynamic = "force-dynamic";
+
+// GET /api/jobs/[id]/files — default order created_at DESC (Appendix A §7).
+// Hidden files excluded by default; owner/manager may request them explicitly
+// (File Infrastructure: "hidden files ... require explicit request flag").
+// Note: files remain accessible after job completion (Immutability Rule §60
+// explicitly allows "new attachments" post-completion) — no status lock here.
+export const GET = withAuth<{ id: string }>(async (request, auth, { params }) => {
+  const db = getAdminClient();
+  await loadJobWithAccess(db, auth, params.id);
+
+  const url = new URL(request.url);
+  const includeHidden =
+    url.searchParams.get("include_hidden") === "true" &&
+    (auth.role === "owner" || auth.role === "manager");
+
+  let query = db
+    .from("job_files")
+    .select("*")
+    .eq("job_id", params.id)
+    .order("created_at", { ascending: false });
+  if (!includeHidden) {
+    query = query.is("hidden_at", null);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new ApiError("internal", "Failed to load files.", error.message);
+
+  const files = await Promise.all(
+    (data ?? []).map(async (file) => ({
+      ...file,
+      signed_url: await getSignedUrl(db, file.storage_path),
+      thumbnail_signed_url: file.thumbnail_path
+        ? await getSignedUrl(db, file.thumbnail_path)
+        : null,
+    }))
+  );
+
+  return ok({ files });
+});
+
+interface PreparedUpload {
+  fileName: string;
+  attachmentType: "image" | "pdf" | "other";
+  storagePath: string;
+  thumbnailPath: string | null;
+  fileSize: number;
+  fileHash: string;
+  upload: { path: string; buffer: Buffer; contentType: string }[];
+  // OCR runs on whatever we actually stored (Document OCR add-on §4): the
+  // processed main image for images, the untouched bytes for PDFs. Docs
+  // (doc/docx/txt) aren't in the OCR-supported input list, so null for those.
+  ocrInput: { buffer: Buffer; contentType: string } | null;
+}
+
+// POST /api/jobs/[id]/files — multipart upload (field name "files", repeatable).
+// Images run the full pipeline (EXIF fix, resize, compress, thumbnail); PDFs
+// and generic docs are stored as-is. Atomic: every file uploads to storage
+// first, then ONE multi-row DB insert — all files land or none do
+// (Supabase Storage add-on §6 Atomic Upload Rule).
+export const POST = withAuth<{ id: string }>(async (request, auth, { params }) => {
+  const db = getAdminClient();
+  await loadJobWithAccess(db, auth, params.id);
+
+  const formData = await request.formData();
+  const files = formData.getAll("files").filter((f): f is File => f instanceof File);
+  const checklistItemIdRaw = formData.get("checklist_item_id");
+  const checklistItemId = typeof checklistItemIdRaw === "string" && checklistItemIdRaw.length > 0 ? checklistItemIdRaw : null;
+
+  if (files.length === 0) {
+    throw new ApiError("bad_request", "No files provided.");
+  }
+
+  if (checklistItemId) {
+    const { data: checklistItem, error: checklistError } = await db
+      .from("job_checklist_items")
+      .select("id")
+      .eq("id", checklistItemId)
+      .eq("job_id", params.id)
+      .maybeSingle();
+    if (checklistError) {
+      throw new ApiError("internal", "Failed to validate checklist item.", checklistError.message);
+    }
+    if (!checklistItem) {
+      throw new ApiError("bad_request", "Checklist item does not belong to this job.");
+    }
+  }
+  if (files.length > LIMITS.MAX_FILES_PER_REQUEST) {
+    throw new ApiError(
+      "bad_request",
+      `A maximum of ${LIMITS.MAX_FILES_PER_REQUEST} files may be uploaded per request.`
+    );
+  }
+  for (const file of files) {
+    if (file.size > LIMITS.MAX_DOCUMENT_BYTES) {
+      throw new ApiError(
+        "payload_too_large",
+        `File "${file.name}" exceeds the maximum allowed size.`
+      );
+    }
+  }
+
+  const { count: existingCount, error: countError } = await db
+    .from("job_files")
+    .select("id", { count: "exact", head: true })
+    .eq("job_id", params.id);
+  if (countError) {
+    throw new ApiError("internal", "Failed to check job file count.", countError.message);
+  }
+  if ((existingCount ?? 0) + files.length > LIMITS.MAX_FILES_PER_JOB) {
+    throw new ApiError(
+      "bad_request",
+      `This job may have at most ${LIMITS.MAX_FILES_PER_JOB} files total.`
+    );
+  }
+
+  // Per-file work (hashing, classification, image processing) is independent
+  // across files — run it concurrently. Bounded by MAX_FILES_PER_REQUEST (3),
+  // so this can't fan out into an unbounded amount of work.
+  const prepared: PreparedUpload[] = await Promise.all(
+    files.map(async (file): Promise<PreparedUpload> => {
+      const originalBuffer = Buffer.from(await file.arrayBuffer());
+      const fileHash = sha256Hex(originalBuffer);
+
+      const { data: duplicate } = await db
+        .from("job_files")
+        .select("id")
+        .eq("job_id", params.id)
+        .eq("file_hash", fileHash)
+        .maybeSingle();
+      if (duplicate) {
+        throw new ApiError(
+          "conflict",
+          `File "${file.name}" is a duplicate of an existing file on this job.`
+        );
+      }
+
+      const classification = await classifyUpload(file.name, originalBuffer);
+
+      if (classification.attachmentType === "image") {
+        const { main, thumbnail } = await processImage(originalBuffer, classification.imageFormat!);
+        const storagePath = buildStoragePath(params.id, main.extension);
+        const thumbnailPath = buildStoragePath(params.id, thumbnail.extension, "_thumb");
+        return {
+          fileName: file.name,
+          attachmentType: "image",
+          storagePath,
+          thumbnailPath,
+          fileSize: main.buffer.length,
+          fileHash,
+          upload: [
+            { path: storagePath, buffer: main.buffer, contentType: main.contentType },
+            { path: thumbnailPath, buffer: thumbnail.buffer, contentType: thumbnail.contentType },
+          ],
+          ocrInput: { buffer: main.buffer, contentType: main.contentType },
+        };
+      }
+
+      const extension = file.name.includes(".") ? file.name.split(".").pop()! : "bin";
+      const storagePath = buildStoragePath(params.id, extension);
+      const contentType = file.type || "application/octet-stream";
+      return {
+        fileName: file.name,
+        attachmentType: classification.attachmentType,
+        storagePath,
+        thumbnailPath: null,
+        fileSize: originalBuffer.length,
+        fileHash,
+        upload: [{ path: storagePath, buffer: originalBuffer, contentType }],
+        ocrInput:
+          classification.attachmentType === "pdf" ? { buffer: originalBuffer, contentType } : null,
+      };
+    })
+  );
+
+  // Upload everything to storage first (valid only if storage succeeds AND
+  // the DB insert succeeds — Supabase Storage add-on §6). Independent writes,
+  // so run them concurrently too.
+  await Promise.all(
+    prepared.flatMap((item) =>
+      item.upload.map((target) => uploadToStorage(db, target.path, target.buffer, target.contentType))
+    )
+  );
+
+  const { data: inserted, error: insertError } = await db
+    .from("job_files")
+    .insert(
+      prepared.map((item) => ({
+        company_id: auth.companyId,
+        job_id: params.id,
+        checklist_item_id: checklistItemId,
+        uploaded_by: auth.userId,
+        file_name: item.fileName,
+        attachment_type: item.attachmentType,
+        storage_path: item.storagePath,
+        thumbnail_path: item.thumbnailPath,
+        file_size: item.fileSize,
+        file_hash: item.fileHash,
+      }))
+    )
+    .select();
+
+  if (insertError || !inserted) {
+    // Storage objects for this batch are now orphaned — spec explicitly
+    // tolerates this: "orphan files ignored; no cleanup system in MVP."
+    throw new ApiError(
+      "internal",
+      "Files were uploaded but could not be recorded.",
+      insertError?.message
+    );
+  }
+
+  for (const record of inserted) {
+    await createTimelineEvent(db, {
+      companyId: auth.companyId,
+      jobId: params.id,
+      eventType: record.attachment_type === "image" ? "image_uploaded" : "document_uploaded",
+      userId: auth.userId,
+      metadata: { file_name: record.file_name, attachment_type: record.attachment_type },
+    });
+  }
+
+  // OCR (Document OCR add-on §4): automatic, backend-only, synchronous where
+  // possible, and must never block or fail the upload (§9 Failure Rule).
+  // Runs only for OCR-eligible files (image/pdf); concurrent across the
+  // batch for the same reason storage uploads are (bounded by
+  // MAX_FILES_PER_REQUEST). Only a SUCCESSFUL extraction gets a Timeline
+  // event (§7.1) — a failed/unavailable attempt just leaves ocr_text null.
+  const ocrInputByHash = new Map(prepared.map((item) => [item.fileHash, item.ocrInput]));
+  const finalFiles = await Promise.all(
+    inserted.map(async (record) => {
+      const ocrInput = ocrInputByHash.get(record.file_hash);
+      if (!ocrInput) return record;
+
+      const text = await extractText(ocrInput.buffer, ocrInput.contentType);
+      if (!text) return record;
+
+      const { data: updated, error: updateError } = await db
+        .from("job_files")
+        .update({ ocr_text: text })
+        .eq("id", record.id)
+        .select()
+        .single();
+      if (updateError || !updated) {
+        console.error("[ocr_update_failed]", record.id, updateError?.message);
+        return record;
+      }
+
+      await createTimelineEvent(db, {
+        companyId: auth.companyId,
+        jobId: params.id,
+        eventType: "ocr_completed",
+        userId: null,
+        metadata: { status: "success", ocr_text_length: text.length },
+      });
+
+      return updated;
+    })
+  );
+
+  return created({ files: finalFiles });
+});
