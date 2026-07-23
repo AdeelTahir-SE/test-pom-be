@@ -17,7 +17,7 @@ import {
   notificationToMessage,
   jobNumber,
 } from '@/lib/dashboardMappers';
-import type { Worker, Order, Message } from '@/lib/mockData';
+import type { Worker } from '@/lib/mockData';
 import { LIMITS } from '@/config/constants';
 import {
   LogOut,
