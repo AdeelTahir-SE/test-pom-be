@@ -8,6 +8,7 @@ import { PainSolutions } from "@/components/landing/PainSolutions";
 import { DashboardPreview } from "@/components/landing/DashboardPreview";
 import { TransformationSlider } from "@/components/landing/TransformationSlider";
 import { ImpactSection } from "@/components/landing/ImpactSection";
+import { NewFunctionalities } from "@/components/landing/NewFunctionalities";
 import { Pricing } from "@/components/landing/Pricing";
 import { DeadlineOffer } from "@/components/landing/DeadlineOffer";
 import { Footer } from "@/components/landing/Footer";
@@ -110,6 +111,7 @@ export default function LandingPage() {
         <DashboardPreview />
         <TransformationSlider />
         <ImpactSection />
+        <NewFunctionalities />
         <Pricing />
         <DeadlineOffer />
         <TargetIndustries />

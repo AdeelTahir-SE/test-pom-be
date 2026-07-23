@@ -5,7 +5,12 @@ import Link from "next/link";
 import { useLanguage } from "@/lib/useLanguage";
 
 function scrollToSection(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const el = document.getElementById(id);
+  if (el) {
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  } else {
+    window.location.href = `/#${id}`;
+  }
 }
 
 export function Navbar() {
@@ -39,8 +44,8 @@ export function Navbar() {
             }}
           >
             {/* Brand Logo */}
-            <a 
-              href="#" 
+            <Link 
+              href="/" 
               className="flex items-center justify-center bg-white border border-[#E2E8F0] shadow-[0px_1px_2px_rgba(15,23,42,0.04),inset_0px_1px_0px_1px_#FFFFFF] rounded-full hover:-translate-y-0.5 transition-all duration-300"
               style={{
                 boxSizing: "border-box",
@@ -67,7 +72,7 @@ export function Navbar() {
               >
                 pomocnik.net
               </span>
-            </a>
+            </Link>
 
             {/* Desktop Navigation Links */}
             <div 

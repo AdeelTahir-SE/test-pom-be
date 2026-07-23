@@ -31,7 +31,8 @@ export function TargetIndustries() {
   ];
 
   return (
-    <section 
+    <section
+      id="industries"
       style={{
         width: "100%",
         display: "flex",
