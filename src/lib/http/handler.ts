@@ -6,7 +6,12 @@ import { env } from "@/lib/env";
 import type { CompanyUserContext, PlatformAdminContext } from "@/types/domain";
 import type { UserRole } from "@/config/constants";
 
+// Next.js 15+: route `params` is a Promise (async request APIs).
 type RouteParams<P extends Record<string, string> = Record<string, string>> = {
+  params: Promise<P>;
+};
+
+type ResolvedRouteParams<P extends Record<string, string> = Record<string, string>> = {
   params: P;
 };
 
@@ -44,7 +49,7 @@ export function withAuth<P extends Record<string, string> = Record<string, strin
   handler: (
     request: Request,
     ctx: CompanyUserContext,
-    routeParams: RouteParams<P>
+    routeParams: ResolvedRouteParams<P>
   ) => Promise<NextResponse>,
   opts?: { roles?: UserRole[] }
 ) {
@@ -61,7 +66,8 @@ export function withAuth<P extends Record<string, string> = Record<string, strin
         throw new ApiError("forbidden", "You do not have permission to perform this action.");
       }
       await assertSubscriptionActive(request, auth.companyId);
-      return await handler(request, auth, routeParams);
+      const params = await routeParams.params;
+      return await handler(request, auth, { params });
     } catch (err) {
       return toErrorResponse(err);
     }
@@ -74,7 +80,7 @@ export function withPlatformAdmin<P extends Record<string, string> = Record<stri
   handler: (
     request: Request,
     ctx: PlatformAdminContext,
-    routeParams: RouteParams<P>
+    routeParams: ResolvedRouteParams<P>
   ) => Promise<NextResponse>
 ) {
   return async (request: Request, routeParams: RouteParams<P>) => {
@@ -86,7 +92,8 @@ export function withPlatformAdmin<P extends Record<string, string> = Record<stri
       if (auth.kind !== "platform_admin") {
         throw new ApiError("forbidden", "This endpoint requires a platform admin account.");
       }
-      return await handler(request, auth, routeParams);
+      const params = await routeParams.params;
+      return await handler(request, auth, { params });
     } catch (err) {
       return toErrorResponse(err);
     }

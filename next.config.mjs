@@ -2,9 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   // sharp is a native dep used only in server route handlers
-  experimental: {
-    serverComponentsExternalPackages: ["sharp"],
-  },
+  serverExternalPackages: ["sharp"],
 };
 
 export default nextConfig;
