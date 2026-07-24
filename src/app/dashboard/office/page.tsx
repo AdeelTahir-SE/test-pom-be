@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import Link from 'next/link';
-import { Logo } from '@/components/Logo';
-import { useLanguage } from '@/lib/useLanguage';
-import { useCurrentUser } from '@/lib/useCurrentUser';
-import { api } from '@/lib/api-client';
+import React, { useState, useCallback, useEffect, useRef } from "react";
+import Link from "next/link";
+import { Logo } from "@/components/Logo";
+import { useLanguage } from "@/lib/useLanguage";
+import { useCurrentUser } from "@/lib/useCurrentUser";
+import { api } from "@/lib/api-client";
 import {
   ApiJob,
   ApiChecklistItem,
@@ -16,9 +16,9 @@ import {
   reminderToCard,
   notificationToMessage,
   jobNumber,
-} from '@/lib/dashboardMappers';
-import type { Worker } from '@/lib/mockData';
-import { LIMITS } from '@/config/constants';
+} from "@/lib/dashboardMappers";
+import type { Worker, Order, Message } from "@/lib/mockData";
+import { LIMITS } from "@/config/constants";
 import {
   LogOut,
   Send,
@@ -27,32 +27,33 @@ import {
   Search as SearchIcon,
   Settings,
   Database,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   SummaryCard,
   OverviewRow,
   UrgentRow,
-} from '@/components/dashboard/SummaryCard';
-import { WorkerCard } from '@/components/dashboard/WorkerCard';
-import { OfficeCard } from '@/components/dashboard/OfficeCard';
-import { CommunicationCard } from '@/components/dashboard/CommunicationCard';
-import { WorkerDetailModal } from '@/components/dashboard/WorkerDetailModal';
-import { AddTaskModal } from '@/components/dashboard/AddTaskModal';
-import { AddReminderModal } from '@/components/dashboard/AddReminderModal';
-import { AddWorkerCard } from '@/components/dashboard/AddWorkerCard';
-import { TeamManagementModal } from '@/components/dashboard/TeamManagementModal';
-import { SearchModal } from '@/components/dashboard/SearchModal';
-import { CompanySettingsModal } from '@/components/dashboard/CompanySettingsModal';
-import { SortableItem } from '@/components/dashboard/SortableItem';
-import { OfficeDayHeader } from '@/components/dashboard/OfficeDayHeader';
-import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
+} from "@/components/dashboard/SummaryCard";
+import { DailySummaryPanel } from "@/components/dashboard/DailySummaryPanel";
+import { WorkerCard } from "@/components/dashboard/WorkerCard";
+import { OfficeCard } from "@/components/dashboard/OfficeCard";
+import { CommunicationCard } from "@/components/dashboard/CommunicationCard";
+import { WorkerDetailModal } from "@/components/dashboard/WorkerDetailModal";
+import { AddTaskModal } from "@/components/dashboard/AddTaskModal";
+import { AddReminderModal } from "@/components/dashboard/AddReminderModal";
+import { AddWorkerCard } from "@/components/dashboard/AddWorkerCard";
+import { TeamManagementModal } from "@/components/dashboard/TeamManagementModal";
+import { SearchModal } from "@/components/dashboard/SearchModal";
+import { CompanySettingsModal } from "@/components/dashboard/CompanySettingsModal";
+import { SortableItem } from "@/components/dashboard/SortableItem";
+import { OfficeDayHeader } from "@/components/dashboard/OfficeDayHeader";
+import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
 import {
   SortableContext,
   verticalListSortingStrategy,
   arrayMove,
-} from '@dnd-kit/sortable';
+} from "@dnd-kit/sortable";
 import {
   formatSiDate,
   jobBelongsToDay,
@@ -61,7 +62,9 @@ import {
   parseFlexibleDate,
   startOfLocalDay,
   toIsoDate,
-} from '@/lib/officeDate';
+} from "@/lib/officeDate";
+import { useOfficeBoard } from "@/hooks/useOfficeBoard";
+import { isOptimisticId, newOptimisticId } from "@/lib/optimisticId";
 
 interface ApiJobMessage {
   id: string;
@@ -134,43 +137,34 @@ function ColumnHeader({ title, onAddClick, addTitle }: ColumnHeaderProps) {
   );
 }
 
-interface SummaryData {
-  field_overview: {
-    job_id: string;
-    job_title: string;
-    location: string | null;
-    worker_name: string | null;
-    checklist_completed: number;
-    checklist_total: number;
-  }[];
-  urgent_reminder: {
-    id: string;
-    title: string;
-    description: string | null;
-    created_at: string;
-  } | null;
-}
-
 export default function OfficeDashboard() {
   const { t } = useLanguage();
   const { user, company, loading: authLoading, logout } = useCurrentUser();
 
-  const [jobs, setJobs] = useState<ApiJob[]>([]);
-  const [checklistsByJob, setChecklistsByJob] = useState<
-    Record<string, ApiChecklistItem[]>
-  >({});
-  const [workers, setWorkers] = useState<ApiUser[]>([]);
-  const [reminders, setReminders] = useState<ApiOfficeReminder[]>([]);
-  const [notifications, setNotifications] = useState<ApiNotification[]>([]);
-  const [summary, setSummary] = useState<SummaryData | null>(null);
-  const [dataLoading, setDataLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(() => startOfLocalDay());
   const selectedDayKey = toIsoDate(selectedDate);
   const selectedSiDate = formatSiDate(selectedDate);
 
-  const [selectedWorkerJobId, setSelectedWorkerJobId] = useState<string | null>(
-    null,
-  );
+  const {
+    jobs,
+    reminders,
+    notifications,
+    workers,
+    summary,
+    checklistsByJob,
+    dataLoading,
+    setJobs,
+    setReminders,
+    setNotifications,
+    setChecklistsByJob,
+    refreshBoard,
+  } = useOfficeBoard(selectedDayKey, !authLoading && !!user);
+
+  // Optimistic checklist rows for jobs not yet confirmed by the API (temp ids).
+  const [checklistOverrides, setChecklistOverrides] = useState<Record<string, ApiChecklistItem[]>>({});
+  const mergedChecklistsByJob = { ...checklistsByJob, ...checklistOverrides };
+
+  const [selectedWorkerJobId, setSelectedWorkerJobId] = useState<string | null>(null);
   const [detailKey, setDetailKey] = useState(0);
   const [isWorkerDetailOpen, setIsWorkerDetailOpen] = useState(false);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -252,70 +246,6 @@ export default function OfficeDashboard() {
     setActiveTab(clamped);
   };
 
-  const loadAll = useCallback(async () => {
-    const dayKey = toIsoDate(selectedDate);
-    const [jobsRes, remindersRes, notificationsRes, usersRes, summaryRes] =
-      await Promise.all([
-        api.get<{ jobs: ApiJob[] }>('/api/jobs'),
-        api.get<{ reminders: ApiOfficeReminder[] }>(
-          `/api/office-reminders?date=${dayKey}`,
-        ),
-        api.get<{ notifications: ApiNotification[] }>('/api/notifications'),
-        api.get<{ users: ApiUser[] }>('/api/users'),
-        api.get<SummaryData>('/api/dashboard/summary'),
-      ]);
-
-    const jobList = jobsRes.data?.jobs ?? [];
-    setJobs(jobList);
-    setReminders(remindersRes.data?.reminders ?? []);
-    setNotifications(notificationsRes.data?.notifications ?? []);
-    setWorkers((usersRes.data?.users ?? []).filter((u) => u.role === 'worker'));
-    setSummary(summaryRes.data ?? null);
-
-    const activeJobs = jobList.filter(
-      (j) =>
-        j.worker_id && j.status !== 'completed' && j.status !== 'cancelled',
-    );
-    const checklistResults = await Promise.all(
-      activeJobs.map((j) =>
-        api.get<{ checklist: ApiChecklistItem[] }>(
-          `/api/jobs/${j.id}/checklist`,
-        ),
-      ),
-    );
-    const nextChecklists: Record<string, ApiChecklistItem[]> = {};
-    activeJobs.forEach((j, idx) => {
-      nextChecklists[j.id] = checklistResults[idx]?.data?.checklist ?? [];
-    });
-    setChecklistsByJob(nextChecklists);
-    setDataLoading(false);
-  }, [selectedDate]);
-
-  useEffect(() => {
-    if (!authLoading && user) loadAll();
-  }, [authLoading, user, loadAll]);
-
-  // Global Polling Rule — notifications, reminders, and the summary cards
-  // refresh every 30s so office staff see new activity without a manual reload.
-  useEffect(() => {
-    if (authLoading || !user) return;
-    const dayKey = toIsoDate(selectedDate);
-    const interval = setInterval(async () => {
-      const [remindersRes, notificationsRes, summaryRes] = await Promise.all([
-        api.get<{ reminders: ApiOfficeReminder[] }>(
-          `/api/office-reminders?date=${dayKey}`,
-        ),
-        api.get<{ notifications: ApiNotification[] }>('/api/notifications'),
-        api.get<SummaryData>('/api/dashboard/summary'),
-      ]);
-      if (remindersRes.data) setReminders(remindersRes.data.reminders);
-      if (notificationsRes.data)
-        setNotifications(notificationsRes.data.notifications);
-      if (summaryRes.data) setSummary(summaryRes.data);
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [authLoading, user, selectedDate]);
-
   const workerById = new Map(workers.map((w) => [w.id, w]));
   const jobById = new Map(jobs.map((j) => [j.id, j]));
 
@@ -352,23 +282,41 @@ export default function OfficeDashboard() {
   const selectedWorkerCard: Worker | null = selectedJob
     ? jobToWorkerCard(
         selectedJob,
-        checklistsByJob[selectedJob.id] ?? [],
+        mergedChecklistsByJob[selectedJob.id] ?? [],
         workerById.get(selectedJob.worker_id!),
-        t,
+        t
       )
     : null;
 
-  const handleToggleTask = async (workerId: string, taskId: string) => {
-    const item = Object.values(checklistsByJob)
-      .flat()
-      .find((i) => i.id === taskId);
-    if (!item) return;
-    const res = await api.patch<ApiChecklistItem>(
-      `/api/checklist-items/${taskId}`,
-      {
-        is_completed: !item.is_completed,
-      },
+  const handleToggleTask = async (_workerId: string, taskId: string) => {
+    const item = Object.values(mergedChecklistsByJob).flat().find((i) => i.id === taskId);
+    if (!item || isOptimisticId(item.id) || isOptimisticId(item.job_id)) return;
+
+    const nextCompleted = !item.is_completed;
+    const patchLocal = (list: ApiChecklistItem[]) =>
+      list.map((i) =>
+        i.id === taskId
+          ? {
+              ...i,
+              is_completed: nextCompleted,
+              completed_at: nextCompleted ? new Date().toISOString() : null,
+            }
+          : i
+      );
+
+    setChecklistsByJob((prev) => ({
+      ...prev,
+      [item.job_id]: patchLocal(prev[item.job_id] ?? []),
+    }));
+    setChecklistOverrides((prev) =>
+      prev[item.job_id]
+        ? { ...prev, [item.job_id]: patchLocal(prev[item.job_id] ?? []) }
+        : prev
     );
+
+    const res = await api.patch<ApiChecklistItem>(`/api/checklist-items/${taskId}`, {
+      is_completed: nextCompleted,
+    });
     if (res.status === 200 && res.data) {
       setChecklistsByJob((prev) => ({
         ...prev,
@@ -376,18 +324,25 @@ export default function OfficeDashboard() {
           i.id === taskId ? res.data! : i,
         ),
       }));
+    } else {
+      void refreshBoard();
     }
   };
 
   const handleChangeJobStatus = async (jobId: string, status: string) => {
-    const res = await api.patch<{ job: ApiJob }>(`/api/jobs/${jobId}`, {
-      status,
-    });
-    if (res.status === 200) await loadAll();
-    else alert(res.error?.message ?? 'Failed to update job status.');
+    if (isOptimisticId(jobId)) return;
+    setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, status: status as ApiJob["status"] } : j)));
+    const res = await api.patch<{ job: ApiJob }>(`/api/jobs/${jobId}`, { status });
+    if (res.status === 200 && res.data) {
+      setJobs((prev) => prev.map((j) => (j.id === jobId ? res.data!.job : j)));
+      void refreshBoard();
+    } else {
+      void refreshBoard();
+      alert(res.error?.message ?? "Failed to update job status.");
+    }
   };
 
-  const handleAddTask = async (taskData: {
+  const handleAddTask = (taskData: {
     workerId: string;
     opravilo: string;
     kraj: string;
@@ -396,34 +351,96 @@ export default function OfficeDashboard() {
     steps: { text: string; requiresAttachment: boolean }[];
   }) => {
     const parsed = parseFlexibleDate(taskData.datum) ?? selectedDate;
-    const res = await api.post<{ job: ApiJob }>('/api/jobs', {
+    const scheduledAt = localDayToScheduledAt(parsed);
+    const tempId = newOptimisticId();
+    const now = new Date().toISOString();
+    const nextSeq = Math.max(0, ...jobs.map((j) => j.company_seq), 0) + 1;
+
+    const optimisticJob: ApiJob = {
+      id: tempId,
+      company_seq: nextSeq,
+      status: "pending",
       title: taskData.opravilo,
-      location: taskData.kraj || undefined,
-      customer: taskData.narocnik || undefined,
+      description: null,
+      priority: null,
+      customer: taskData.narocnik || null,
+      location: taskData.kraj || null,
+      scheduled_at: scheduledAt,
+      started_at: null,
+      completed_at: null,
       worker_id: taskData.workerId,
-      scheduled_at: localDayToScheduledAt(parsed),
-    });
-    if (res.status === 201 && res.data) {
-      const jobId = res.data.job.id;
-      for (const step of taskData.steps) {
-        await api.post(`/api/jobs/${jobId}/checklist`, {
-          label: step.text,
-          requires_attachment: step.requiresAttachment,
+      created_at: now,
+    };
+
+    const optimisticChecklist: ApiChecklistItem[] = taskData.steps.map((step, index) => ({
+      id: newOptimisticId("opt-step"),
+      job_id: tempId,
+      label: step.text,
+      order_index: index,
+      is_completed: false,
+      completed_at: null,
+      requires_attachment: step.requiresAttachment,
+      has_attachment: false,
+    }));
+
+    // Show the card immediately, persist in parallel.
+    setJobs((prev) => [optimisticJob, ...prev]);
+    setChecklistOverrides((prev) => ({ ...prev, [tempId]: optimisticChecklist }));
+
+    void (async () => {
+      const res = await api.post<{ job: ApiJob }>("/api/jobs", {
+        title: taskData.opravilo,
+        location: taskData.kraj || undefined,
+        customer: taskData.narocnik || undefined,
+        worker_id: taskData.workerId,
+        scheduled_at: scheduledAt,
+      });
+
+      if (res.status !== 201 || !res.data) {
+        setJobs((prev) => prev.filter((j) => j.id !== tempId));
+        setChecklistOverrides((prev) => {
+          const next = { ...prev };
+          delete next[tempId];
+          return next;
         });
+        alert(res.error?.message ?? "Failed to create job.");
+        return;
       }
-      await loadAll();
-    }
+
+      const realJob = res.data.job;
+      const createdSteps: ApiChecklistItem[] = [];
+      for (const step of taskData.steps) {
+        const stepRes = await api.post<{ item?: ApiChecklistItem; checklist?: ApiChecklistItem }>(
+          `/api/jobs/${realJob.id}/checklist`,
+          { label: step.text, requires_attachment: step.requiresAttachment }
+        );
+        const item = stepRes.data?.item ?? stepRes.data?.checklist;
+        if (stepRes.status === 201 && item) createdSteps.push(item);
+      }
+
+      setJobs((prev) => prev.map((j) => (j.id === tempId ? realJob : j)));
+      setChecklistOverrides((prev) => {
+        const next = { ...prev };
+        delete next[tempId];
+        if (createdSteps.length > 0) next[realJob.id] = createdSteps;
+        return next;
+      });
+      setChecklistsByJob((prev) => ({
+        ...prev,
+        [realJob.id]:
+          createdSteps.length > 0
+            ? createdSteps
+            : optimisticChecklist.map((s) => ({ ...s, job_id: realJob.id })),
+      }));
+
+      if (selectedWorkerJobId === tempId) setSelectedWorkerJobId(realJob.id);
+      void refreshBoard();
+    })();
   };
 
-  const handleAddReminder = async (reminderData: {
-    title: string;
-    description: string;
-    isUrgent: boolean;
-    hasAttachment: boolean;
-    hasEmail: boolean;
-    phoneNumber: string;
-    hasConfirm: boolean;
-    hasDecline: boolean;
+  const handleAddReminder = (reminderData: {
+    title: string; description: string; isUrgent: boolean;
+    hasAttachment: boolean; hasEmail: boolean; phoneNumber: string; hasConfirm: boolean; hasDecline: boolean;
     date?: string;
   }) => {
     const actions: string[] = [];
@@ -433,21 +450,43 @@ export default function OfficeDashboard() {
     if (reminderData.hasConfirm) actions.push('confirm');
     if (reminderData.hasDecline) actions.push('reject');
 
-    const remindDay =
-      parseFlexibleDate(reminderData.date ?? '') ?? selectedDate;
+    const remindDay = parseFlexibleDate(reminderData.date ?? "") ?? selectedDate;
+    const tempId = newOptimisticId();
+    const now = new Date().toISOString();
+    const optimistic: ApiOfficeReminder = {
+      id: tempId,
+      title: reminderData.title,
+      description: reminderData.description || null,
+      is_urgent: reminderData.isUrgent,
+      remind_on: toIsoDate(remindDay),
+      actions,
+      action_state: {},
+      phone: reminderData.phoneNumber || null,
+      link: null,
+      order_index: -1,
+      hidden_at: null,
+      created_at: now,
+    };
 
-    const res = await api.post<{ reminder: ApiOfficeReminder }>(
-      '/api/office-reminders',
-      {
+    setReminders((prev) => [optimistic, ...prev]);
+
+    void (async () => {
+      const res = await api.post<{ reminder: ApiOfficeReminder }>("/api/office-reminders", {
         title: reminderData.title,
         description: reminderData.description || undefined,
         is_urgent: reminderData.isUrgent,
         actions,
         phone: reminderData.phoneNumber || undefined,
         remind_on: toIsoDate(remindDay),
-      },
-    );
-    if (res.status === 201) await loadAll();
+      });
+      if (res.status === 201 && res.data) {
+        setReminders((prev) => prev.map((r) => (r.id === tempId ? res.data!.reminder : r)));
+        void refreshBoard();
+      } else {
+        setReminders((prev) => prev.filter((r) => r.id !== tempId));
+        alert(res.error?.message ?? "Failed to create reminder.");
+      }
+    })();
   };
 
   const handleAddWorker = async (workerData: {
@@ -476,40 +515,52 @@ export default function OfficeDashboard() {
           `Account created for ${workerData.email}.\n${label}: ${res.data.temporary_password}\n\nShare this with them directly — it will not be shown again.`,
         );
       }
-      await loadAll();
+      void refreshBoard();
     } else {
       alert(res.error?.message ?? 'Failed to create account.');
     }
   };
 
   const handleConfirmReminder = async (id: string) => {
-    const res = await api.patch<{ reminder: ApiOfficeReminder }>(
-      `/api/office-reminders/${id}`,
-      { confirm: true },
+    if (isOptimisticId(id)) return;
+    setReminders((prev) =>
+      prev.map((r) =>
+        r.id === id ? { ...r, action_state: { ...r.action_state, confirmed: true } } : r
+      )
     );
+    const res = await api.patch<{ reminder: ApiOfficeReminder }>(`/api/office-reminders/${id}`, { confirm: true });
     if (res.status === 200 && res.data) {
-      setReminders((prev) =>
-        prev.map((r) => (r.id === id ? res.data!.reminder : r)),
-      );
+      setReminders((prev) => prev.map((r) => (r.id === id ? res.data!.reminder : r)));
+    } else {
+      void refreshBoard();
     }
   };
   const handleDeclineReminder = async (id: string) => {
-    const res = await api.patch<{ reminder: ApiOfficeReminder }>(
-      `/api/office-reminders/${id}`,
-      { reject: true },
+    if (isOptimisticId(id)) return;
+    setReminders((prev) =>
+      prev.map((r) =>
+        r.id === id ? { ...r, action_state: { ...r.action_state, rejected: true } } : r
+      )
     );
+    const res = await api.patch<{ reminder: ApiOfficeReminder }>(`/api/office-reminders/${id}`, { reject: true });
     if (res.status === 200 && res.data) {
-      setReminders((prev) =>
-        prev.map((r) => (r.id === id ? res.data!.reminder : r)),
-      );
+      setReminders((prev) => prev.map((r) => (r.id === id ? res.data!.reminder : r)));
+    } else {
+      void refreshBoard();
     }
   };
   const handleDismissReminder = async (id: string) => {
-    const res = await api.patch(`/api/office-reminders/${id}`, {
-      hidden: true,
-    });
-    if (res.status === 200)
+    if (isOptimisticId(id)) {
       setReminders((prev) => prev.filter((r) => r.id !== id));
+      return;
+    }
+    const snapshot = reminders;
+    setReminders((prev) => prev.filter((r) => r.id !== id));
+    const res = await api.patch(`/api/office-reminders/${id}`, { hidden: true });
+    if (res.status !== 200) {
+      setReminders(snapshot);
+      alert(res.error?.message ?? "Failed to hide reminder.");
+    }
   };
   const handleReminderDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -519,17 +570,18 @@ export default function OfficeDashboard() {
     const reordered = arrayMove(dayReminders, oldIndex, newIndex);
     setReminders(reordered);
     Promise.all(
-      reordered.map((r, index) =>
-        api
-          .patch(`/api/office-reminders/${r.id}`, { order_index: index })
-          .catch(() => {}),
-      ),
+      reordered
+        .filter((r) => !isOptimisticId(r.id))
+        .map((r, index) =>
+          api.patch(`/api/office-reminders/${r.id}`, { order_index: index }).catch(() => {})
+        )
     );
   };
   const handleDismissMessage = async (id: string) => {
+    const snapshot = notifications;
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
     const res = await api.patch(`/api/notifications/${id}`, { hidden: true });
-    if (res.status === 200)
-      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    if (res.status !== 200) setNotifications(snapshot);
   };
   const handleJobDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -543,11 +595,11 @@ export default function OfficeDashboard() {
       ...prev.filter((j) => !reorderedIds.has(j.id)),
     ]);
     Promise.all(
-      reordered.map((j, index) =>
-        api
-          .patch(`/api/jobs/${j.id}`, { display_order: index })
-          .catch(() => {}),
-      ),
+      reordered
+        .filter((j) => !isOptimisticId(j.id))
+        .map((j, index) =>
+          api.patch(`/api/jobs/${j.id}`, { display_order: index }).catch(() => {})
+        )
     );
   };
 
@@ -728,11 +780,16 @@ export default function OfficeDashboard() {
           todayLabel={t('officeJumpToday')}
         />
 
-        <div
-          className="grid grid-cols-1 md:grid-cols-2 gap-6"
-          style={{ marginBottom: '32px' }}
-        >
-          <SummaryCard title={t('officeQuickOverview')}>
+        <DailySummaryPanel
+          dayKey={selectedDayKey}
+          onJumpToDay={(key) => {
+            const d = parseFlexibleDate(key);
+            if (d) setSelectedDate(startOfLocalDay(d));
+          }}
+        />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6" style={{ marginBottom: "32px" }}>
+          <SummaryCard title={t("officeQuickOverview")}>
             <div className="flex flex-col gap-[4px]">
               {dayFieldOverview.length === 0 ? (
                 <p
@@ -850,15 +907,8 @@ export default function OfficeDashboard() {
                   strategy={verticalListSortingStrategy}
                 >
                   {activeJobs.map((job) => {
-                    const worker = job.worker_id
-                      ? workerById.get(job.worker_id)
-                      : undefined;
-                    const workerCard = jobToWorkerCard(
-                      job,
-                      checklistsByJob[job.id] ?? [],
-                      worker,
-                      t,
-                    );
+                    const worker = job.worker_id ? workerById.get(job.worker_id) : undefined;
+                    const workerCard = jobToWorkerCard(job, mergedChecklistsByJob[job.id] ?? [], worker, t);
                     return (
                       <SortableItem key={job.id} id={job.id}>
                         <WorkerCard
@@ -1098,7 +1148,8 @@ export default function OfficeDashboard() {
         worker={selectedWorkerCard}
         jobId={selectedWorkerJobId}
         cardNumber={selectedJob ? jobNumber(selectedJob) : null}
-        onRefresh={loadAll}
+        customerName={selectedJob?.customer ?? null}
+        onRefresh={() => void refreshBoard()}
         jobStatus={selectedJob?.status}
         onChangeJobStatus={
           selectedWorkerJobId
@@ -1106,6 +1157,7 @@ export default function OfficeDashboard() {
             : undefined
         }
         canCancelJob
+        canManageCustomerNotes
       />
       <AddTaskModal
         isOpen={isAddTaskOpen}
@@ -1130,8 +1182,8 @@ export default function OfficeDashboard() {
         isOpen={isTeamOpen}
         onOpenChange={setIsTeamOpen}
         currentUserId={user?.id}
-        onChanged={loadAll}
-        isOwner={user?.role === 'owner'}
+        onChanged={() => void refreshBoard()}
+        isOwner={user?.role === "owner"}
         onAddMember={() => {
           setIsTeamOpen(false);
           setIsAddWorkerOpen(true);

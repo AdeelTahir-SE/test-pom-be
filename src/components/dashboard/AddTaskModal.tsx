@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useLanguage } from "@/lib/useLanguage";
+import { api } from "@/lib/api-client";
+import { CustomerNotesBanner } from "./CustomerNotesBanner";
 import {
   AuraLabel,
   AuraInput,
@@ -21,6 +23,12 @@ interface TaskStepInput {
 
 function newStep(): TaskStepInput {
   return { id: Math.random().toString(36).slice(2), text: "", requiresAttachment: false };
+}
+
+interface CustomerNoteDto {
+  id: string;
+  note: string;
+  created_at: string;
 }
 
 interface AddTaskModalProps {
@@ -48,10 +56,31 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
   const [datum, setDatum] = useState(defaultDate);
   const [workerId, setWorkerId] = useState("");
   const [steps, setSteps] = useState<TaskStepInput[]>([newStep()]);
+  const [customerNotes, setCustomerNotes] = useState<CustomerNoteDto[]>([]);
+  const notesRequestRef = useRef(0);
 
   React.useEffect(() => {
     if (isOpen) setDatum(defaultDate);
   }, [isOpen, defaultDate]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const name = narocnik.trim();
+    if (name.length < 2) {
+      setCustomerNotes([]);
+      return;
+    }
+    const requestId = ++notesRequestRef.current;
+    const timer = window.setTimeout(async () => {
+      const res = await api.get<{ notes: CustomerNoteDto[] }>(
+        `/api/customers/notes?name=${encodeURIComponent(name)}`
+      );
+      if (notesRequestRef.current !== requestId) return;
+      if (res.status === 200 && res.data) setCustomerNotes(res.data.notes);
+      else setCustomerNotes([]);
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [narocnik, isOpen]);
 
   const resetAll = () => {
     setStep(1);
@@ -61,6 +90,7 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
     setDatum(defaultDate);
     setWorkerId("");
     setSteps([newStep()]);
+    setCustomerNotes([]);
   };
 
   const handleNext = (e: React.FormEvent) => {
@@ -160,10 +190,14 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                     type="text"
                     value={narocnik}
                     onChange={(e) => setNarocnik(e.target.value)}
-                    maxLength={15}
+                    maxLength={40}
                     placeholder={t("modalTaskCustomerPlaceholder")}
                   />
                 </div>
+
+                {customerNotes.length > 0 && (
+                  <CustomerNotesBanner notes={customerNotes} compact />
+                )}
 
                 <div>
                   <AuraLabel>{t("modalTaskDate")}</AuraLabel>
@@ -206,6 +240,10 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                   {t("modalTaskStepsHeading")}
                 </h3>
               </div>
+
+              {customerNotes.length > 0 && (
+                <CustomerNotesBanner notes={customerNotes} compact />
+              )}
 
               <div className="flex flex-col gap-2">
                 {steps.map((s, index) => (

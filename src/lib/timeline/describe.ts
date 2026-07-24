@@ -1,5 +1,6 @@
 import type { TranslationKey } from "@/lib/translations";
 import type { JobStatus } from "@/config/constants";
+import { isDocumentType, type DocumentType } from "@/lib/documents/classify";
 
 export interface TimelineEventLike {
   event_type: string;
@@ -13,6 +14,24 @@ const STATUS_LABEL_KEY: Record<JobStatus, TranslationKey> = {
   completed: "jobStatusCompleted",
   cancelled: "jobStatusCancelled",
 };
+
+const DOCUMENT_TYPE_LABEL_KEY: Record<DocumentType, TranslationKey> = {
+  invoice: "documentTypeInvoice",
+  delivery_note: "documentTypeDeliveryNote",
+  contract: "documentTypeContract",
+  service_report: "documentTypeServiceReport",
+  offer: "documentTypeOffer",
+  receipt: "documentTypeReceipt",
+  other: "documentTypeOther",
+};
+
+export function documentTypeLabel(
+  type: unknown,
+  t: (key: TranslationKey) => string
+): string | null {
+  if (!isDocumentType(type)) return null;
+  return t(DOCUMENT_TYPE_LABEL_KEY[type]);
+}
 
 function snippet(text: unknown, max = 40): string | null {
   if (typeof text !== "string" || !text.trim()) return null;
@@ -95,8 +114,17 @@ export function describeTimelineEvent(
         ? `${t("timelineFileHidden")}: ${card} · ${name}`
         : `${t("timelineFileHidden")}: ${name}`;
     }
-    case "ocr_completed":
+    case "ocr_completed": {
+      // Add-on 1: prefer "📄 Invoice · file.pdf" over bare "OCR completed".
+      const docLabel = documentTypeLabel(meta.document_type, t);
+      const fileName = typeof meta.file_name === "string" ? meta.file_name : "";
+      if (docLabel) {
+        const head = `📄 ${docLabel}`;
+        if (fileName) return card ? `${head}: ${card} · ${fileName}` : `${head} · ${fileName}`;
+        return card ? `${head}: ${card}` : head;
+      }
       return card ? `${t("timelineOcrCompleted")}: ${card}` : t("timelineOcrCompleted");
+    }
     case "voice_message_transcribed": {
       const base = meta.transcribed ? t("timelineVoiceTranscribed") : t("timelineVoiceReceived");
       const s = snippet(meta.content);

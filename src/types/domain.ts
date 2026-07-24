@@ -110,6 +110,8 @@ export interface JobFileRow {
   file_size: number;
   file_hash: string;
   ocr_text: string | null;
+  document_type: string | null;
+  document_preview: string | null;
   hidden_at: string | null;
   created_at: string;
 }

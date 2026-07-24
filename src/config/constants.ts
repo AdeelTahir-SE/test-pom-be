@@ -53,6 +53,21 @@ export type MessageType = (typeof MESSAGE_TYPES)[number];
 export const ATTACHMENT_TYPES = ["image", "pdf", "audio", "other"] as const;
 export type AttachmentType = (typeof ATTACHMENT_TYPES)[number];
 
+// Document Classification & Preview add-on §1 — informational only.
+export const DOCUMENT_TYPES = [
+  "invoice",
+  "delivery_note",
+  "contract",
+  "service_report",
+  "offer",
+  "receipt",
+  "other",
+] as const;
+export type DocumentType = (typeof DOCUMENT_TYPES)[number];
+
+/** Stored preview budget (Add-on 1 §4: approximately 300–500 characters). */
+export const DOCUMENT_PREVIEW_MAX_CHARS = 500;
+
 // User roles (Permission Matrix §12). office/secretary map to "manager" for MVP.
 export const USER_ROLES = ["owner", "manager", "worker"] as const;
 export type UserRole = (typeof USER_ROLES)[number];

@@ -31,10 +31,22 @@ import {
   AuraSelect,
   AuraFileInput,
   AuraIconButton,
+  AuraCheckbox,
+  AuraTextarea,
   auraCard,
   auraButton,
 } from "./AuraForm";
-import { describeTimelineEvent } from "@/lib/timeline/describe";
+import { describeTimelineEvent, documentTypeLabel } from "@/lib/timeline/describe";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query/keys";
+import { fetchJobFiles, fetchJobTimeline } from "@/lib/query/office";
+import { CustomerNotesBanner } from "./CustomerNotesBanner";
+
+interface CustomerNoteDto {
+  id: string;
+  note: string;
+  created_at?: string;
+}
 
 interface WorkerDetailModalProps {
   isOpen: boolean;
@@ -43,11 +55,15 @@ interface WorkerDetailModalProps {
   jobId: string | null;
   /** Per-company card id e.g. "#001" — used in timeline lines. */
   cardNumber?: string | null;
+  /** Job customer name — used for persistent customer notes. Falls back to worker.role. */
+  customerName?: string | null;
   inlineDrawer?: boolean;
   onRefresh?: () => void;
   jobStatus?: JobStatus;
   onChangeJobStatus?: (status: JobStatus) => void;
   canCancelJob?: boolean;
+  /** Owners/managers can remove notes for future visits. */
+  canManageCustomerNotes?: boolean;
 }
 
 const STATUS_BADGE_CLASSES: Record<JobStatus, string> = {
@@ -82,6 +98,8 @@ interface AttachmentItem {
   date: string;
   url: string | null;
   ocrText: string | null;
+  documentType: string | null;
+  documentPreview: string | null;
 }
 
 interface TimelineItem {
@@ -89,21 +107,6 @@ interface TimelineItem {
   time: string;
   text: string;
   type: "step" | "attachment" | "message" | "voice" | "other";
-}
-
-interface ApiJobFile {
-  id: string;
-  file_name: string;
-  created_at: string;
-  signed_url: string | null;
-  ocr_text: string | null;
-}
-
-interface ApiTimelineEvent {
-  id: string;
-  event_type: string;
-  metadata: Record<string, unknown> | null;
-  created_at: string;
 }
 
 const TIMELINE_TYPE_BY_EVENT: Record<string, TimelineItem["type"]> = {
@@ -231,11 +234,13 @@ export function WorkerDetailModal({
   worker,
   jobId,
   cardNumber = null,
+  customerName = null,
   inlineDrawer = false,
   onRefresh,
   jobStatus,
   onChangeJobStatus,
   canCancelJob = false,
+  canManageCustomerNotes = false,
 }: WorkerDetailModalProps) {
   const { t, lang } = useLanguage();
   const [addStepOpen, setAddStepOpen] = React.useState(false);
@@ -259,6 +264,17 @@ export function WorkerDetailModal({
   const [attachOnlyFile, setAttachOnlyFile] = React.useState<File | null>(null);
   const [attachOnlyUploading, setAttachOnlyUploading] = React.useState(false);
 
+  // Customer knowledge (Add-on 2)
+  const resolvedCustomerName = (customerName ?? worker?.role ?? "").trim();
+  const [customerNotes, setCustomerNotes] = React.useState<CustomerNoteDto[]>([]);
+  const [saveNoteOpen, setSaveNoteOpen] = React.useState(false);
+  const [saveNoteChecked, setSaveNoteChecked] = React.useState(true);
+  const [saveNoteText, setSaveNoteText] = React.useState("");
+  const [saveNoteCustomer, setSaveNoteCustomer] = React.useState("");
+  const [saveNoteSaving, setSaveNoteSaving] = React.useState(false);
+  const notesRequestRef = React.useRef(0);
+  const completeAfterSaveRef = React.useRef(false);
+
   const fromWorkerTasks = (workerTasks: Worker["tasks"]): TaskItem[] =>
     workerTasks.map(t => ({
       id: t.id,
@@ -281,27 +297,38 @@ export function WorkerDetailModal({
   // Position where the next new step will be inserted (1-based)
   const [stepPosition, setStepPosition] = React.useState(tasks.length + 1);
 
-  const [attachments, setAttachments] = React.useState<AttachmentItem[]>([]);
-  const [timeline, setTimeline] = React.useState<TimelineItem[]>([]);
+  const queryClient = useQueryClient();
+  const filesQuery = useQuery({
+    queryKey: queryKeys.job.files(jobId ?? "none"),
+    queryFn: () => fetchJobFiles(jobId!),
+    enabled: isOpen && !!jobId,
+    staleTime: 30_000,
+  });
+  const timelineQuery = useQuery({
+    queryKey: queryKeys.job.timeline(jobId ?? "none"),
+    queryFn: () => fetchJobTimeline(jobId!),
+    enabled: isOpen && !!jobId,
+    staleTime: 30_000,
+  });
 
-  const loadFilesAndTimeline = React.useCallback(async () => {
-    if (!jobId) return;
-    const [filesRes, timelineRes] = await Promise.all([
-      api.get<{ files: ApiJobFile[] }>(`/api/jobs/${jobId}/files`),
-      api.get<{ timeline: ApiTimelineEvent[] }>(`/api/jobs/${jobId}/timeline`),
-    ]);
-    setAttachments(
-      (filesRes.data?.files ?? []).map((f) => ({
+  const attachments: AttachmentItem[] = React.useMemo(
+    () =>
+      (filesQuery.data ?? []).map((f) => ({
         id: f.id,
         name: f.file_name,
         time: new Date(f.created_at).toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" }),
         date: new Date(f.created_at).toLocaleDateString("sl-SI"),
         url: f.signed_url,
         ocrText: f.ocr_text,
-      }))
-    );
-    setTimeline(
-      (timelineRes.data?.timeline ?? [])
+        documentType: f.document_type,
+        documentPreview: f.document_preview,
+      })),
+    [filesQuery.data]
+  );
+
+  const timeline: TimelineItem[] = React.useMemo(
+    () =>
+      (timelineQuery.data ?? [])
         .slice()
         .reverse()
         .map((e) => ({
@@ -309,13 +336,128 @@ export function WorkerDetailModal({
           time: new Date(e.created_at).toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" }),
           text: describeTimelineEvent(e, t, cardNumber),
           type: TIMELINE_TYPE_BY_EVENT[e.event_type] ?? "other",
-        }))
+        })),
+    [timelineQuery.data, t, cardNumber]
+  );
+
+  const filesLoading = filesQuery.isFetching && !filesQuery.data;
+  const timelineLoading = timelineQuery.isFetching && !timelineQuery.data;
+
+  const refreshFilesAndTimeline = React.useCallback(async () => {
+    if (!jobId) return;
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.job.files(jobId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.job.timeline(jobId) }),
+    ]);
+  }, [jobId, queryClient]);
+
+  // After upload, OCR finishes in the background — soft-poll once for type/preview.
+  const scheduleOcrRefresh = React.useCallback(() => {
+    if (!jobId) return;
+    window.setTimeout(() => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.job.files(jobId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.job.timeline(jobId) });
+    }, 2500);
+  }, [jobId, queryClient]);
+
+  const loadCustomerNotes = React.useCallback(async (name: string) => {
+    const requestId = ++notesRequestRef.current;
+    if (name.length < 2) {
+      setCustomerNotes([]);
+      return;
+    }
+    const res = await api.get<{ notes: CustomerNoteDto[] }>(
+      `/api/customers/notes?name=${encodeURIComponent(name)}`
     );
-  }, [jobId, t, cardNumber]);
+    if (notesRequestRef.current !== requestId) return;
+    if (res.status === 200 && res.data) setCustomerNotes(res.data.notes);
+    else setCustomerNotes([]);
+  }, []);
 
   React.useEffect(() => {
-    if (isOpen && jobId) loadFilesAndTimeline();
-  }, [isOpen, jobId, loadFilesAndTimeline]);
+    if (!isOpen) {
+      setCustomerNotes([]);
+      setSaveNoteOpen(false);
+      setSaveNoteText("");
+      setSaveNoteCustomer("");
+      setSaveNoteChecked(true);
+      completeAfterSaveRef.current = false;
+      return;
+    }
+    void loadCustomerNotes(resolvedCustomerName);
+  }, [isOpen, resolvedCustomerName, loadCustomerNotes]);
+
+  const handleDeleteCustomerNote = async (id: string) => {
+    const res = await api.delete<{ deleted: boolean }>(`/api/customer-notes/${id}`);
+    if (res.status === 200) {
+      setCustomerNotes((prev) => prev.filter((n) => n.id !== id));
+    } else {
+      alert(res.error?.message ?? "Failed to remove note.");
+    }
+  };
+
+  const openSaveNoteDialog = (thenComplete: boolean) => {
+    completeAfterSaveRef.current = thenComplete;
+    setSaveNoteChecked(true);
+    setSaveNoteText("");
+    setSaveNoteCustomer(resolvedCustomerName);
+    setSaveNoteOpen(true);
+  };
+
+  // Always offer the save-note step on complete — even if Naročnik was left empty.
+  const requestComplete = () => {
+    openSaveNoteDialog(true);
+  };
+
+  const finishComplete = () => {
+    const shouldComplete = completeAfterSaveRef.current;
+    completeAfterSaveRef.current = false;
+    setSaveNoteOpen(false);
+    setSaveNoteText("");
+    setSaveNoteCustomer("");
+    if (shouldComplete) onChangeJobStatus?.("completed");
+  };
+
+  const handleSaveCustomerNote = async (force = false) => {
+    const note = saveNoteText.trim();
+    const customer = saveNoteCustomer.trim() || resolvedCustomerName;
+    if (!saveNoteChecked || !note) {
+      finishComplete();
+      return;
+    }
+    if (!customer) {
+      alert(t("customerNotesSaveCustomerRequired"));
+      return;
+    }
+
+    setSaveNoteSaving(true);
+    const res = await api.post<{ note: CustomerNoteDto }>(`/api/customers/notes`, {
+      customer_name: customer,
+      note,
+      force,
+    });
+    setSaveNoteSaving(false);
+
+    if (res.status === 409) {
+      const okAnyway = window.confirm(t("customerNotesDuplicateConfirm"));
+      if (okAnyway) {
+        await handleSaveCustomerNote(true);
+      }
+      return;
+    }
+
+    if (res.status === 201 || res.status === 200) {
+      if (res.data?.note) {
+        setCustomerNotes((prev) => [res.data!.note, ...prev]);
+      } else {
+        void loadCustomerNotes(customer);
+      }
+      finishComplete();
+      return;
+    }
+
+    alert(res.error?.message ?? "Failed to save note.");
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -402,9 +544,10 @@ export function WorkerDetailModal({
     const formData = new FormData();
     formData.append("files", file);
     if (checklistItemId) formData.append("checklist_item_id", checklistItemId);
-    const res = await api.post<{ files: ApiJobFile[] }>(`/api/jobs/${jobId}/files`, formData);
+    const res = await api.post<{ files: unknown[] }>(`/api/jobs/${jobId}/files`, formData);
     if (res.status === 201) {
-      await loadFilesAndTimeline();
+      await refreshFilesAndTimeline();
+      scheduleOcrRefresh();
       return true;
     }
     return false;
@@ -413,8 +556,14 @@ export function WorkerDetailModal({
   const handleHideAttachment = async (fileId: string) => {
     const res = await api.patch(`/api/files/${fileId}`, { hidden: true });
     if (res.status === 200) {
-      setAttachments((prev) => prev.filter((a) => a.id !== fileId));
+      if (jobId) {
+        queryClient.setQueryData(queryKeys.job.files(jobId), (prev: unknown) => {
+          const list = Array.isArray(prev) ? prev : [];
+          return list.filter((f: { id: string }) => f.id !== fileId);
+        });
+      }
       setPreviewAttachment(null);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.job.timeline(jobId ?? "none") });
     } else {
       alert(res.error?.message ?? "Failed to hide attachment.");
     }
@@ -463,7 +612,7 @@ export function WorkerDetailModal({
                   {t("jobActionWait")}
                 </button>
                 <button
-                  onClick={() => onChangeJobStatus("completed")}
+                  onClick={requestComplete}
                   className="text-xs font-semibold px-3 py-2 rounded-xl bg-[#1B3A6B] text-white hover:bg-[#142c52] transition-colors cursor-pointer"
                 >
                   {t("jobActionComplete")}
@@ -479,7 +628,7 @@ export function WorkerDetailModal({
                   {t("jobActionResume")}
                 </button>
                 <button
-                  onClick={() => onChangeJobStatus("completed")}
+                  onClick={requestComplete}
                   className="text-xs font-semibold px-3 py-2 rounded-xl bg-[#1B3A6B] text-white hover:bg-[#142c52] transition-colors cursor-pointer"
                 >
                   {t("jobActionComplete")}
@@ -496,6 +645,16 @@ export function WorkerDetailModal({
             )}
           </div>
         )}
+        {jobStatus === "completed" && (
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => openSaveNoteDialog(false)}
+              className="text-xs font-semibold px-3 py-2 rounded-xl border border-amber-200 text-amber-800 bg-amber-50 hover:bg-amber-100 transition-colors cursor-pointer"
+            >
+              {t("customerNotesSaveBtn")}
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -503,6 +662,12 @@ export function WorkerDetailModal({
   const renderContentBody = () => (
     <div className="flex flex-col gap-[48px] text-[#1E293B]">
       {renderStatusSection()}
+      {customerNotes.length > 0 && (
+        <CustomerNotesBanner
+          notes={customerNotes}
+          onDelete={canManageCustomerNotes ? handleDeleteCustomerNote : undefined}
+        />
+      )}
       {/* Section: Predvidena dela */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
@@ -585,28 +750,43 @@ export function WorkerDetailModal({
 
         <div className="flex flex-col gap-2">
           {attachments.length === 0 && (
-            <span className="text-xs text-slate-400">{t("modalEmptyAttachments")}</span>
+            <span className="text-xs text-slate-400">
+              {filesLoading ? t("officeLoading") : t("modalEmptyAttachments")}
+            </span>
           )}
-          {attachments.map((att) => (
-            <button
-              key={att.id}
-              type="button"
-              onClick={() => setPreviewAttachment(att)}
-              className="flex items-center justify-between w-full text-left bg-transparent border-none p-0 outline-none group"
-            >
-              <span
-                style={{
-                  fontFamily: "'PT Sans', sans-serif",
-                  fontSize: "13px",
-                  color: "#1E293B",
-                }}
-                className="group-hover:text-[#1B3A6B] transition-colors"
+          {attachments.map((att) => {
+            const typeLabel = documentTypeLabel(att.documentType, t);
+            return (
+              <button
+                key={att.id}
+                type="button"
+                onClick={() => setPreviewAttachment(att)}
+                className="flex items-start justify-between w-full text-left bg-transparent border-none p-0 outline-none group gap-3"
               >
-                {att.name}
-              </span>
-              <span className="text-xs text-[#64748B] font-normal">{att.time}</span>
-            </button>
-          ))}
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <span
+                    style={{
+                      fontFamily: "'PT Sans', sans-serif",
+                      fontSize: "13px",
+                      color: "#1E293B",
+                    }}
+                    className="group-hover:text-[#1B3A6B] transition-colors"
+                  >
+                    {typeLabel ? `📄 ${typeLabel}` : att.name}
+                  </span>
+                  {typeLabel && (
+                    <span className="text-[11px] text-slate-400 truncate">{att.name}</span>
+                  )}
+                  {att.documentPreview && (
+                    <span className="text-[11px] text-slate-500 line-clamp-2 whitespace-pre-line">
+                      {att.documentPreview}
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs text-[#64748B] font-normal shrink-0">{att.time}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -627,7 +807,9 @@ export function WorkerDetailModal({
 
         <div className="flex flex-col gap-3">
           {timeline.length === 0 && (
-            <span className="text-xs text-slate-400">{t("modalEmptyTimeline")}</span>
+            <span className="text-xs text-slate-400">
+              {timelineLoading ? t("officeLoading") : t("modalEmptyTimeline")}
+            </span>
           )}
           {timeline.map((event) => (
             <div key={event.id} className="flex items-start justify-between gap-3">
@@ -1068,9 +1250,34 @@ export function WorkerDetailModal({
                       <Paperclip className="w-10 h-10 text-slate-300" />
                     </div>
                   )}
-                  <p className="text-sm font-medium text-slate-800">{previewAttachment.name}</p>
+                  {(() => {
+                    const typeLabel = documentTypeLabel(previewAttachment.documentType, t);
+                    return (
+                      <>
+                        <p className="text-sm font-medium text-slate-800">
+                          {typeLabel ? `📄 ${typeLabel}` : previewAttachment.name}
+                        </p>
+                        {typeLabel && (
+                          <p className="text-xs text-slate-500">{previewAttachment.name}</p>
+                        )}
+                      </>
+                    );
+                  })()}
                   <p className="text-xs text-slate-500">{t("modalPreviewAddedAtPrefix")} {previewAttachment.time} · {previewAttachment.date}</p>
                 </div>
+
+                {previewAttachment.documentPreview && (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      {t("modalDocumentPreviewLabel")}
+                    </span>
+                    <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
+                      <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
+                        {previewAttachment.documentPreview}
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex flex-col gap-1.5">
                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
@@ -1102,6 +1309,95 @@ export function WorkerDetailModal({
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+      {/* ── Sub-Dialog: Save customer note (Add-on 2) ── */}
+      <Dialog
+        open={saveNoteOpen}
+        onOpenChange={(open) => {
+          if (!open && !saveNoteSaving) finishComplete();
+        }}
+      >
+        <DialogContent
+          style={{
+            background: "transparent",
+            border: "none",
+            boxShadow: "none",
+            padding: 0,
+            maxWidth: "420px",
+            width: "90%",
+          }}
+          className="outline-none"
+        >
+          <div className={auraCard}>
+            <div className="flex flex-col gap-4 text-slate-800">
+              <div className="text-center">
+                <h3 className="text-xl font-semibold tracking-tight text-slate-900">
+                  {t("customerNotesSaveTitle")}
+                </h3>
+                <p className="mt-1.5 text-xs text-slate-500 leading-relaxed">
+                  {t("customerNotesSaveHint")}
+                </p>
+              </div>
+
+              <AuraCheckbox
+                checked={saveNoteChecked}
+                onChange={setSaveNoteChecked}
+                label={t("customerNotesSaveCheckbox")}
+              />
+
+              {saveNoteChecked && (
+                <>
+                  <div>
+                    <AuraLabel>{t("customerNotesSaveCustomerLabel")}</AuraLabel>
+                    <AuraInput
+                      type="text"
+                      value={saveNoteCustomer}
+                      onChange={(e) => setSaveNoteCustomer(e.target.value.slice(0, 40))}
+                      maxLength={40}
+                      placeholder={t("customerNotesSaveCustomerPlaceholder")}
+                    />
+                  </div>
+                  <div>
+                    <AuraLabel>{t("customerNotesSaveBtn")}</AuraLabel>
+                    <AuraTextarea
+                      value={saveNoteText}
+                      onChange={(e) => setSaveNoteText(e.target.value.slice(0, 280))}
+                      placeholder={t("customerNotesSavePlaceholder")}
+                      rows={3}
+                      maxLength={280}
+                    />
+                    <span className="text-[10px] text-slate-400">{saveNoteText.length}/280</span>
+                  </div>
+                </>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={saveNoteSaving}
+                  onClick={() => {
+                    finishComplete();
+                  }}
+                  className="flex-1 h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                >
+                  {t("customerNotesSkipBtn")}
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    saveNoteSaving ||
+                    (saveNoteChecked &&
+                      (!saveNoteText.trim() || !(saveNoteCustomer.trim() || resolvedCustomerName)))
+                  }
+                  onClick={() => void handleSaveCustomerNote(false)}
+                  className="flex-1 h-10 rounded-xl bg-[#1B3A6B] hover:bg-[#142c52] text-white text-xs font-semibold transition-colors disabled:opacity-50"
+                >
+                  {t("customerNotesSaveBtn")}
+                </button>
+              </div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </>

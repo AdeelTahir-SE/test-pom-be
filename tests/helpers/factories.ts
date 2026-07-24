@@ -81,23 +81,26 @@ export async function createCompanyUser(
   const password = overrides.password ?? "MemberPass123!";
   const role = overrides.role ?? "worker";
 
-  const res = await api.post<{ data?: { user: { id: string; role: string } } }>(
-    "/api/users",
-    {
-      token: ownerToken,
-      body: {
-        email,
-        password,
-        full_name: overrides.full_name ?? "Test Member",
-        role,
-      },
-    }
-  );
+  const res = await api.post<{
+    data?: { user: { id: string; role: string }; temporary_password?: string };
+  }>("/api/users", {
+    token: ownerToken,
+    body: {
+      email,
+      password,
+      full_name: overrides.full_name ?? "Test Member",
+      role,
+    },
+  });
+
+  // Workers always get an auto-generated login code; managers may get a
+  // temporary password when none was supplied. Prefer that over the request body.
+  const actualPassword = res.body.data?.temporary_password ?? password;
 
   return {
     status: res.status,
     email,
-    password,
+    password: actualPassword,
     userId: res.body.data?.user?.id,
     role: res.body.data?.user?.role,
   };
@@ -190,9 +193,27 @@ export async function getTimelineEvents(
 }
 
 // Real OCR can't be exercised in this sandbox (outbound network to Mistral
-// is blocked) — tests set ocr_text directly to verify search behavior.
+// is blocked) — tests set ocr_text directly. Add-on 1 classification + preview
+// are applied here the same way the upload route does after a successful OCR.
 export async function setFileOcrText(fileId: string, text: string): Promise<void> {
   const db = getAdminClient();
-  const { error } = await db.from("job_files").update({ ocr_text: text }).eq("id", fileId);
+  const { data: file, error: readError } = await db
+    .from("job_files")
+    .select("file_name")
+    .eq("id", fileId)
+    .maybeSingle();
+  if (readError) throw new Error(`Failed to read file for OCR: ${readError.message}`);
+
+  const { enrichDocumentFromOcr } = await import("@/lib/documents/preview");
+  const enrichment = enrichDocumentFromOcr(text, file?.file_name ?? "");
+
+  const { error } = await db
+    .from("job_files")
+    .update({
+      ocr_text: text,
+      document_type: enrichment.document_type,
+      document_preview: enrichment.document_preview,
+    })
+    .eq("id", fileId);
   if (error) throw new Error(`Failed to set ocr_text: ${error.message}`);
 }

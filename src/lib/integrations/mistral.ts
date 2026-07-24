@@ -17,9 +17,9 @@ export interface OcrDeps {
   fetchImpl?: typeof fetch;
 }
 
-// OCR only produces plain text — no interpretation, classification, or
-// structuring (Document OCR add-on §1). "Synchronous request-time process
-// where possible" (§4) — no queues, no background pipelines.
+// OCR only produces plain text. Document Classification & Preview (Add-on 1)
+// runs separately after a successful extraction. "Synchronous request-time
+// process where possible" (§4) — no queues, no background pipelines.
 // NEVER throws: any failure (missing key, network error, non-2xx, empty
 // result) resolves to null so the caller applies the Failure Rule (§9:
 // "upload never fails" because OCR failed).
@@ -56,6 +56,57 @@ export async function extractText(
       .join("\n")
       .trim();
     const text = fromPages || json.text?.trim() || "";
+    return text.length > 0 ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+const MISTRAL_CHAT_URL = "https://api.mistral.ai/v1/chat/completions";
+
+export interface ChatDeps {
+  fetchImpl?: typeof fetch;
+}
+
+interface MistralChatResponse {
+  choices?: Array<{ message?: { content?: string } }>;
+}
+
+/**
+ * Add-on 3 — short chat completion for daily operational summarization.
+ * Returns null on any failure (missing key, network, empty) so callers never
+ * persist a partial/empty historical snapshot.
+ */
+export async function chatComplete(
+  systemPrompt: string,
+  userPrompt: string,
+  deps: ChatDeps = {}
+): Promise<string | null> {
+  const apiKey = env.mistralApiKey;
+  if (!apiKey) return null;
+
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  try {
+    const res = await fetchImpl(MISTRAL_CHAT_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "mistral-small-latest",
+        temperature: 0.2,
+        max_tokens: 500,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+    });
+    if (!res.ok) return null;
+
+    const json = (await res.json()) as MistralChatResponse;
+    const text = json.choices?.[0]?.message?.content?.trim() ?? "";
     return text.length > 0 ? text : null;
   } catch {
     return null;

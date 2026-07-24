@@ -7,6 +7,7 @@ import { sha256Hex, buildStoragePath, uploadToStorage, getSignedUrl } from "@/li
 import { processImage } from "@/lib/storage/image";
 import { classifyUpload } from "@/lib/services/files";
 import { extractText } from "@/lib/integrations/mistral";
+import { enrichDocumentFromOcr } from "@/lib/documents/preview";
 import { LIMITS } from "@/config/constants";
 
 export const dynamic = "force-dynamic";
@@ -235,47 +236,58 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     });
   }
 
-  // OCR (Document OCR add-on §4): automatic, backend-only, synchronous where
-  // possible, and must never block or fail the upload (§9 Failure Rule).
-  // Runs only for OCR-eligible files (image/pdf); concurrent across the
-  // batch for the same reason storage uploads are (bounded by
-  // MAX_FILES_PER_REQUEST). Only a SUCCESSFUL extraction gets a Timeline
-  // event (§7.1) — a failed/unavailable attempt just leaves ocr_text null.
+  // OCR + Add-on 1 classification must never block the upload response
+  // (Failure Rule §9 + Mark: card updates were waiting 15–30s on Mistral).
+  // Files are returned immediately; enrichment runs in the background.
   const ocrInputByHash = new Map(prepared.map((item) => [item.fileHash, item.ocrInput]));
-  const finalFiles = await Promise.all(
+  const companyId = auth.companyId;
+  const jobId = params.id;
+  const jobSeq = job.company_seq;
+
+  void Promise.all(
     inserted.map(async (record) => {
       const ocrInput = ocrInputByHash.get(record.file_hash);
-      if (!ocrInput) return record;
+      if (!ocrInput) return;
 
-      const text = await extractText(ocrInput.buffer, ocrInput.contentType);
-      if (!text) return record;
+      try {
+        const text = await extractText(ocrInput.buffer, ocrInput.contentType);
+        if (!text) return;
 
-      const { data: updated, error: updateError } = await db
-        .from("job_files")
-        .update({ ocr_text: text })
-        .eq("id", record.id)
-        .select()
-        .single();
-      if (updateError || !updated) {
-        console.error("[ocr_update_failed]", record.id, updateError?.message);
-        return record;
+        const enrichment = enrichDocumentFromOcr(text, record.file_name);
+        const { data: updated, error: updateError } = await db
+          .from("job_files")
+          .update({
+            ocr_text: text,
+            document_type: enrichment.document_type,
+            document_preview: enrichment.document_preview,
+          })
+          .eq("id", record.id)
+          .select()
+          .single();
+        if (updateError || !updated) {
+          console.error("[ocr_update_failed]", record.id, updateError?.message);
+          return;
+        }
+
+        await createTimelineEvent(db, {
+          companyId,
+          jobId,
+          eventType: "ocr_completed",
+          userId: null,
+          metadata: {
+            status: "success",
+            ocr_text_length: text.length,
+            job_seq: jobSeq,
+            file_name: record.file_name,
+            document_type: enrichment.document_type,
+            document_preview: enrichment.document_preview,
+          },
+        });
+      } catch (err) {
+        console.error("[ocr_background_failed]", record.id, err);
       }
-
-      await createTimelineEvent(db, {
-        companyId: auth.companyId,
-        jobId: params.id,
-        eventType: "ocr_completed",
-        userId: null,
-        metadata: {
-          status: "success",
-          ocr_text_length: text.length,
-          job_seq: job.company_seq,
-        },
-      });
-
-      return updated;
     })
   );
 
-  return created({ files: finalFiles });
+  return created({ files: inserted });
 });
