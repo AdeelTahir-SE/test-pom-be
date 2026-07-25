@@ -209,6 +209,18 @@ export default function OfficeDashboard() {
         ) === '1';
     }
     setDismissedDummies(initial);
+
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const openParam = params.get('open');
+      if (openParam === 'settings') {
+        setIsCompanySettingsOpen(true);
+        window.history.replaceState({}, '', window.location.pathname);
+      } else if (openParam === 'team') {
+        setIsTeamOpen(true);
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
   }, []);
 
   // Mobile/tablet: horizontal snap between the three columns
