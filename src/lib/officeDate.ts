@@ -100,3 +100,34 @@ export function notificationBelongsToDay(
 ): boolean {
   return isoToLocalDayKey(notification.created_at) === dayKey;
 }
+
+/** App business timezone (Mark / Slovenian managers). */
+export const APP_TIMEZONE = "Europe/Ljubljana";
+
+/** Calendar day + hour-of-day in a given IANA timezone. */
+export function getZonedDayAndHour(
+  date: Date = new Date(),
+  timeZone: string = APP_TIMEZONE
+): { calendarDay: string; hour: number } {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? "";
+
+  const year = get("year");
+  const month = get("month");
+  const day = get("day");
+  let hour = Number(get("hour"));
+  // Some engines report midnight as 24.
+  if (hour === 24) hour = 0;
+
+  return { calendarDay: `${year}-${month}-${day}`, hour };
+}
+

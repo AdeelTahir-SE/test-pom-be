@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { api } from "@/lib/api-client";
 import { useLanguage } from "@/lib/useLanguage";
@@ -29,33 +29,46 @@ function formatDayLabel(dayKey: string): string {
 export function DailySummaryPanel({ dayKey, onJumpToDay }: DailySummaryPanelProps) {
   const { t } = useLanguage();
   const [summary, setSummary] = useState<DailySummaryDto | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<DailySummaryDto[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  const loadForDay = useCallback(async (key: string) => {
-    // Stopped AI brief API call for now
-    setLoading(false);
-    setError(null);
-    setSummary(null);
-  }, []);
-
+    // Load once per selected day — do not re-fetch on parent re-renders / language fn identity.
   useEffect(() => {
-    void loadForDay(dayKey);
-  }, [dayKey, loadForDay]);
+    let cancelled = false;
+    setLoading(true);
+    setSummary(null);
 
-  const handleGenerate = async () => {
-    // Generation disabled for now
-  };
+    void (async () => {
+      const res = await api.get<{ summary: DailySummaryDto | null }>(
+        `/api/daily-summaries?date=${encodeURIComponent(dayKey)}`
+      );
+      if (cancelled) return;
+      setLoading(false);
+      if (res.status === 200) {
+        setSummary(res.data?.summary ?? null);
+      } else {
+        setSummary(null);
+      }
+    })();
 
-  const openHistory = async () => {
-    setHistoryOpen(true);
-    setHistoryLoading(false);
+    return () => {
+      cancelled = true;
+    };
+  }, [dayKey]);
+
+const openHistory = async () => {
+  setHistoryOpen(true);
+  setHistoryLoading(true);
+  const res = await api.get<{ summaries: DailySummaryDto[] }>("/api/daily-summaries");
+  setHistoryLoading(false);
+  if (res.status === 200 && res.data) {
+    setHistory(res.data.summaries);
+  } else {
     setHistory([]);
-  };
+  }
+};
 
   const selectHistoryItem = (item: DailySummaryDto) => {
     setHistoryOpen(false);
@@ -79,47 +92,20 @@ export function DailySummaryPanel({ dayKey, onJumpToDay }: DailySummaryPanelProp
             </span>
             <span className="text-[11px] text-slate-400">{formatDayLabel(dayKey)}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void openHistory()}
-              className="text-xs font-semibold px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
-            >
-              {t("dailySummaryHistory")}
-            </button>
-            {!summary && (
-              <button
-                type="button"
-                onClick={() => void handleGenerate()}
-                disabled={generating || loading}
-                className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-[#1B3A6B] text-white hover:bg-[#142c52] transition-colors cursor-pointer disabled:opacity-50"
-              >
-                {generating ? t("dailySummaryGenerating") : t("dailySummaryGenerate")}
-              </button>
-            )}
-            {summary && (
-              <button
-                type="button"
-                onClick={() => void handleGenerate()}
-                disabled={generating}
-                className="text-xs font-semibold px-3 py-1.5 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50"
-                title={t("dailySummaryShowSaved")}
-              >
-                {generating ? t("dailySummaryGenerating") : t("dailySummaryShowSaved")}
-              </button>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => void openHistory()}
+            className="text-xs font-semibold px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+          >
+            {t("dailySummaryHistory")}
+          </button>
         </div>
 
         {loading && !summary && (
           <p className="text-[13px] text-slate-400">{t("officeLoading")}</p>
         )}
 
-        {error && (
-          <p className="text-[13px] text-red-600 mb-2">{error}</p>
-        )}
-
-        {summary ? (
+        {!loading && summary && (
           <div className="flex flex-col gap-2">
             <p className="text-[14px] text-slate-800 leading-relaxed whitespace-pre-wrap">
               {summary.summary_text}
@@ -143,12 +129,6 @@ export function DailySummaryPanel({ dayKey, onJumpToDay }: DailySummaryPanelProp
               })}
             </p>
           </div>
-        ) : (
-          !loading && (
-            <p className="text-[13px] text-slate-500 leading-relaxed">
-              {t("dailySummaryEmpty")}
-            </p>
-          )
         )}
       </div>
 

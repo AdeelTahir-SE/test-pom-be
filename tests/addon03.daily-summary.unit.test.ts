@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { chatComplete } from "@/lib/integrations/mistral";
-import { parseSummaryOutput } from "@/lib/services/dailySummary";
+import {
+  generateNightlySummaryForCompany,
+  parseSummaryOutput,
+  type DailySummaryRow,
+} from "@/lib/services/dailySummary";
 
 const ORIGINAL_KEY = process.env.MISTRAL_API_KEY;
 
@@ -18,6 +22,7 @@ function jsonResponse(body: unknown, ok = true): Response {
     headers: { "Content-Type": "application/json" },
   });
 }
+
 
 describe("Add-on 3 — parseSummaryOutput", () => {
   it("splits POZORNOST attention line from the body", () => {
@@ -74,5 +79,45 @@ describe("chatComplete (unit, mocked fetch)", () => {
     expect(await chatComplete("s", "u", { fetchImpl })).toBeNull();
     expect(called).toBe(false);
     process.env.MISTRAL_API_KEY = "unit-test-fake-key";
+  });
+});
+
+describe("generateNightlySummaryForCompany (no AI retries)", () => {
+  it("skips when a ready or failed attempt already exists", async () => {
+    const existing: DailySummaryRow = {
+      id: "1",
+      company_id: "c1",
+      calendar_day: "2026-07-25",
+      summary_text: null,
+      attention: null,
+      generated_at: new Date().toISOString(),
+      generated_by: null,
+      status: "failed",
+    };
+
+    const db = {
+      from() {
+        return {
+          select() {
+            return this;
+          },
+          eq() {
+            return this;
+          },
+          maybeSingle: async () => ({ data: existing, error: null }),
+        };
+      },
+    } as never;
+
+    let chatCalls = 0;
+    const result = await generateNightlySummaryForCompany(db, "c1", "2026-07-25", {
+      chat: async () => {
+        chatCalls += 1;
+        return "should not run";
+      },
+    });
+
+    expect(result.outcome).toBe("skipped");
+    expect(chatCalls).toBe(0);
   });
 });

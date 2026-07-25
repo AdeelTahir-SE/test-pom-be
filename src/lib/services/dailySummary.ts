@@ -3,14 +3,17 @@ import { ApiError } from "@/lib/http/responses";
 import { chatComplete } from "@/lib/integrations/mistral";
 import { jobBelongsToDay, toIsoDate, startOfLocalDay } from "@/lib/officeDate";
 
+export type DailySummaryStatus = "ready" | "failed";
+
 export interface DailySummaryRow {
   id: string;
   company_id: string;
   calendar_day: string;
-  summary_text: string;
+  summary_text: string | null;
   attention: string | null;
   generated_at: string;
-  generated_by: string;
+  generated_by: string | null;
+  status: DailySummaryStatus;
 }
 
 const SYSTEM_PROMPT = `You are an operational briefing assistant for a field-service company director.
@@ -212,7 +215,27 @@ export async function generateDailySummaryText(
   return parseSummaryOutput(raw);
 }
 
+/** Ready summary only — what managers see in the UI. */
 export async function getSummaryForDay(
+  db: SupabaseClient,
+  companyId: string,
+  calendarDay: string
+): Promise<DailySummaryRow | null> {
+  const { data, error } = await db
+    .from("daily_summaries")
+    .select("*")
+    .eq("company_id", companyId)
+    .eq("calendar_day", calendarDay)
+    .eq("status", "ready")
+    .maybeSingle();
+  if (error) {
+    throw new ApiError("internal", "Failed to load daily summary.", error.message);
+  }
+  return (data as DailySummaryRow | null) ?? null;
+}
+
+/** Any attempt (ready or failed) — used to skip AI retries. */
+export async function getSummaryAttemptForDay(
   db: SupabaseClient,
   companyId: string,
   calendarDay: string
@@ -224,7 +247,7 @@ export async function getSummaryForDay(
     .eq("calendar_day", calendarDay)
     .maybeSingle();
   if (error) {
-    throw new ApiError("internal", "Failed to load daily summary.", error.message);
+    throw new ApiError("internal", "Failed to load daily summary attempt.", error.message);
   }
   return (data as DailySummaryRow | null) ?? null;
 }
@@ -238,6 +261,7 @@ export async function listDailySummaries(
     .from("daily_summaries")
     .select("*")
     .eq("company_id", companyId)
+    .eq("status", "ready")
     .order("calendar_day", { ascending: false })
     .limit(limit);
   if (error) {
@@ -253,7 +277,7 @@ export async function saveDailySummary(
     calendarDay: string;
     summaryText: string;
     attention: string | null;
-    generatedBy: string;
+    generatedBy?: string | null;
   }
 ): Promise<DailySummaryRow> {
   const { data, error } = await db
@@ -263,7 +287,8 @@ export async function saveDailySummary(
       calendar_day: input.calendarDay,
       summary_text: input.summaryText.trim(),
       attention: input.attention?.trim() || null,
-      generated_by: input.generatedBy,
+      generated_by: input.generatedBy ?? null,
+      status: "ready",
     })
     .select("*")
     .single();
@@ -271,4 +296,90 @@ export async function saveDailySummary(
     throw new ApiError("internal", "Failed to save daily summary.", error?.message);
   }
   return data as DailySummaryRow;
+}
+
+/** Permanent failed marker — blocks future AI retries for this company/day. */
+export async function saveFailedDailySummary(
+  db: SupabaseClient,
+  input: { companyId: string; calendarDay: string }
+): Promise<DailySummaryRow> {
+  const { data, error } = await db
+    .from("daily_summaries")
+    .insert({
+      company_id: input.companyId,
+      calendar_day: input.calendarDay,
+      summary_text: null,
+      attention: null,
+      generated_by: null,
+      status: "failed",
+    })
+    .select("*")
+    .single();
+  if (error || !data) {
+    throw new ApiError("internal", "Failed to record daily summary failure.", error?.message);
+  }
+  return data as DailySummaryRow;
+}
+
+export type NightlySummaryResult =
+  | { companyId: string; calendarDay: string; outcome: "ready" }
+  | { companyId: string; calendarDay: string; outcome: "failed" }
+  | { companyId: string; calendarDay: string; outcome: "skipped"; reason: string };
+
+/**
+ * One-shot overnight generation for a company/day.
+ * If an attempt already exists (ready or failed), AI is never called again.
+ */
+export async function generateNightlySummaryForCompany(
+  db: SupabaseClient,
+  companyId: string,
+  calendarDay: string,
+  deps?: { chat?: typeof chatComplete }
+): Promise<NightlySummaryResult> {
+  const existing = await getSummaryAttemptForDay(db, companyId, calendarDay);
+  if (existing) {
+    return {
+      companyId,
+      calendarDay,
+      outcome: "skipped",
+      reason: existing.status === "ready" ? "already_ready" : "already_failed",
+    };
+  }
+
+  try {
+    const pack = await collectDayOperationalPack(db, companyId, calendarDay);
+    const { summary_text, attention } = await generateDailySummaryText(pack, deps);
+    await saveDailySummary(db, {
+      companyId,
+      calendarDay,
+      summaryText: summary_text,
+      attention,
+      generatedBy: null,
+    });
+    return { companyId, calendarDay, outcome: "ready" };
+  } catch {
+    try {
+      await saveFailedDailySummary(db, { companyId, calendarDay });
+    } catch {
+      // If the failure marker cannot be written, still report failed (no AI retry this run).
+    }
+    return { companyId, calendarDay, outcome: "failed" };
+  }
+}
+
+export async function runNightlyDailySummaries(
+  db: SupabaseClient,
+  calendarDay: string,
+  deps?: { chat?: typeof chatComplete }
+): Promise<NightlySummaryResult[]> {
+  const { data: companies, error } = await db.from("companies").select("id");
+  if (error) {
+    throw new ApiError("internal", "Failed to list companies for nightly summaries.", error.message);
+  }
+
+  const results: NightlySummaryResult[] = [];
+  for (const company of companies ?? []) {
+    results.push(await generateNightlySummaryForCompany(db, company.id, calendarDay, deps));
+  }
+  return results;
 }

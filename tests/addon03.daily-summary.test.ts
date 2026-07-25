@@ -22,18 +22,26 @@ interface SummaryDto {
   calendar_day: string;
   summary_text: string;
   attention: string | null;
+  status?: string;
 }
 
-async function insertSummary(companyId: string, userId: string, day: string, text: string) {
+async function insertSummary(
+  companyId: string,
+  userId: string,
+  day: string,
+  text: string,
+  status: "ready" | "failed" = "ready"
+) {
   const db = getAdminClient();
   const { data, error } = await db
     .from("daily_summaries")
     .insert({
       company_id: companyId,
       calendar_day: day,
-      summary_text: text,
-      attention: "Preveriti čakajoče naloge.",
+      summary_text: status === "ready" ? text : null,
+      attention: status === "ready" ? "Preveriti čakajoče naloge." : null,
       generated_by: userId,
+      status,
     })
     .select("*")
     .single();
@@ -54,7 +62,20 @@ describe("Add-on 3 — AI Daily Summary (API)", () => {
     expect(res.body.data?.summary).toBeNull();
   });
 
-  it("loads a saved snapshot, lists history newest-first, and reuses on POST", async () => {
+  it("hides failed attempts from GET (nothing shown, no retry path)", async () => {
+    const owner = await registerCompany();
+    createdCompanies.push(owner);
+    await insertSummary(owner.companyId!, owner.userId!, "2026-07-22", "", "failed");
+
+    const res = await api.get<{ data?: { summary: SummaryDto | null } }>(
+      "/api/daily-summaries?date=2026-07-22",
+      { token: owner.accessToken }
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.data?.summary).toBeNull();
+  });
+
+  it("loads a saved snapshot and lists history newest-first", async () => {
     const owner = await registerCompany();
     createdCompanies.push(owner);
     expect(owner.companyId && owner.userId).toBeTruthy();
@@ -88,18 +109,9 @@ describe("Add-on 3 — AI Daily Summary (API)", () => {
     const days = history.body.data?.summaries.map((s) => s.calendar_day) ?? [];
     expect(days[0]).toBe("2026-07-23");
     expect(days).toContain("2026-07-20");
-
-    // MVP: existing snapshot is returned without regenerating.
-    const reused = await api.post<{ data?: { summary: SummaryDto; reused: boolean } }>(
-      "/api/daily-summaries",
-      { token: owner.accessToken, body: { date: "2026-07-23" } }
-    );
-    expect(reused.status).toBe(200);
-    expect(reused.body.data?.reused).toBe(true);
-    expect(reused.body.data?.summary.id).toBe(newer.id);
   });
 
-  it("rejects invalid date and blocks workers", async () => {
+  it("rejects invalid date, blocks workers, and disables manual POST generation", async () => {
     const owner = await registerCompany();
     createdCompanies.push(owner);
 
@@ -108,56 +120,17 @@ describe("Add-on 3 — AI Daily Summary (API)", () => {
     });
     expect(bad.status).toBe(400);
 
+    const manual = await api.post("/api/daily-summaries", {
+      token: owner.accessToken,
+      body: { date: "2026-07-23" },
+    });
+    expect(manual.status).toBe(403);
+
     const worker = await createCompanyUser(owner.accessToken!, { role: "worker" });
     const login = await loginAs(worker.email, worker.password);
-    const blocked = await api.post("/api/daily-summaries", {
+    const blocked = await api.get("/api/daily-summaries?date=2026-07-23", {
       token: login.body.data?.access_token,
-      body: { date: "2026-07-23" },
     });
     expect(blocked.status).toBe(403);
   });
-
-  it(
-    "generates a new summary via AI when none exists (requires MISTRAL_API_KEY)",
-    async () => {
-      if (!process.env.MISTRAL_API_KEY) {
-        return;
-      }
-
-      const owner = await registerCompany();
-      createdCompanies.push(owner);
-      const worker = await createCompanyUser(owner.accessToken!, { role: "worker" });
-
-      await api.post("/api/jobs", {
-        token: owner.accessToken,
-        body: {
-          title: "AI summary job",
-          customer: "Test Co",
-          worker_id: worker.userId,
-          scheduled_at: "2026-07-18T10:00:00.000Z",
-        },
-      });
-
-      const generated = await api.post<{
-        data?: { summary: SummaryDto; reused: boolean };
-      }>("/api/daily-summaries", {
-        token: owner.accessToken,
-        body: { date: "2026-07-18" },
-      });
-
-      // Real provider may be unavailable in some environments.
-      if (generated.status >= 500) return;
-
-      expect(generated.status).toBe(201);
-      expect(generated.body.data?.reused).toBe(false);
-      expect(generated.body.data?.summary.summary_text.length).toBeGreaterThan(10);
-
-      const check = await api.get<{ data?: { summary: SummaryDto | null } }>(
-        "/api/daily-summaries?date=2026-07-18",
-        { token: owner.accessToken }
-      );
-      expect(check.body.data?.summary?.id).toBe(generated.body.data?.summary.id);
-    },
-    90_000
-  );
 });

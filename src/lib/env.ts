@@ -69,4 +69,8 @@ export const env = {
   get stripeEnforceSubscription() {
     return process.env.STRIPE_ENFORCE_SUBSCRIPTION === "true";
   },
+  /** Bearer token Vercel Cron sends to /api/cron/* routes. */
+  get cronSecret() {
+    return optional("CRON_SECRET");
+  },
 };
