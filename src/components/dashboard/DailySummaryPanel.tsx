@@ -37,49 +37,24 @@ export function DailySummaryPanel({ dayKey, onJumpToDay }: DailySummaryPanelProp
   const [historyLoading, setHistoryLoading] = useState(false);
 
   const loadForDay = useCallback(async (key: string) => {
-    setLoading(true);
-    setError(null);
-    const res = await api.get<{ summary: DailySummaryDto | null }>(
-      `/api/daily-summaries?date=${encodeURIComponent(key)}`
-    );
+    // Stopped AI brief API call for now
     setLoading(false);
-    if (res.status === 200) {
-      setSummary(res.data?.summary ?? null);
-    } else {
-      setSummary(null);
-      setError(res.error?.message ?? t("dailySummaryLoadError"));
-    }
-  }, [t]);
+    setError(null);
+    setSummary(null);
+  }, []);
 
   useEffect(() => {
     void loadForDay(dayKey);
   }, [dayKey, loadForDay]);
 
   const handleGenerate = async () => {
-    setGenerating(true);
-    setError(null);
-    const res = await api.post<{ summary: DailySummaryDto; reused?: boolean }>(
-      "/api/daily-summaries",
-      { date: dayKey }
-    );
-    setGenerating(false);
-    if ((res.status === 201 || res.status === 200) && res.data?.summary) {
-      setSummary(res.data.summary);
-      return;
-    }
-    setError(res.error?.message ?? t("dailySummaryGenerateError"));
+    // Generation disabled for now
   };
 
   const openHistory = async () => {
     setHistoryOpen(true);
-    setHistoryLoading(true);
-    const res = await api.get<{ summaries: DailySummaryDto[] }>("/api/daily-summaries");
     setHistoryLoading(false);
-    if (res.status === 200 && res.data) {
-      setHistory(res.data.summaries);
-    } else {
-      setHistory([]);
-    }
+    setHistory([]);
   };
 
   const selectHistoryItem = (item: DailySummaryDto) => {

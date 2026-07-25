@@ -113,6 +113,9 @@ function TaskRow({ task, onToggle, disabled }: TaskRowProps) {
       }}
     >
       {task.text}
+      {task.requiresAttachment && !task.hasAttachment && (
+        <span className="ml-1.5 text-[10px] text-red-500 font-semibold">*</span>
+      )}
     </span>
   );
 

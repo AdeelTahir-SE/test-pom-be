@@ -217,7 +217,7 @@ function SortableTaskItem({ task, onClick, onDelete, deleteLabel }: SortableTask
         <button
           type="button"
           onClick={onDelete}
-          className="shrink-0 p-1 text-slate-300 hover:text-red-500 bg-transparent border-none outline-none opacity-60 group-hover:opacity-100 transition-opacity"
+          className="shrink-0 p-1 text-slate-400 hover:text-red-500 bg-transparent border-none outline-none transition-colors"
           aria-label={deleteLabel}
           title={deleteLabel}
         >
@@ -1311,6 +1311,55 @@ export function WorkerDetailModal({
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ── Sub-Dialog: Confirm step deletion ── */}
+      <Dialog open={!!deleteStepId} onOpenChange={(open) => {
+        if (!open) setDeleteStepId(null);
+      }}>
+        <DialogContent
+          style={{
+            background: "transparent",
+            border: "none",
+            boxShadow: "none",
+            padding: 0,
+            maxWidth: "380px",
+            width: "90%",
+          }}
+          className="outline-none"
+        >
+          <div className={auraCard}>
+            <div className="flex flex-col gap-4 text-slate-800">
+              <div className="text-center">
+                <h3 className="text-xl font-semibold tracking-tight text-slate-900">
+                  Potrdi izbris te naloge
+                </h3>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteStepId(null)}
+                  className="flex-1 h-9 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors"
+                >
+                  Prekliči
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (deleteStepId) {
+                      await handleDeleteTask(deleteStepId);
+                      setDeleteStepId(null);
+                    }
+                  }}
+                  className="flex-1 h-9 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition-colors"
+                >
+                  Izbriši
+                </button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Sub-Dialog: Save customer note (Add-on 2) ── */}
       <Dialog
         open={saveNoteOpen}

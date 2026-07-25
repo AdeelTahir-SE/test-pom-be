@@ -58,6 +58,7 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
   const [steps, setSteps] = useState<TaskStepInput[]>([newStep()]);
   const [customerNotes, setCustomerNotes] = useState<CustomerNoteDto[]>([]);
   const notesRequestRef = useRef(0);
+  const hasNoSteps = steps.filter((s) => s.text.trim().length > 0).length === 0;
 
   React.useEffect(() => {
     if (isOpen) setDatum(defaultDate);
@@ -119,13 +120,15 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const valid = steps.filter((s) => s.text.trim().length > 0);
+    if (valid.length === 0) return;
     onAddTask({
       workerId,
       opravilo,
       kraj,
       narocnik,
       datum,
-      steps: steps.filter((s) => s.text.trim().length > 0).map((s) => ({ text: s.text.trim(), requiresAttachment: s.requiresAttachment })),
+      steps: valid.map((s) => ({ text: s.text.trim(), requiresAttachment: s.requiresAttachment })),
     });
     resetAll();
     onOpenChange(false);
@@ -151,6 +154,15 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
         className="outline-none max-h-[92vh] overflow-y-auto"
       >
         <div className={auraCard}>
+          {/* Close Button */}
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer z-10"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
           {step === 1 ? (
             <form onSubmit={handleNext} className="flex flex-col gap-4 text-slate-800">
               <div className="text-center">
@@ -190,7 +202,7 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                     type="text"
                     value={narocnik}
                     onChange={(e) => setNarocnik(e.target.value)}
-                    maxLength={40}
+                    maxLength={22}
                     placeholder={t("modalTaskCustomerPlaceholder")}
                   />
                 </div>
@@ -292,6 +304,12 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                 {t("modalTaskAddSteps")}
               </button>
 
+              {hasNoSteps && (
+                <div className="text-center text-xs font-semibold text-red-500 py-1">
+                  Dodaj vsaj eno nalogo.
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -300,7 +318,11 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                 >
                   {t("modalTaskBack")}
                 </button>
-                <button type="submit" className={`flex-1 ${auraButton}`}>
+                <button
+                  type="submit"
+                  disabled={hasNoSteps}
+                  className={`flex-1 ${auraButton} ${hasNoSteps ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
                   {t("modalScheduleSubmit")}
                 </button>
               </div>

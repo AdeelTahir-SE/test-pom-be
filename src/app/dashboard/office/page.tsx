@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import { useLanguage } from "@/lib/useLanguage";
 import { useCurrentUser } from "@/lib/useCurrentUser";
@@ -140,6 +141,13 @@ function ColumnHeader({ title, onAddClick, addTitle }: ColumnHeaderProps) {
 export default function OfficeDashboard() {
   const { t } = useLanguage();
   const { user, company, loading: authLoading, logout } = useCurrentUser();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && user && user.role === "worker") {
+      router.replace("/dashboard/worker");
+    }
+  }, [authLoading, user, router]);
 
   const [selectedDate, setSelectedDate] = useState(() => startOfLocalDay());
   const selectedDayKey = toIsoDate(selectedDate);
@@ -195,6 +203,11 @@ export default function OfficeDashboard() {
     Record<string, boolean>
   >({});
   const todayKey = () => new Date().toISOString().slice(0, 10);
+  const isTodaySelected = selectedDayKey === todayKey();
+  const shouldShowDummy = (column: 'teren' | 'pisarna' | 'komunikacija') => {
+    if (!isTodaySelected) return false;
+    return !dismissedDummies[column];
+  };
   const dismissDummy = (column: 'teren' | 'pisarna' | 'komunikacija') => {
     const key = `dummy_dismissed_${column}_${todayKey()}`;
     window.localStorage.setItem(key, '1');
@@ -886,8 +899,8 @@ export default function OfficeDashboard() {
               className="group hover:-translate-y-1 transition-all duration-300"
             >
               {activeJobs.length === 0 &&
-                (dismissedDummies.teren ? (
-                  <p className="text-xs text-slate-400 text-center py-4">
+                (!shouldShowDummy('teren') ? (
+                  <p className="text-sm text-slate-400 text-center py-4">
                     {t('officeEmptyField')}
                   </p>
                 ) : (
@@ -967,8 +980,8 @@ export default function OfficeDashboard() {
               className="group hover:-translate-y-1 transition-all duration-300"
             >
               {dayReminders.length === 0 &&
-                (dismissedDummies.pisarna ? (
-                  <p className="text-xs text-white/70 text-center py-4">
+                (!shouldShowDummy('pisarna') ? (
+                  <p className="text-sm text-white/70 text-center py-4">
                     {t('officeEmptyReminders')}
                   </p>
                 ) : (
@@ -1041,8 +1054,8 @@ export default function OfficeDashboard() {
               className="group hover:-translate-y-1 transition-all duration-300"
             >
               {messageNotifications.length === 0 &&
-                (dismissedDummies.komunikacija ? (
-                  <p className="text-xs text-slate-400 text-center py-4">
+                (!shouldShowDummy('komunikacija') ? (
+                  <p className="text-sm text-slate-400 text-center py-4">
                     {t('officeEmptyComm')}
                   </p>
                 ) : (

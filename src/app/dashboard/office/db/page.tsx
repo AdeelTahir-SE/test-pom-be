@@ -36,7 +36,11 @@ export default function DatabaseDashboard() {
   const router = useRouter();
   const { t } = useLanguage();
   const { user, company, officeContact, loading: authLoading, logout } = useCurrentUser();
-
+  useEffect(() => {
+    if (!authLoading && user && user.role === 'worker') {
+      router.replace('/dashboard/worker');
+    }
+  }, [authLoading, user, router]);
   // Active Main Tab: 0 = Zaposleni, 1 = Dela, 2 = Stranke, 3 = Priponke, 4 = Pisarna, 5 = Podatki podjetja
   const [activeTab, setActiveTab] = useState(0);
 
