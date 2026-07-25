@@ -265,7 +265,7 @@ export const translations = {
     modalScheduleSubmit: "DODAJ NA URNIK",
     modalTaskNext: "Naprej",
     modalTaskBack: "Nazaj",
-    modalTaskStepsHeading: "Koraki",
+    modalTaskStepsHeading: "Dodaj nalogo",
     modalTaskAddSteps: "+ Dodaj koraka",
 
     modalReminderTitle: "Dodaj opomnik",
@@ -732,7 +732,7 @@ export const translations = {
     modalScheduleSubmit: "ADD TO SCHEDULE",
     modalTaskNext: "Next",
     modalTaskBack: "Back",
-    modalTaskStepsHeading: "Steps",
+    modalTaskStepsHeading: "Add task",
     modalTaskAddSteps: "+ Add steps",
 
     modalReminderTitle: "Add Reminder",

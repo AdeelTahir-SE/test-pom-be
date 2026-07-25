@@ -48,14 +48,19 @@ interface AddTaskModalProps {
 }
 
 export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", onAddTask }: AddTaskModalProps) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [step, setStep] = useState<1 | 2>(1);
   const [opravilo, setOpravilo] = useState("");
   const [kraj, setKraj] = useState("");
   const [narocnik, setNarocnik] = useState("");
   const [datum, setDatum] = useState(defaultDate);
   const [workerId, setWorkerId] = useState("");
-  const [steps, setSteps] = useState<TaskStepInput[]>([newStep()]);
+  const [steps, setSteps] = useState<TaskStepInput[]>(() => [
+    newStep(),
+    newStep(),
+    newStep(),
+    newStep(),
+  ]);
   const [customerNotes, setCustomerNotes] = useState<CustomerNoteDto[]>([]);
   const notesRequestRef = useRef(0);
   const hasNoSteps = steps.filter((s) => s.text.trim().length > 0).length === 0;
@@ -90,7 +95,7 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
     setNarocnik("");
     setDatum(defaultDate);
     setWorkerId("");
-    setSteps([newStep()]);
+    setSteps([newStep(), newStep(), newStep(), newStep()]);
     setCustomerNotes([]);
   };
 
@@ -148,21 +153,27 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
           border: "none",
           boxShadow: "none",
           padding: 0,
-          maxWidth: "420px",
-          width: "92%",
+          maxWidth: "380px",
+          width: "90%",
         }}
-        className="outline-none max-h-[92vh] overflow-y-auto"
+        className="outline-none"
       >
+        <style dangerouslySetInnerHTML={{ __html: `
+          .custom-ios-scrollbar::-webkit-scrollbar {
+            width: 5px;
+          }
+          .custom-ios-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          .custom-ios-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(109, 119, 142, 0.45);
+            border-radius: 9999px;
+          }
+          .custom-ios-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(109, 119, 142, 0.65);
+          }
+        `}} />
         <div className={auraCard}>
-          {/* Close Button */}
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer z-10"
-            aria-label="Close"
-          >
-            <X className="w-5 h-5" />
-          </button>
           {step === 1 ? (
             <form onSubmit={handleNext} className="flex flex-col gap-4 text-slate-800">
               <div className="text-center">
@@ -247,9 +258,27 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
             </form>
           ) : (
             <form onSubmit={handleSubmit} className="flex flex-col gap-4 text-slate-800">
-              <div className="text-center">
-                <h3 className="text-xl font-semibold tracking-tight text-slate-900">
-                  {t("modalTaskStepsHeading")}
+              {/* Header Part 2 - Center aligned with Back navigation */}
+              <div className="relative text-center flex flex-col gap-1 pb-2 border-b border-slate-100/80">
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="absolute left-0 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer border-none bg-transparent outline-none p-1"
+                  title={t("modalTaskBack")}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="19" y1="12" x2="5" y2="12"></line>
+                    <polyline points="12 19 5 12 12 5"></polyline>
+                  </svg>
+                </button>
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
+                  {(() => {
+                    const name = workers.find((w) => w.id === workerId)?.name || "";
+                    return name ? name.toUpperCase() : "DELAVEC";
+                  })()}
+                </span>
+                <h3 className="text-2xl font-bold tracking-tight text-slate-900">
+                  Dodaj nalogo
                 </h3>
               </div>
 
@@ -257,52 +286,81 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                 <CustomerNotesBanner notes={customerNotes} compact />
               )}
 
-              <div className="flex flex-col gap-2">
+              {/* Tasks List container */}
+              <div className="flex flex-col gap-3.5 max-h-[320px] overflow-y-auto p-1.5 custom-ios-scrollbar">
                 {steps.map((s, index) => (
-                  <div key={s.id} className="flex items-start gap-2">
-                    <span className="text-[10px] text-slate-400 font-semibold mt-2.5 w-4 shrink-0">
-                      {index + 1}.
-                    </span>
-                    <div className="flex-1 min-w-0">
+                  <div key={s.id} className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between">
+                      <AuraLabel strong className="text-[10px]">
+                        NALOGA {index + 1}:
+                      </AuraLabel>
+                      {index === 0 && (
+                        <div className="w-[38px] flex justify-center mb-1" title={t("modalStepAttachmentTitle")}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2">
+                            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
                       <AuraInput
                         type="text"
                         value={s.text}
                         onChange={(e) => updateStepText(s.id, e.target.value.slice(0, 30))}
-                        maxLength={30}
-                        placeholder={t("modalStepPlaceholder")}
+                        placeholder={
+                          lang === "sl"
+                            ? `Vnesite nalogo ${index + 1}...`
+                            : `Enter task ${index + 1}...`
+                        }
+                        className="bg-slate-50 border-none ring-1 ring-[#1B3A6B]/15 focus:ring-2 focus:ring-[#1B3A6B]"
+                        strong
                       />
-                      <span className="text-[10px] text-slate-400">{s.text.length}/30</span>
+                      <button
+                        type="button"
+                        onClick={() => toggleStepAttachment(s.id)}
+                        className="shrink-0 flex items-center justify-center rounded-xl border transition-all duration-200"
+                        style={{
+                          width: "38px",
+                          height: "38px",
+                          background: s.requiresAttachment ? "#1B3A6B" : "white",
+                          borderColor: s.requiresAttachment ? "#1B3A6B" : "#E2E8F0",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {s.requiresAttachment && (
+                          <svg width="12" height="10" viewBox="0 0 10 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </button>
+
+                      {/* Small delete icon only for additional steps beyond the first 4 */}
+                      {steps.length > 4 && (
+                        <button
+                          type="button"
+                          onClick={() => removeStep(s.id)}
+                          className="shrink-0 p-1 text-slate-300 hover:text-red-500 bg-transparent border-none outline-none transition-colors"
+                          aria-label={t("modalDeleteStep")}
+                          title={t("modalDeleteStep")}
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
-                    <AuraIconButton
-                      active={s.requiresAttachment}
-                      onClick={() => toggleStepAttachment(s.id)}
-                      icon={
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                        </svg>
-                      }
-                      title={t("modalStepAttachmentTitle")}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeStep(s.id)}
-                      className="shrink-0 mt-1.5 p-1.5 text-slate-300 hover:text-red-500 bg-transparent border-none outline-none"
-                      aria-label={t("modalDeleteStep")}
-                      title={t("modalDeleteStep")}
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
                   </div>
                 ))}
               </div>
 
-              <button
-                type="button"
-                onClick={handleAddTwoSteps}
-                className="text-xs font-semibold text-[#1B3A6B] hover:underline self-center"
-              >
-                {t("modalTaskAddSteps")}
-              </button>
+              {/* Add Row Button */}
+              <div>
+                <button
+                  type="button"
+                  onClick={handleAddTwoSteps}
+                  className="w-12 h-9 rounded-xl border border-[#3B82F6]/20 bg-slate-50 text-slate-700 font-semibold text-sm hover:bg-slate-100 active:scale-95 transition-all flex items-center justify-center cursor-pointer"
+                >
+                  +1
+                </button>
+              </div>
 
               {hasNoSteps && (
                 <div className="text-center text-xs font-semibold text-red-500 py-1">
@@ -310,22 +368,14 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                 </div>
               )}
 
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  className="flex-1 h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors"
-                >
-                  {t("modalTaskBack")}
-                </button>
-                <button
-                  type="submit"
-                  disabled={hasNoSteps}
-                  className={`flex-1 ${auraButton} ${hasNoSteps ? "opacity-50 cursor-not-allowed" : ""}`}
-                >
-                  {t("modalScheduleSubmit")}
-                </button>
-              </div>
+              {/* Submit button */}
+              <button
+                type="submit"
+                disabled={hasNoSteps}
+                className={`w-full ${auraButton} ${hasNoSteps ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                {t("modalScheduleSubmit")}
+              </button>
             </form>
           )}
         </div>

@@ -16,6 +16,18 @@ interface CustomerNotesBannerProps {
   compact?: boolean;
 }
 
+export function parseNoteText(note: string): { text: string; jobId: string | null } {
+  try {
+    if (note.startsWith("{") && note.endsWith("}")) {
+      const parsed = JSON.parse(note);
+      if (parsed && typeof parsed === "object" && typeof parsed.text === "string") {
+        return { text: parsed.text, jobId: parsed.jobId || null };
+      }
+    }
+  } catch (e) {}
+  return { text: note, jobId: null };
+}
+
 export function CustomerNotesBanner({ notes, onDelete, compact = false }: CustomerNotesBannerProps) {
   const { t } = useLanguage();
   if (notes.length === 0) return null;
@@ -31,22 +43,25 @@ export function CustomerNotesBanner({ notes, onDelete, compact = false }: Custom
         {t("customerNotesTitle")}
       </p>
       <ul className={`flex flex-col ${compact ? "gap-1" : "gap-1.5"}`}>
-        {notes.map((n) => (
-          <li key={n.id} className="flex items-start gap-2 text-[13px] text-slate-800 leading-snug">
-            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-amber-700/70" />
-            <span className="flex-1 min-w-0">{n.note}</span>
-            {onDelete && (
-              <button
-                type="button"
-                onClick={() => onDelete(n.id)}
-                className="shrink-0 text-[11px] text-slate-400 hover:text-red-500 bg-transparent border-none cursor-pointer"
-                title={t("customerNotesDelete")}
-              >
-                {t("customerNotesDelete")}
-              </button>
-            )}
-          </li>
-        ))}
+        {notes.map((n) => {
+          const { text } = parseNoteText(n.note);
+          return (
+            <li key={n.id} className="flex items-start gap-2 text-[13px] text-slate-800 leading-snug">
+              <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-amber-700/70" />
+              <span className="flex-1 min-w-0">{text}</span>
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={() => onDelete(n.id)}
+                  className="shrink-0 text-[11px] text-slate-400 hover:text-red-500 bg-transparent border-none cursor-pointer"
+                  title={t("customerNotesDelete")}
+                >
+                  {t("customerNotesDelete")}
+                </button>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

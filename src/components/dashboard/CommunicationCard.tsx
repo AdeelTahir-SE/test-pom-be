@@ -427,11 +427,18 @@ export function CommunicationCard({
                       padding: "0px",
                       width: "32px",
                       height: "32px",
-                      background: "rgba(255, 255, 255, 0.9)",
-                      border: "1px solid #FFFFFF",
-                      boxShadow: "inset 0px 1px 0px 1px #FFFFFF",
+                      background: order.status === "potrjeno"
+                        ? "#22C55E"
+                        : "rgba(255, 255, 255, 0.9)",
+                      border: order.status === "potrjeno"
+                        ? "1px solid #16A34A"
+                        : "1px solid #FFFFFF",
+                      boxShadow: order.status === "potrjeno"
+                        ? "0px 4px 12px -4px rgba(34,197,94,0.55), inset 0px 1px 0px 1px rgba(255,255,255,0.25)"
+                        : "inset 0px 1px 0px 1px #FFFFFF",
                       borderRadius: "12px",
                       cursor: "pointer",
+                      transition: "background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease",
                     }}
                     title="Confirm"
                   >
@@ -444,7 +451,7 @@ export function CommunicationCard({
                     >
                       <path
                         d="M13.3333 4L6 11.3333L2.66667 8"
-                        stroke="#6D778E"
+                        stroke={order.status === "potrjeno" ? "#FFFFFF" : "#6D778E"}
                         strokeWidth="2.5"
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -465,11 +472,18 @@ export function CommunicationCard({
                       padding: "0px",
                       width: "32px",
                       height: "32px",
-                      background: "rgba(255, 255, 255, 0.9)",
-                      border: "1px solid #FFFFFF",
-                      boxShadow: "inset 0px 1px 0px 1px #FFFFFF",
+                      background: order.status === "zavrnjeno"
+                        ? "#EF4444"
+                        : "rgba(255, 255, 255, 0.9)",
+                      border: order.status === "zavrnjeno"
+                        ? "1px solid #DC2626"
+                        : "1px solid #FFFFFF",
+                      boxShadow: order.status === "zavrnjeno"
+                        ? "0px 4px 12px -4px rgba(239,68,68,0.55), inset 0px 1px 0px 1px rgba(255,255,255,0.25)"
+                        : "inset 0px 1px 0px 1px #FFFFFF",
                       borderRadius: "12px",
                       cursor: "pointer",
+                      transition: "background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease",
                     }}
                     title="Decline"
                   >
@@ -482,7 +496,7 @@ export function CommunicationCard({
                     >
                       <path
                         d="M14.6066 14.6066L7.80336 7.80336M7.80336 7.80336L1 1M7.80336 7.80336L14.6067 1M7.80336 7.80336L1 14.6067"
-                        stroke="#6D778E"
+                        stroke={order.status === "zavrnjeno" ? "#FFFFFF" : "#6D778E"}
                         strokeWidth="2.2"
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -507,11 +521,18 @@ export function CommunicationCard({
                     padding: "0px",
                     width: "32px",
                     height: "32px",
-                    background: "rgba(255, 255, 255, 0.9)",
-                    border: "1px solid #FFFFFF",
-                    boxShadow: "inset 0px 1px 0px 1px #FFFFFF",
+                    background: order.status === "potrjeno"
+                      ? "#22C55E"
+                      : "rgba(255, 255, 255, 0.9)",
+                    border: order.status === "potrjeno"
+                      ? "1px solid #16A34A"
+                      : "1px solid #FFFFFF",
+                    boxShadow: order.status === "potrjeno"
+                      ? "0px 4px 12px -4px rgba(34,197,94,0.55), inset 0px 1px 0px 1px rgba(255,255,255,0.25)"
+                      : "inset 0px 1px 0px 1px #FFFFFF",
                     borderRadius: "12px",
                     cursor: "pointer",
+                    transition: "background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease",
                   }}
                   title="Approve / Resolve"
                 >
@@ -524,7 +545,7 @@ export function CommunicationCard({
                   >
                     <path
                       d="M13.3333 4L6 11.3333L2.66667 8"
-                      stroke="#6D778E"
+                      stroke={order.status === "potrjeno" ? "#FFFFFF" : "#6D778E"}
                       strokeWidth="2.5"
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -543,11 +564,18 @@ export function CommunicationCard({
                     padding: "0px",
                     width: "32px",
                     height: "32px",
-                    background: "rgba(255, 255, 255, 0.9)",
-                    border: "1px solid #FFFFFF",
-                    boxShadow: "inset 0px 1px 0px 1px #FFFFFF",
+                    background: order.status === "zavrnjeno"
+                      ? "#EF4444"
+                      : "rgba(255, 255, 255, 0.9)",
+                    border: order.status === "zavrnjeno"
+                      ? "1px solid #DC2626"
+                      : "1px solid #FFFFFF",
+                    boxShadow: order.status === "zavrnjeno"
+                      ? "0px 4px 12px -4px rgba(239,68,68,0.55), inset 0px 1px 0px 1px rgba(255,255,255,0.25)"
+                      : "inset 0px 1px 0px 1px #FFFFFF",
                     borderRadius: "12px",
                     cursor: "pointer",
+                    transition: "background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease",
                   }}
                   title="Archive"
                 >
@@ -560,7 +588,7 @@ export function CommunicationCard({
                   >
                     <path
                       d="M14.6066 14.6066L7.80336 7.80336M7.80336 7.80336L1 1M7.80336 7.80336L14.6067 1M7.80336 7.80336L1 14.6067"
-                      stroke="#6D778E"
+                      stroke={order.status === "zavrnjeno" ? "#FFFFFF" : "#6D778E"}
                       strokeWidth="2.2"
                       strokeLinecap="round"
                       strokeLinejoin="round"

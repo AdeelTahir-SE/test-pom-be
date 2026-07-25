@@ -40,7 +40,7 @@ import { describeTimelineEvent, documentTypeLabel } from "@/lib/timeline/describ
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
 import { fetchJobFiles, fetchJobTimeline } from "@/lib/query/office";
-import { CustomerNotesBanner } from "./CustomerNotesBanner";
+import { CustomerNotesBanner, parseNoteText } from "./CustomerNotesBanner";
 
 interface CustomerNoteDto {
   id: string;
@@ -274,6 +274,49 @@ export function WorkerDetailModal({
   const [saveNoteSaving, setSaveNoteSaving] = React.useState(false);
   const notesRequestRef = React.useRef(0);
   const completeAfterSaveRef = React.useRef(false);
+
+  const [isAddNoteOpen, setIsAddNoteOpen] = React.useState(false);
+  const [newNoteText, setNewNoteText] = React.useState("");
+  const [newNoteType, setNewNoteType] = React.useState<"once" | "always">("once");
+  const [newNoteSaving, setNewNoteSaving] = React.useState(false);
+
+  const handleAddNote = async (force = false) => {
+    const noteText = newNoteText.trim();
+    if (!noteText) return;
+    if (!resolvedCustomerName) {
+      alert("Naročnik je obvezen za dodajanje opombe.");
+      return;
+    }
+
+    setNewNoteSaving(true);
+    const finalNoteContent = newNoteType === "once"
+      ? JSON.stringify({ text: noteText, jobId })
+      : noteText;
+
+    const res = await api.post<{ note: CustomerNoteDto }>(`/api/customers/notes`, {
+      customer_name: resolvedCustomerName,
+      note: finalNoteContent,
+      force,
+    });
+    setNewNoteSaving(false);
+
+    if (res.status === 409) {
+      const okAnyway = window.confirm(t("customerNotesDuplicateConfirm"));
+      if (okAnyway) {
+        await handleAddNote(true);
+      }
+      return;
+    }
+
+    if (res.status === 201 || res.status === 200) {
+      setNewNoteText("");
+      setIsAddNoteOpen(false);
+      void loadCustomerNotes(resolvedCustomerName);
+      return;
+    }
+
+    alert(res.error?.message ?? "Failed to save note.");
+  };
 
   const fromWorkerTasks = (workerTasks: Worker["tasks"]): TaskItem[] =>
     workerTasks.map(t => ({
@@ -662,12 +705,81 @@ export function WorkerDetailModal({
   const renderContentBody = () => (
     <div className="flex flex-col gap-[48px] text-[#1E293B]">
       {renderStatusSection()}
-      {customerNotes.length > 0 && (
-        <CustomerNotesBanner
-          notes={customerNotes}
-          onDelete={canManageCustomerNotes ? handleDeleteCustomerNote : undefined}
-        />
-      )}
+      {/* Section: OPOMBE */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <span
+            style={{
+              fontFamily: "'PT Sans', sans-serif",
+              fontWeight: 700,
+              fontSize: "12px",
+              color: "#5A5A65",
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+            }}
+          >
+            OPOMBE:
+          </span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setNewNoteText("");
+              setNewNoteType("once");
+              setIsAddNoteOpen(true);
+            }}
+            className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
+          >
+            <svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M17.9705 9.48535H9.48528M9.48528 9.48535H1M9.48528 9.48535V1.00007M9.48528 9.48535V17.9706" stroke="#6D778E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          {(() => {
+            const displayedNotes = customerNotes
+              .map((n) => {
+                const { text, jobId: noteJobId } = parseNoteText(n.note);
+                return { ...n, noteText: text, noteJobId };
+              })
+              .filter((n) => !n.noteJobId || n.noteJobId === jobId);
+
+            if (displayedNotes.length === 0) {
+              return (
+                <span className="text-xs text-slate-400">
+                  Ni opomb za tega naročnika.
+                </span>
+              );
+            }
+
+            return displayedNotes.map((n, idx) => (
+              <div key={n.id} className="flex items-start gap-2.5 group">
+                <div className="bg-slate-200 text-slate-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                  {idx + 1}
+                </div>
+                <span className="text-xs text-slate-700 flex-1 min-w-0 font-medium leading-relaxed">
+                  {n.noteText}
+                </span>
+                {canManageCustomerNotes && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteCustomerNote(n.id)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500 bg-transparent border-none cursor-pointer p-0.5"
+                    title={t("customerNotesDelete")}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                      <line x1="10" y1="11" x2="10" y2="17"></line>
+                      <line x1="14" y1="11" x2="14" y2="17"></line>
+                    </svg>
+                  </button>
+                )}
+              </div>
+            ));
+          })()}
+        </div>
+      </div>
       {/* Section: Predvidena dela */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
@@ -1445,6 +1557,112 @@ export function WorkerDetailModal({
                   {t("customerNotesSaveBtn")}
                 </button>
               </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Sub-Dialog: Add Customer Note ── */}
+      <Dialog open={isAddNoteOpen} onOpenChange={setIsAddNoteOpen}>
+        <DialogContent
+          style={{
+            background: "transparent",
+            border: "none",
+            boxShadow: "none",
+            padding: 0,
+            maxWidth: "380px",
+            width: "90%",
+          }}
+          className="outline-none"
+        >
+          <div className={auraCard}>
+            <div className="flex flex-col gap-4 text-[#1E293B]">
+              <div className="text-center pb-2 border-b border-[#1B3A6B]/10">
+                <h3 className="text-lg font-bold tracking-tight text-slate-900">
+                  Zaznamki za naročnika
+                </h3>
+              </div>
+
+              <div>
+                <AuraLabel className="text-[10px] uppercase text-slate-500 mb-1.5 block font-bold">NAROČNIK:</AuraLabel>
+                <AuraInput
+                  type="text"
+                  value={resolvedCustomerName}
+                  disabled
+                  className="bg-slate-100/60 border-none text-slate-500 select-none cursor-not-allowed"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <AuraLabel className="text-[10px] uppercase text-slate-500 block font-bold mb-0">ZAZNAMEK:</AuraLabel>
+                  <span className="text-[10px] font-bold text-slate-400">{newNoteText.length}/60</span>
+                </div>
+                <AuraTextarea
+                  value={newNoteText}
+                  onChange={(e) => setNewNoteText(e.target.value.slice(0, 60))}
+                  maxLength={60}
+                  placeholder="Zapišite poljubno opombo za tega naročnika..."
+                  rows={3}
+                  className="bg-slate-50 border-none ring-1 ring-[#1B3A6B]/15 focus:ring-2 focus:ring-[#1B3A6B]"
+                />
+                <p className="mt-1.5 text-[10px] text-slate-400/90 leading-normal">
+                  Če gre za več opomnikov, je priporočljivo, da so zapisani ločeno, vsak za sebe.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3 my-2 pt-2 border-t border-[#1B3A6B]/10">
+                <button
+                  type="button"
+                  onClick={() => setNewNoteType("once")}
+                  className="flex items-start gap-3 text-left w-full bg-transparent border-none p-0 outline-none cursor-pointer group"
+                >
+                  <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-all ${
+                    newNoteType === "once"
+                      ? "border-green-600 bg-green-50 text-green-600"
+                      : "border-slate-300 hover:border-slate-400 text-transparent"
+                  }`}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  </div>
+                  <span className="text-xs font-semibold text-slate-700 leading-snug group-hover:text-slate-900 transition-colors">
+                    Zaznamek samo tokrat
+                  </span>
+                </button>
+                
+                <div className="text-[9px] font-extrabold text-slate-400/70 tracking-wider pl-8 uppercase">
+                  ali
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setNewNoteType("always")}
+                  className="flex items-start gap-3 text-left w-full bg-transparent border-none p-0 outline-none cursor-pointer group"
+                >
+                  <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-all ${
+                    newNoteType === "always"
+                      ? "border-green-600 bg-green-50 text-green-600"
+                      : "border-slate-300 hover:border-slate-400 text-transparent"
+                  }`}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  </div>
+                  <span className="text-xs font-semibold text-slate-700 leading-snug group-hover:text-slate-900 transition-colors">
+                    Zaznamek vsakič pri tem naročniku; služi kot opomnik kasneje
+                  </span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                disabled={newNoteSaving || !newNoteText.trim()}
+                onClick={() => void handleAddNote()}
+                className="w-full h-11 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-50 mt-1"
+              >
+                DODAJ
+              </button>
             </div>
           </div>
         </DialogContent>
