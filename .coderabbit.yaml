@@ -8,8 +8,5 @@ reviews:
   auto_review:
     enabled: true
 
-  review_status:
-    enabled: true
-
 chat:
   auto_reply: true
