@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     });
 
     if (signInError || !session.session || !session.user) {
-      throw new ApiError("unauthorized", "Invalid email or password.");
+      throw new ApiError("unauthorized", "Napačen e-naslov ali geslo.");
     }
 
     const db = getAdminClient();
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     // Inactive company users must not receive a usable session (spec: inactive -> 403).
     if (companyUser && !companyUser.is_active) {
       await db.auth.admin.signOut(session.session.access_token, "global").catch(() => {});
-      throw new ApiError("forbidden", "This account has been deactivated.");
+      throw new ApiError("forbidden", "Ta račun je bil deaktiviran.");
     }
 
     return ok({

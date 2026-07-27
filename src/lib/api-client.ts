@@ -6,6 +6,18 @@
 const TOKEN_KEY = "saas_access_token";
 const REFRESH_TOKEN_KEY = "saas_refresh_token";
 
+/** Auth endpoints that must never trigger silent refresh (avoids loops). */
+const AUTH_NO_REFRESH_PATHS = new Set([
+  "/api/auth/login",
+  "/api/auth/register",
+  "/api/auth/logout",
+  "/api/auth/refresh",
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
+  "/api/auth/google",
+  "/api/auth/oauth/callback",
+]);
+
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(TOKEN_KEY);
@@ -47,27 +59,52 @@ export interface ApiResult<T> {
   error?: ApiError;
 }
 
-async function tryRefreshSession(): Promise<boolean> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return false;
-  try {
-    const res = await fetch("/api/auth/refresh", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    });
-    if (!res.ok) return false;
-    const json = await res.json();
-    const accessToken = json?.data?.access_token;
-    if (!accessToken) return false;
-    setSession(accessToken, json.data.refresh_token ?? refreshToken);
-    return true;
-  } catch {
-    return false;
-  }
+function authPathWithoutQuery(path: string): string {
+  const q = path.indexOf("?");
+  return q === -1 ? path : path.slice(0, q);
 }
 
-async function request<T>(method: string, path: string, body?: unknown, isRetry = false): Promise<ApiResult<T>> {
+function shouldAttemptSilentRefresh(path: string): boolean {
+  return !AUTH_NO_REFRESH_PATHS.has(authPathWithoutQuery(path));
+}
+
+/** Single-flight refresh so multiple tabs/requests don't burn the refresh token. */
+let refreshInFlight: Promise<boolean> | null = null;
+
+export async function tryRefreshSession(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) return false;
+    try {
+      const res = await fetch("/api/auth/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      if (!res.ok) return false;
+      const json = await res.json();
+      const accessToken = json?.data?.access_token;
+      if (!accessToken) return false;
+      setSession(accessToken, json.data.refresh_token ?? refreshToken);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+}
+
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  isRetry = false
+): Promise<ApiResult<T>> {
   const token = getToken();
   const isFormData = body instanceof FormData;
   const headers: Record<string, string> = {};
@@ -91,8 +128,9 @@ async function request<T>(method: string, path: string, body?: unknown, isRetry 
   }
 
   // Access token expired or invalid — try one silent refresh-and-retry before
-  // giving up. Skip this for /auth/* calls so a wrong password doesn't loop.
-  if (res.status === 401 && !path.startsWith("/api/auth/")) {
+  // giving up. /api/auth/me MUST refresh (Mark: refresh/new tab was wiping session).
+  // Login/register/refresh themselves stay excluded to avoid loops.
+  if (res.status === 401 && shouldAttemptSilentRefresh(path)) {
     if (!isRetry) {
       const refreshed = await tryRefreshSession();
       if (refreshed) return request<T>(method, path, body, true);

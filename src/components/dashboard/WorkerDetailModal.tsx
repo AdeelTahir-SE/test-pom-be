@@ -243,7 +243,7 @@ export function WorkerDetailModal({
   canCancelJob = false,
   canManageCustomerNotes = false,
 }: WorkerDetailModalProps) {
-  const { t, lang } = useLanguage();
+  const { t } = useLanguage();
   const [addStepOpen, setAddStepOpen] = React.useState(false);
 
   // Sub-dialog: Dodaj korak
@@ -316,7 +316,7 @@ export function WorkerDetailModal({
       return;
     }
 
-    alert(res.error?.message ?? "Failed to save note.");
+    alert(res.error?.message ?? "Opombe ni bilo mogoče shraniti.");
   };
 
   const fromWorkerTasks = (workerTasks: Worker["tasks"]): TaskItem[] =>
@@ -436,7 +436,7 @@ export function WorkerDetailModal({
     if (res.status === 200) {
       setCustomerNotes((prev) => prev.filter((n) => n.id !== id));
     } else {
-      alert(res.error?.message ?? "Failed to remove note.");
+      alert(res.error?.message ?? "Opombe ni bilo mogoče odstraniti.");
     }
   };
 
@@ -500,7 +500,7 @@ export function WorkerDetailModal({
       return;
     }
 
-    alert(res.error?.message ?? "Failed to save note.");
+    alert(res.error?.message ?? "Opombe ni bilo mogoče shraniti.");
   };
 
   const sensors = useSensors(
@@ -609,7 +609,7 @@ export function WorkerDetailModal({
       setPreviewAttachment(null);
       void queryClient.invalidateQueries({ queryKey: queryKeys.job.timeline(jobId ?? "none") });
     } else {
-      alert(res.error?.message ?? "Failed to hide attachment.");
+      alert(res.error?.message ?? "Priponke ni bilo mogoče skriti.");
     }
   };
 
@@ -1085,7 +1085,7 @@ export function WorkerDetailModal({
                       <option key={pos} value={pos}>
                         {pos === tasks.length + 1
                           ? t("modalStepPositionEnd")
-                          : lang === "sl" ? `${pos}. mesto` : `Position ${pos}`}
+                          : `${pos}. mesto`}
                       </option>
                     ))}
                   </AuraSelect>

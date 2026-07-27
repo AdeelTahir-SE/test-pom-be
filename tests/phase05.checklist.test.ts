@@ -76,6 +76,32 @@ describe("Phase 5 — Checklist System", () => {
     ]);
   });
 
+  it("bulk GET /api/jobs/checklists returns same items as per-job endpoint", async () => {
+    const { owner, jobId } = await setupCompanyWithWorkerAndJob();
+
+    await api.post(`/api/jobs/${jobId}/checklist`, {
+      token: owner.accessToken,
+      body: { label: "Bulk A" },
+    });
+    await api.post(`/api/jobs/${jobId}/checklist`, {
+      token: owner.accessToken,
+      body: { label: "Bulk B" },
+    });
+
+    const single = await api.get<{ data?: { checklist: ChecklistItemDto[] } }>(
+      `/api/jobs/${jobId}/checklist`,
+      { token: owner.accessToken }
+    );
+    const bulk = await api.get<{
+      data?: { checklistsByJob: Record<string, ChecklistItemDto[]> };
+    }>(`/api/jobs/checklists?ids=${jobId}`, { token: owner.accessToken });
+
+    expect(bulk.status).toBe(200);
+    expect(bulk.body.data?.checklistsByJob[jobId]?.map((i) => i.label)).toEqual(
+      single.body.data?.checklist.map((i) => i.label)
+    );
+  });
+
   it("requires_attachment defaults to false and can be enabled", async () => {
     const { owner, jobId } = await setupCompanyWithWorkerAndJob();
 

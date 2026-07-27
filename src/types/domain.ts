@@ -75,6 +75,8 @@ export interface JobRow {
   completed_at: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
+  hidden_at: string | null;
+  hidden_by: string | null;
 }
 
 export interface JobAssignmentRow {

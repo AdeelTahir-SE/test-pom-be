@@ -46,8 +46,8 @@ export function useOfficeBoard(dayKey: string, enabled: boolean) {
   });
 
   const summaryQuery = useQuery({
-    queryKey: queryKeys.office.summary(),
-    queryFn: fetchSummary,
+    queryKey: queryKeys.office.summary(dayKey),
+    queryFn: () => fetchSummary(dayKey),
     enabled,
     refetchInterval: 30_000,
   });
@@ -140,11 +140,14 @@ export function useOfficeBoard(dayKey: string, enabled: boolean) {
   const setSummary = (
     updater: OfficeSummaryData | null | ((prev: OfficeSummaryData | null) => OfficeSummaryData | null)
   ) => {
-    queryClient.setQueryData<OfficeSummaryData>(queryKeys.office.summary(), (prev) => {
+    queryClient.setQueryData<OfficeSummaryData>(
+      queryKeys.office.summary(dayKey),
+      (prev) => {
       const current = prev ?? null;
       const next = typeof updater === "function" ? updater(current) : updater;
       return next ?? undefined;
-    });
+    }
+    );
   };
 
   /** Soft refresh — does not block the UI (Mark: updates must feel instant). */
@@ -154,7 +157,7 @@ export function useOfficeBoard(dayKey: string, enabled: boolean) {
       queryClient.invalidateQueries({ queryKey: queryKeys.office.reminders(dayKey) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.office.notifications() }),
       queryClient.invalidateQueries({ queryKey: queryKeys.office.users() }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.office.summary() }),
+      queryClient.invalidateQueries({ queryKey: ["office", "summary"] }),
       queryClient.invalidateQueries({ queryKey: ["office", "checklists"] }),
     ]);
   };

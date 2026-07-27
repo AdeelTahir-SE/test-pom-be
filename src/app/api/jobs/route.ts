@@ -49,6 +49,12 @@ export const GET = withAuth(async (request, auth) => {
 
   // display_order (manual drag-and-drop) wins when set; jobs nobody has
   // reordered (null) fall back to the original scheduled_at/created_at rule.
+  // Soft-hidden jobs stay in the DB (and timeline) but are omitted from the
+  // active board unless include_hidden=true (owner/manager audit access).
+  const includeHidden =
+    url.searchParams.get("include_hidden") === "true" &&
+    (auth.role === "owner" || auth.role === "manager");
+
   let query = db
     .from("jobs")
     .select("*")
@@ -57,6 +63,7 @@ export const GET = withAuth(async (request, auth) => {
     .order("scheduled_at", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false });
 
+  if (!includeHidden) query = query.is("hidden_at", null);
   if (statusFilter) query = query.eq("status", statusFilter);
   if (workerJobIds) query = query.in("id", workerJobIds);
 

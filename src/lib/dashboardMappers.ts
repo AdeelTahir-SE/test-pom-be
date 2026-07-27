@@ -23,6 +23,8 @@ export interface ApiJob {
   completed_at: string | null;
   worker_id: string | null;
   created_at: string;
+  hidden_at?: string | null;
+  hidden_by?: string | null;
 }
 
 export function jobNumber(job: Pick<ApiJob, "company_seq">): string {

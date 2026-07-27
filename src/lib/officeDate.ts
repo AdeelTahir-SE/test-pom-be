@@ -21,6 +21,18 @@ export function formatSiTime(d: Date): string {
   return d.toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" });
 }
 
+/** Normalize reminder form time to `HH:mm` (24h). Accepts `16:48` or `16.48`. */
+export function normalizeRemindTime(raw: string | null | undefined): string | null {
+  if (!raw?.trim()) return null;
+  const trimmed = raw.trim().replace(/\./g, ":");
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return null;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 /** `YYYY-MM-DD` → `DD.MM.YYYY` for display. */
 export function formatSiDateFromDayKey(dayKey: string | null | undefined): string {
   if (!dayKey || !/^\d{4}-\d{2}-\d{2}$/.test(dayKey)) return "";
@@ -122,6 +134,21 @@ export function isoToLocalDayKey(iso: string | null | undefined): string | null 
 export function localDayToScheduledAt(d: Date): string {
   const local = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
   return local.toISOString();
+}
+
+export function boardTodayKey(): string {
+  return toIsoDate(startOfLocalDay());
+}
+
+const CALENDAR_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Office board `?date=` query param — valid YYYY-MM-DD or default today (local). */
+export function parseOfficeBoardDayParam(
+  dateParam: string | null | undefined,
+  todayKey: string = boardTodayKey()
+): string {
+  if (dateParam && CALENDAR_DAY_RE.test(dateParam)) return dateParam;
+  return todayKey;
 }
 
 export function jobBelongsToDay(

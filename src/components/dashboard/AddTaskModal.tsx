@@ -48,7 +48,7 @@ interface AddTaskModalProps {
 }
 
 export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", onAddTask }: AddTaskModalProps) {
-  const { t, lang } = useLanguage();
+  const { t } = useLanguage();
   const [step, setStep] = useState<1 | 2>(1);
   const [opravilo, setOpravilo] = useState("");
   const [kraj, setKraj] = useState("");
@@ -307,11 +307,7 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                         type="text"
                         value={s.text}
                         onChange={(e) => updateStepText(s.id, e.target.value.slice(0, 30))}
-                        placeholder={
-                          lang === "sl"
-                            ? `Vnesite nalogo ${index + 1}...`
-                            : `Enter task ${index + 1}...`
-                        }
+                        placeholder={`Vnesite nalogo ${index + 1}...`}
                         className="bg-slate-50 border-none ring-1 ring-[#1B3A6B]/15 focus:ring-2 focus:ring-[#1B3A6B]"
                         strong
                       />

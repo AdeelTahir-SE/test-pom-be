@@ -45,7 +45,7 @@ export function CompanySettingsModal({
       onSaved?.(res.data.company.name);
       onOpenChange(false);
     } else {
-      alert(res.error?.message ?? "Failed to update company.");
+      alert(res.error?.message ?? "Podjetja ni bilo mogoče posodobiti.");
     }
   };
 

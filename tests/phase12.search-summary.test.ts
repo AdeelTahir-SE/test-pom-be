@@ -8,6 +8,12 @@ import {
   setFileOcrText,
   type RegisteredCompany,
 } from "./helpers/factories";
+import {
+  boardTodayKey,
+  localDayToScheduledAt,
+  startOfLocalDay,
+  toIsoDate,
+} from "../src/lib/officeDate";
 
 const createdCompanies: RegisteredCompany[] = [];
 
@@ -317,5 +323,75 @@ describe("Phase 12 — Daily Summary", () => {
     expect(res.body.data?.field_overview.some((f) => f.job_id === jobA.body.data!.job.id)).toBe(
       false
     );
+  });
+
+  it("field_overview respects ?date= for scheduled jobs (HITRI PREGLED day board)", async () => {
+    const owner = await registerCompany();
+    createdCompanies.push(owner);
+    const worker = await createCompanyUser(owner.accessToken!, { role: "worker" });
+
+    const tomorrow = startOfLocalDay();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowKey = toIsoDate(tomorrow);
+
+    const jobRes = await api.post<{ data?: { job: JobDto } }>("/api/jobs", {
+      token: owner.accessToken,
+      body: {
+        title: "Scheduled tomorrow",
+        worker_id: worker.userId,
+        scheduled_at: localDayToScheduledAt(tomorrow),
+      },
+    });
+    const jobId = jobRes.body.data!.job.id;
+    const todayKey = boardTodayKey();
+
+    const todaySummary = await api.get<{ data?: { field_overview: { job_id: string }[] } }>(
+      `/api/dashboard/summary?date=${todayKey}`,
+      { token: owner.accessToken }
+    );
+    expect(todaySummary.body.data!.field_overview.map((f) => f.job_id)).not.toContain(jobId);
+
+    const tomorrowSummary = await api.get<{ data?: { field_overview: { job_id: string }[] } }>(
+      `/api/dashboard/summary?date=${tomorrowKey}`,
+      { token: owner.accessToken }
+    );
+    expect(tomorrowSummary.body.data!.field_overview.map((f) => f.job_id)).toContain(jobId);
+  });
+
+  it("undated assigned jobs appear only on today's summary, not on other days", async () => {
+    const owner = await registerCompany();
+    createdCompanies.push(owner);
+    const worker = await createCompanyUser(owner.accessToken!, { role: "worker" });
+
+    const jobRes = await api.post<{ data?: { job: JobDto } }>("/api/jobs", {
+      token: owner.accessToken,
+      body: { title: "No schedule", worker_id: worker.userId },
+    });
+    const jobId = jobRes.body.data!.job.id;
+
+    const yesterday = startOfLocalDay();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = toIsoDate(yesterday);
+
+    const todaySummary = await api.get<{ data?: { field_overview: { job_id: string }[] } }>(
+      `/api/dashboard/summary?date=${boardTodayKey()}`,
+      { token: owner.accessToken }
+    );
+    expect(todaySummary.body.data!.field_overview.map((f) => f.job_id)).toContain(jobId);
+
+    const yesterdaySummary = await api.get<{ data?: { field_overview: { job_id: string }[] } }>(
+      `/api/dashboard/summary?date=${yesterdayKey}`,
+      { token: owner.accessToken }
+    );
+    expect(yesterdaySummary.body.data!.field_overview.map((f) => f.job_id)).not.toContain(jobId);
+  });
+
+  it("rejects an invalid ?date= on dashboard summary", async () => {
+    const owner = await registerCompany();
+    createdCompanies.push(owner);
+    const res = await api.get("/api/dashboard/summary?date=not-a-day", {
+      token: owner.accessToken,
+    });
+    expect(res.status).toBe(400);
   });
 });

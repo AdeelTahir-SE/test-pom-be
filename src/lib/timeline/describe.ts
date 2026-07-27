@@ -82,6 +82,11 @@ export function describeTimelineEvent(
           ? `${t("timelineWorkerAssigned")}: ${meta.worker_name}`
           : t("timelineWorkerAssigned");
     case "job_updated":
+      if (meta.hidden === true) {
+        return card
+          ? `${t("timelineJobHidden")}: ${card}`
+          : t("timelineJobHidden");
+      }
       return card ? `${t("timelineJobUpdated")}: ${card}` : t("timelineJobUpdated");
     case "status_changed":
       if (meta.to && typeof meta.to === "string" && meta.to in STATUS_LABEL_KEY) {

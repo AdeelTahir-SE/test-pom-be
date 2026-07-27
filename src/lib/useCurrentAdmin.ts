@@ -2,11 +2,17 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { api, getToken, setSession } from "./api-client";
+import { api, getToken, getRefreshToken, setSession, tryRefreshSession } from "./api-client";
 
 export interface CurrentAdmin {
   id: string;
   email: string;
+}
+
+async function ensureAccessToken(): Promise<boolean> {
+  if (getToken()) return true;
+  if (!getRefreshToken()) return false;
+  return tryRefreshSession();
 }
 
 // Session bootstrap for the platform-admin dashboard: verifies the stored
@@ -20,21 +26,26 @@ export function useCurrentAdmin() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (!getToken()) {
+      const hasSession = await ensureAccessToken();
+      if (cancelled) return;
+      if (!hasSession) {
         router.replace("/login");
         return;
       }
+
       const res = await api.get<{ admin: CurrentAdmin }>("/api/admin/me");
       if (cancelled) return;
       if (res.status !== 200 || !res.data) {
-        setSession(null, null);
+        if (res.status === 401) {
+          setSession(null, null);
+        }
         router.replace("/login");
         return;
       }
       setAdmin(res.data.admin);
       setLoading(false);
     }
-    load();
+    void load();
     return () => {
       cancelled = true;
     };

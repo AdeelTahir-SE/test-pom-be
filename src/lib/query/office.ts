@@ -64,20 +64,57 @@ export async function fetchWorkers() {
   return data.users.filter((u) => u.role === "worker");
 }
 
-export async function fetchSummary() {
-  return unwrapApi(api.get<OfficeSummaryData>("/api/dashboard/summary"));
-}
-
-export async function fetchChecklistsForJobs(jobIds: string[]) {
-  const results = await Promise.all(
-    jobIds.map((id) =>
-      unwrapApi(api.get<{ checklist: ApiChecklistItem[] }>(`/api/jobs/${id}/checklist`))
+export async function fetchSummary(dayKey: string) {
+  return unwrapApi(
+    api.get<OfficeSummaryData>(
+      `/api/dashboard/summary?date=${encodeURIComponent(dayKey)}`
     )
   );
+}
+
+export interface DailySummaryDto {
+  id: string;
+  calendar_day: string;
+  summary_text: string;
+  attention: string | null;
+  generated_at: string;
+}
+
+export async function fetchDailySummary(dayKey: string) {
+  const data = await unwrapApi(
+    api.get<{ summary: DailySummaryDto | null }>(
+      `/api/daily-summaries?date=${encodeURIComponent(dayKey)}`
+    )
+  );
+  return data.summary;
+}
+
+export async function fetchDailySummaryHistory() {
+  const data = await unwrapApi(
+    api.get<{ summaries: DailySummaryDto[] }>("/api/daily-summaries")
+  );
+  return data.summaries;
+}
+
+const BULK_CHECKLIST_MAX_IDS = 100;
+
+export async function fetchChecklistsForJobs(jobIds: string[]) {
+  if (jobIds.length === 0) return {};
+
   const map: Record<string, ApiChecklistItem[]> = {};
-  jobIds.forEach((id, idx) => {
-    map[id] = results[idx]?.checklist ?? [];
-  });
+  for (let i = 0; i < jobIds.length; i += BULK_CHECKLIST_MAX_IDS) {
+    const chunk = jobIds.slice(i, i + BULK_CHECKLIST_MAX_IDS);
+    const data = await unwrapApi(
+      api.get<{ checklistsByJob: Record<string, ApiChecklistItem[]> }>(
+        `/api/jobs/checklists?ids=${encodeURIComponent(chunk.join(","))}`
+      )
+    );
+    Object.assign(map, data.checklistsByJob);
+  }
+
+  for (const id of jobIds) {
+    if (!map[id]) map[id] = [];
+  }
   return map;
 }
 

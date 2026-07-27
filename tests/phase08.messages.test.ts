@@ -310,7 +310,10 @@ describe("Phase 8 — Notifications", () => {
 
   it("hiding a notification removes it from the default list but the record remains", async () => {
     const { owner, workerToken, jobId } = await setupCompanyWithWorkerAndJob();
-    await api.post(`/api/jobs/${jobId}/messages`, { token: owner.accessToken, body: { content: "Hi" } });
+    await api.post(`/api/jobs/${jobId}/messages`, {
+      token: owner.accessToken,
+      body: { content: "Keep me after hide" },
+    });
 
     const before = await api.get<{ data?: { notifications: NotificationDto[] } }>(
       "/api/notifications",
@@ -325,6 +328,18 @@ describe("Phase 8 — Notifications", () => {
       { token: workerToken }
     );
     expect(after.body.data?.notifications.some((n) => n.id === notif.id)).toBe(false);
+
+    // Underlying job message is immutable — still readable for audit/history.
+    const messages = await api.get<{ data?: { messages: { content: string | null }[] } }>(
+      `/api/jobs/${jobId}/messages`,
+      { token: owner.accessToken }
+    );
+    expect(messages.body.data?.messages.some((m) => m.content === "Keep me after hide")).toBe(
+      true
+    );
+
+    const events = await getTimelineEvents(jobId);
+    expect(events.map((e) => e.event_type)).toContain("notification_deleted");
   });
 
   it("a user cannot modify another user's notification (404)", async () => {

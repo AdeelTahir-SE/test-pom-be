@@ -1,19 +1,19 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { api } from "@/lib/api-client";
 import { useLanguage } from "@/lib/useLanguage";
 import { formatSiDate, parseFlexibleDate } from "@/lib/officeDate";
+import { queryKeys } from "@/lib/query/keys";
+import {
+  fetchDailySummary,
+  fetchDailySummaryHistory,
+  type DailySummaryDto,
+} from "@/lib/query/office";
 import { auraCard, auraButton } from "./AuraForm";
 
-export interface DailySummaryDto {
-  id: string;
-  calendar_day: string;
-  summary_text: string;
-  attention: string | null;
-  generated_at: string;
-}
+export type { DailySummaryDto };
 
 interface DailySummaryPanelProps {
   /** Selected office day as YYYY-MM-DD */
@@ -28,52 +28,36 @@ function formatDayLabel(dayKey: string): string {
 
 export function DailySummaryPanel({ dayKey, onJumpToDay }: DailySummaryPanelProps) {
   const { t } = useLanguage();
-  const [summary, setSummary] = useState<DailySummaryDto | null>(null);
-  const [loading, setLoading] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [history, setHistory] = useState<DailySummaryDto[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
+  /** When user picks from history for the current day, prefer that row until day changes. */
+  const [historyOverride, setHistoryOverride] = useState<DailySummaryDto | null>(null);
 
-  // Load once per selected day — do not re-fetch on parent re-renders / language fn identity.
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setSummary(null);
+  const summaryQuery = useQuery({
+    queryKey: queryKeys.office.dailySummary(dayKey),
+    queryFn: () => fetchDailySummary(dayKey),
+  });
 
-    void (async () => {
-      const res = await api.get<{ summary: DailySummaryDto | null }>(
-        `/api/daily-summaries?date=${encodeURIComponent(dayKey)}`
-      );
-      if (cancelled) return;
-      setLoading(false);
-      if (res.status === 200) {
-        setSummary(res.data?.summary ?? null);
-      } else {
-        setSummary(null);
-      }
-    })();
+  const historyQuery = useQuery({
+    queryKey: ["office", "daily-summaries", "history"],
+    queryFn: fetchDailySummaryHistory,
+    enabled: historyOpen,
+  });
 
-    return () => {
-      cancelled = true;
-    };
-  }, [dayKey]);
+  // Clear history override when the day navigator moves.
+  const summary =
+    historyOverride?.calendar_day === dayKey
+      ? historyOverride
+      : (summaryQuery.data ?? null);
+  const loading = summaryQuery.isLoading && !summary;
 
-  const openHistory = async () => {
+  const openHistory = () => {
     setHistoryOpen(true);
-    setHistoryLoading(true);
-    const res = await api.get<{ summaries: DailySummaryDto[] }>("/api/daily-summaries");
-    setHistoryLoading(false);
-    if (res.status === 200 && res.data) {
-      setHistory(res.data.summaries);
-    } else {
-      setHistory([]);
-    }
   };
 
   const selectHistoryItem = (item: DailySummaryDto) => {
     setHistoryOpen(false);
+    setHistoryOverride(item);
     onJumpToDay?.(item.calendar_day);
-    setSummary(item);
   };
 
   return (
@@ -94,7 +78,7 @@ export function DailySummaryPanel({ dayKey, onJumpToDay }: DailySummaryPanelProp
           </div>
           <button
             type="button"
-            onClick={() => void openHistory()}
+            onClick={openHistory}
             className="text-xs font-semibold px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
           >
             {t("dailySummaryHistory")}
@@ -153,13 +137,13 @@ export function DailySummaryPanel({ dayKey, onJumpToDay }: DailySummaryPanelProp
                 <p className="mt-1 text-xs text-slate-500">{t("dailySummaryHistoryHint")}</p>
               </div>
 
-              {historyLoading ? (
+              {historyQuery.isLoading ? (
                 <p className="text-sm text-slate-400 text-center">{t("officeLoading")}</p>
-              ) : history.length === 0 ? (
+              ) : (historyQuery.data ?? []).length === 0 ? (
                 <p className="text-sm text-slate-500 text-center">{t("dailySummaryHistoryEmpty")}</p>
               ) : (
                 <ul className="flex flex-col gap-2 max-h-[360px] overflow-y-auto">
-                  {history.map((item) => (
+                  {(historyQuery.data ?? []).map((item) => (
                     <li key={item.id}>
                       <button
                         type="button"

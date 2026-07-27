@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { api, getToken, setSession } from "./api-client";
+import { api, getToken, getRefreshToken, setSession, tryRefreshSession } from "./api-client";
 
 export interface CurrentUser {
   id: string;
@@ -29,6 +29,12 @@ export interface OfficeContact {
   phone: string | null;
 }
 
+async function ensureAccessToken(): Promise<boolean> {
+  if (getToken()) return true;
+  if (!getRefreshToken()) return false;
+  return tryRefreshSession();
+}
+
 // Session bootstrap for a protected page: verifies the stored token against
 // GET /api/auth/me, redirects to /login if missing/invalid, and gives the
 // real role so pages route by role instead of a UI toggle (Gap #1).
@@ -42,10 +48,13 @@ export function useCurrentUser() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (!getToken()) {
+      const hasSession = await ensureAccessToken();
+      if (cancelled) return;
+      if (!hasSession) {
         router.replace("/login");
         return;
       }
+
       const res = await api.get<{
         user: CurrentUser;
         company: CurrentCompany;
@@ -53,7 +62,10 @@ export function useCurrentUser() {
       }>("/api/auth/me");
       if (cancelled) return;
       if (res.status !== 200 || !res.data) {
-        setSession(null, null);
+        // api-client already attempted silent refresh on 401; only clear if still failed.
+        if (res.status === 401) {
+          setSession(null, null);
+        }
         router.replace("/login");
         return;
       }
@@ -62,7 +74,7 @@ export function useCurrentUser() {
       setOfficeContact(res.data.office_contact ?? null);
       setLoading(false);
     }
-    load();
+    void load();
     return () => {
       cancelled = true;
     };

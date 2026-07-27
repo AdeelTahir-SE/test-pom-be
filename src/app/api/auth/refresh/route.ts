@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     });
 
     if (error || !session.session) {
-      throw new ApiError("unauthorized", "Session expired. Please log in again.");
+      throw new ApiError("unauthorized", "Seja je potekla. Prijavite se znova.");
     }
 
     return ok({

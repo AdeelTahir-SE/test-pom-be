@@ -35,6 +35,11 @@ export const GET = withAuth<{ id: string }>(async (_request, auth, { params }) =
     throw new ApiError("forbidden", "You do not have access to this job.");
   }
 
+  // Soft-hidden cards stay readable for office audit; workers lose access.
+  if (auth.role === "worker" && job.hidden_at) {
+    throw new ApiError("forbidden", "You do not have access to this job.");
+  }
+
   return ok({ job: { ...job, worker_id: workerId } });
 });
 
@@ -52,6 +57,8 @@ const managerUpdateSchema = z
     status: jobStatusEnum.optional(),
     metadata: z.record(z.unknown()).optional(),
     display_order: z.number().int().min(0).optional(),
+    /** Soft-hide from boards — row + timeline/files/messages stay (Mark task 4). */
+    hidden: z.literal(true).optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, {
     message: "At least one field must be provided.",
@@ -113,16 +120,34 @@ export const PATCH = withAuth<{ id: string }>(async (request, auth, { params }) 
     throw new ApiError("forbidden", "You do not have access to this job.");
   }
 
-  // Completed Jobs are historical records — nothing may change (Immutability Rule §60).
-  if (currentStatus === "completed") {
-    throw new ApiError("conflict", "This job is completed and cannot be modified.");
+  // Soft-hidden jobs are archived from active boards; workers cannot act on them.
+  if (isWorker && job.hidden_at) {
+    throw new ApiError("forbidden", "You do not have access to this job.");
   }
 
   const input = isWorker
     ? await parseJsonBody(request, workerUpdateSchema)
     : await parseJsonBody(request, managerUpdateSchema);
 
+  const hideOnly =
+    !isWorker &&
+    (input as { hidden?: true }).hidden === true &&
+    Object.keys(input).length === 1;
+
+  // Completed Jobs are historical records — nothing may change (Immutability Rule §60),
+  // except soft-hide which only archives the card from boards without altering work data.
+  if (currentStatus === "completed" && !hideOnly) {
+    throw new ApiError("conflict", "This job is completed and cannot be modified.");
+  }
+
   const updates: Record<string, unknown> = {};
+
+  if (!isWorker && (input as z.infer<typeof managerUpdateSchema>).hidden === true) {
+    if (!job.hidden_at) {
+      updates.hidden_at = new Date().toISOString();
+      updates.hidden_by = auth.userId;
+    }
+  }
 
   if (input.status && input.status !== currentStatus) {
     if (isWorker && !WORKER_ALLOWED_STATUSES.includes(input.status as JobStatus)) {
@@ -227,8 +252,28 @@ export const PATCH = withAuth<{ id: string }>(async (request, auth, { params }) 
       }
     }
 
+    if (updates.hidden_at) {
+      // Soft-hide audit (closed event set — reuse job_updated with hidden flag).
+      await createTimelineEvent(db, {
+        companyId: auth.companyId,
+        jobId: job.id,
+        eventType: "job_updated",
+        userId: auth.userId,
+        metadata: {
+          hidden: true,
+          job_seq: job.company_seq,
+          title: job.title,
+        },
+      });
+    }
+
     const nonStatusFieldsChanged = Object.keys(updates).some(
-      (k) => k !== "status" && k !== "started_at" && k !== "completed_at"
+      (k) =>
+        k !== "status" &&
+        k !== "started_at" &&
+        k !== "completed_at" &&
+        k !== "hidden_at" &&
+        k !== "hidden_by"
     );
     if (nonStatusFieldsChanged) {
       await createTimelineEvent(db, {

@@ -58,7 +58,7 @@ export async function registerCompany(
 }
 
 export async function loginAs(email: string, password: string) {
-  return api.post<{ data?: { access_token: string } }>("/api/auth/login", {
+  return api.post<{ data?: { access_token: string; refresh_token: string } }>("/api/auth/login", {
     body: { email, password },
   });
 }

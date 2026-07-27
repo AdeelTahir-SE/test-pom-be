@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useLanguage } from "@/lib/useLanguage";
+import { normalizeRemindTime } from "@/lib/officeDate";
 import {
   AuraLabel,
   AuraInput,
@@ -75,11 +76,12 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
     if (!title) return;
 
     const finalPhone = phoneNumber && isValidPhone(phoneNumber) ? normalizedPhone(phoneNumber) : "";
+    const normalizedTime = normalizeRemindTime(time) ?? "";
 
     onAddReminder({
       title,
       description,
-      time,
+      time: normalizedTime,
       date: date || new Date().toLocaleDateString("sl-SI"),
       isUrgent,
       hasAttachment,

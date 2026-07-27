@@ -77,7 +77,7 @@ export function TeamManagementModal({ isOpen, onOpenChange, currentUserId, onCha
       await load();
       onChanged?.();
     } else {
-      alert(res.error?.message ?? "Failed to update user.");
+      alert(res.error?.message ?? "Uporabnika ni bilo mogoče posodobiti.");
     }
   };
 

@@ -5,6 +5,7 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { parseJsonBody } from "@/lib/validation/schemas";
 import { notifyUser } from "@/lib/services/notifications";
 import { LIMITS, REMINDER_ACTIONS } from "@/config/constants";
+import { normalizeRemindTime } from "@/lib/officeDate";
 
 export const dynamic = "force-dynamic";
 
@@ -46,18 +47,6 @@ export const GET = withAuth(
   },
   { roles: ["owner", "manager"] }
 );
-
-/** Normalize form wall-clock time to HH:mm (24h). Rejects invalid values. */
-function normalizeRemindTime(raw: string | undefined): string | null {
-  if (!raw?.trim()) return null;
-  const trimmed = raw.trim().replace(".", ":");
-  const match = trimmed.match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return null;
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  if (hour > 23 || minute > 59) return null;
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-}
 
 const createReminderSchema = z.object({
   title: z.string().trim().min(1, "Title is required."),

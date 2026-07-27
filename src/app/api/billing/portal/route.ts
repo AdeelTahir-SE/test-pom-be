@@ -30,6 +30,7 @@ export const POST = withAuth(
     const portal = await stripe.billingPortal.sessions.create({
       customer: company.stripe_customer_id,
       return_url: `${appBaseUrl()}/dashboard/office`,
+      locale: "sl",
     });
 
     return ok({ url: portal.url });

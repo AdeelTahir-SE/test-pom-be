@@ -59,6 +59,7 @@ export const POST = withAuth(
       mode: "subscription",
       customer: customerId,
       client_reference_id: company.id,
+      locale: "sl",
       line_items: [{ price: env.stripePriceIdMonthly, quantity: 1 }],
       success_url: `${base}/dashboard/office?billing=success`,
       cancel_url: `${base}/dashboard/office?billing=cancel`,

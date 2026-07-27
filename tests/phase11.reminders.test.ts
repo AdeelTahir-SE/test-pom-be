@@ -27,6 +27,7 @@ interface ReminderDto {
   action_state: { confirmed?: boolean; rejected?: boolean };
   order_index: number;
   hidden_at: string | null;
+  hidden_by?: string | null;
 }
 
 interface NotificationDto {
@@ -56,6 +57,21 @@ describe("Phase 11 — Office Reminders (PISARNA)", () => {
     expect(res.status).toBe(201);
     expect(res.body.data?.reminder.remind_time).toBe("16:48");
     expect(res.body.data?.reminder.remind_on).toBe(isoDateOffset(0));
+  });
+
+  it("normalizes dot-separated remind_time on create", async () => {
+    const owner = await registerCompany();
+    createdCompanies.push(owner);
+
+    const res = await api.post<{ data?: { reminder: ReminderDto } }>("/api/office-reminders", {
+      token: owner.accessToken,
+      body: {
+        title: "Call at four",
+        remind_time: "16.48",
+      },
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.data?.reminder.remind_time).toBe("16:48");
   });
 
   it("owner creates a reminder with title only", async () => {
@@ -223,6 +239,8 @@ describe("Phase 11 — Office Reminders (PISARNA)", () => {
     );
     expect(hideRes.status).toBe(200);
     expect(hideRes.body.data?.reminder.hidden_at).toBeTruthy();
+    expect(hideRes.body.data?.reminder.hidden_by).toBe(owner.userId);
+    expect(hideRes.body.data?.reminder.title).toBe("Dismiss me");
 
     const listRes = await api.get<{ data?: { reminders: ReminderDto[] } }>(
       "/api/office-reminders",

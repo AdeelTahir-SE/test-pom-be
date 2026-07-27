@@ -61,6 +61,7 @@ import {
   isoToLocalDayKey,
   jobBelongsToDay,
   localDayToScheduledAt,
+  normalizeRemindTime,
   notificationBelongsToDay,
   parseFlexibleDate,
   startOfLocalDay,
@@ -286,6 +287,7 @@ export default function OfficeDashboard() {
       j.worker_id &&
       j.status !== 'completed' &&
       j.status !== 'cancelled' &&
+      !j.hidden_at &&
       jobBelongsToDay(j, selectedDayKey, boardTodayKey),
   );
 
@@ -297,10 +299,7 @@ export default function OfficeDashboard() {
       notificationBelongsToDay(n, selectedDayKey),
   );
 
-  const dayFieldOverview = (summary?.field_overview ?? []).filter((f) => {
-    const job = jobById.get(f.job_id);
-    return job ? jobBelongsToDay(job, selectedDayKey, boardTodayKey) : false;
-  });
+  const dayFieldOverview = summary?.field_overview ?? [];
   const dayUrgent = dayReminders.find((r) => r.is_urgent) ?? null;
 
   const selectedJob = selectedWorkerJobId
@@ -365,7 +364,7 @@ export default function OfficeDashboard() {
       void refreshBoard();
     } else {
       void refreshBoard();
-      alert(res.error?.message ?? "Failed to update job status.");
+      alert(res.error?.message ?? "Posodobitev se ni izvedla.");
     }
   };
 
@@ -430,7 +429,7 @@ export default function OfficeDashboard() {
           delete next[tempId];
           return next;
         });
-        alert(res.error?.message ?? "Failed to create job.");
+        alert(res.error?.message ?? "Prišlo je do napake. Ni bilo dodano.");
         return;
       }
 
@@ -485,7 +484,7 @@ export default function OfficeDashboard() {
     if (reminderData.hasDecline) actions.push('reject');
 
     const remindDay = parseFlexibleDate(reminderData.date ?? "") ?? selectedDate;
-    const remindTime = reminderData.time.trim() || null;
+    const remindTime = normalizeRemindTime(reminderData.time);
     const tempId = newOptimisticId();
     const now = new Date().toISOString();
     const optimistic: ApiOfficeReminder = {
@@ -521,7 +520,7 @@ export default function OfficeDashboard() {
         void refreshBoard();
       } else {
         setReminders((prev) => prev.filter((r) => r.id !== tempId));
-        alert(res.error?.message ?? "Failed to create reminder.");
+        alert(res.error?.message ?? "Opomnika ni bilo mogoče ustvariti.");
       }
     })();
   };
@@ -547,14 +546,14 @@ export default function OfficeDashboard() {
       if (res.data?.temporary_password) {
         // Shown exactly once — the backend never returns it again.
         const label =
-          workerData.role === 'worker' ? 'Login code' : 'Temporary password';
+          workerData.role === 'worker' ? 'Koda za prijavo' : 'Začasno geslo';
         alert(
-          `Account created for ${workerData.email}.\n${label}: ${res.data.temporary_password}\n\nShare this with them directly — it will not be shown again.`,
+          `Račun ustvarjen za ${workerData.email}.\n${label}: ${res.data.temporary_password}\n\nZapišite si to geslo in jim ga posredujte; kasneje ne bo več prikazano.`,
         );
       }
       void refreshBoard();
     } else {
-      alert(res.error?.message ?? 'Failed to create account.');
+      alert(res.error?.message ?? 'Prišlo je do napake. Račun ni bil ustvarjen.');
     }
   };
 
@@ -596,7 +595,7 @@ export default function OfficeDashboard() {
     const res = await api.patch(`/api/office-reminders/${id}`, { hidden: true });
     if (res.status !== 200) {
       setReminders(snapshot);
-      alert(res.error?.message ?? "Failed to hide reminder.");
+      alert(res.error?.message ?? "Napaka. Opomnika ni bilo mogoče izbrisati.");
     }
   };
   const handleReminderDragEnd = (event: DragEndEvent) => {
@@ -619,6 +618,23 @@ export default function OfficeDashboard() {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
     const res = await api.patch(`/api/notifications/${id}`, { hidden: true });
     if (res.status !== 200) setNotifications(snapshot);
+  };
+  const handleDismissJob = async (id: string) => {
+    if (isOptimisticId(id)) {
+      setJobs((prev) => prev.filter((j) => j.id !== id));
+      return;
+    }
+    const snapshot = jobs;
+    setJobs((prev) => prev.filter((j) => j.id !== id));
+    if (selectedWorkerJobId === id) {
+      setIsWorkerDetailOpen(false);
+      setSelectedWorkerJobId(null);
+    }
+    const res = await api.patch(`/api/jobs/${id}`, { hidden: true });
+    if (res.status !== 200) {
+      setJobs(snapshot);
+      alert(res.error?.message ?? "Kartice ni bilo mogoče skriti.");
+    }
   };
   const handleJobDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -785,7 +801,7 @@ export default function OfficeDashboard() {
           </button>
           <Link
             href="/dashboard/office/db"
-            title="Podatkovni center (Database)"
+            title="Podatkovni center"
             className="p-2 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer flex items-center justify-center"
           >
             <Database className="h-4 w-4" />
@@ -955,6 +971,7 @@ export default function OfficeDashboard() {
                             ) || formatSiDate(new Date(job.created_at))
                           }
                           orderId={jobNumber(job)}
+                          onDismiss={() => void handleDismissJob(job.id)}
                           onClick={() => {
                             setSelectedWorkerJobId(job.id);
                             setIsWorkerDetailOpen(true);
@@ -1107,7 +1124,7 @@ export default function OfficeDashboard() {
           <button
             onClick={() => goToColumn(activeTab - 1)}
             disabled={activeTab === 0}
-            aria-label="Previous column"
+            aria-label="Prejšnji stolpec"
             style={{
               width: '44px',
               height: '44px',
@@ -1143,7 +1160,7 @@ export default function OfficeDashboard() {
           <button
             onClick={() => goToColumn(activeTab + 1)}
             disabled={activeTab === 2}
-            aria-label="Next column"
+            aria-label="Naslednji stolpec"
             style={{
               width: '44px',
               height: '44px',

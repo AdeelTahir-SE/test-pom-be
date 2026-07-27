@@ -25,6 +25,8 @@ interface JobDto {
   started_at: string | null;
   completed_at: string | null;
   scheduled_at: string | null;
+  hidden_at?: string | null;
+  hidden_by?: string | null;
 }
 
 async function setupCompanyWithWorker() {
@@ -301,5 +303,100 @@ describe("Phase 4 — Jobs Engine", () => {
     const scheduledIdx = ids.indexOf(scheduled.body.data!.job.id);
     const unscheduledIdx = ids.indexOf(unscheduled.body.data!.job.id);
     expect(scheduledIdx).toBeLessThan(unscheduledIdx);
+  });
+
+  it("soft-hides a TEREN card: gone from board list, data + timeline preserved (Mark task 4)", async () => {
+    const { owner, worker, workerToken } = await setupCompanyWithWorker();
+    const jobRes = await api.post<{ data?: { job: JobDto } }>("/api/jobs", {
+      token: owner.accessToken,
+      body: { title: "Hide from board", worker_id: worker.userId, location: "Celje" },
+    });
+    const jobId = jobRes.body.data!.job.id;
+
+    await api.post(`/api/jobs/${jobId}/checklist`, {
+      token: owner.accessToken,
+      body: { label: "Keep this step" },
+    });
+    await api.post(`/api/jobs/${jobId}/messages`, {
+      token: owner.accessToken,
+      body: { content: "Keep this message" },
+    });
+
+    const workerHide = await api.patch(`/api/jobs/${jobId}`, {
+      token: workerToken,
+      body: { hidden: true },
+    });
+    expect(workerHide.status).toBe(400);
+
+    const hideRes = await api.patch<{ data?: { job: JobDto } }>(`/api/jobs/${jobId}`, {
+      token: owner.accessToken,
+      body: { hidden: true },
+    });
+    expect(hideRes.status).toBe(200);
+    expect(hideRes.body.data?.job.hidden_at).toBeTruthy();
+    expect(hideRes.body.data?.job.hidden_by).toBe(owner.userId);
+    expect(hideRes.body.data?.job.title).toBe("Hide from board");
+    expect(hideRes.body.data?.job.status).toBe("pending");
+
+    const list = await api.get<{ data?: { jobs: JobDto[] } }>("/api/jobs", {
+      token: owner.accessToken,
+    });
+    expect(list.body.data?.jobs.some((j) => j.id === jobId)).toBe(false);
+
+    const workerList = await api.get<{ data?: { jobs: JobDto[] } }>("/api/jobs", {
+      token: workerToken,
+    });
+    expect(workerList.body.data?.jobs.some((j) => j.id === jobId)).toBe(false);
+
+    const detail = await api.get<{ data?: { job: JobDto } }>(`/api/jobs/${jobId}`, {
+      token: owner.accessToken,
+    });
+    expect(detail.status).toBe(200);
+    expect(detail.body.data?.job.hidden_at).toBeTruthy();
+    expect(detail.body.data?.job.title).toBe("Hide from board");
+
+    const workerDetail = await api.get(`/api/jobs/${jobId}`, { token: workerToken });
+    expect(workerDetail.status).toBe(403);
+
+    const checklist = await api.get<{ data?: { checklist: { label: string }[] } }>(
+      `/api/jobs/${jobId}/checklist`,
+      { token: owner.accessToken }
+    );
+    expect(checklist.status).toBe(200);
+    expect(checklist.body.data?.checklist.map((c) => c.label)).toContain("Keep this step");
+
+    const messages = await api.get<{ data?: { messages: { content: string | null }[] } }>(
+      `/api/jobs/${jobId}/messages`,
+      { token: owner.accessToken }
+    );
+    expect(messages.status).toBe(200);
+    expect(messages.body.data?.messages.some((m) => m.content === "Keep this message")).toBe(
+      true
+    );
+
+    const events = await getTimelineEvents(jobId);
+    const hideEvent = events.find(
+      (e) => e.event_type === "job_updated" && e.metadata?.hidden === true
+    );
+    expect(hideEvent).toBeTruthy();
+
+    const timeline = await api.get<{ data?: { timeline: { event_type: string }[] } }>(
+      `/api/jobs/${jobId}/timeline`,
+      { token: owner.accessToken }
+    );
+    expect(timeline.status).toBe(200);
+    expect(timeline.body.data?.timeline.length).toBeGreaterThan(0);
+
+    const summary = await api.get<{ data?: { field_overview: { job_id: string }[] } }>(
+      "/api/dashboard/summary",
+      { token: owner.accessToken }
+    );
+    expect(summary.body.data?.field_overview.some((f) => f.job_id === jobId)).toBe(false);
+
+    const withHidden = await api.get<{ data?: { jobs: JobDto[] } }>(
+      "/api/jobs?include_hidden=true",
+      { token: owner.accessToken }
+    );
+    expect(withHidden.body.data?.jobs.some((j) => j.id === jobId)).toBe(true);
   });
 });

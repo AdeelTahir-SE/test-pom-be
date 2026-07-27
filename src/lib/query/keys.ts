@@ -5,7 +5,8 @@ export const queryKeys = {
     reminders: (dayKey: string) => ["office", "reminders", dayKey] as const,
     notifications: () => ["office", "notifications"] as const,
     users: () => ["office", "users"] as const,
-    summary: () => ["office", "summary"] as const,
+    summary: (dayKey: string) => ["office", "summary", dayKey] as const,
+    dailySummary: (dayKey: string) => ["office", "daily-summary", dayKey] as const,
     checklists: (jobIdsKey: string) => ["office", "checklists", jobIdsKey] as const,
   },
   job: {

@@ -36,5 +36,11 @@ export async function loadJobWithAccess(
     throw new ApiError("forbidden", "You do not have access to this job.");
   }
 
+  // Soft-hidden from office board — workers lose active access; office keeps
+  // timeline/files/messages for audit (loadJobWithAccess used by those routes).
+  if (auth.role === "worker" && job.hidden_at) {
+    throw new ApiError("forbidden", "You do not have access to this job.");
+  }
+
   return { job: job as JobAccessResult["job"], workerId };
 }

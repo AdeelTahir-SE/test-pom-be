@@ -184,4 +184,40 @@ describe("Phase 2 — Platform Admin (separate identity kind, §3.1)", () => {
     const res = await api.get("/api/auth/me", { token: admin.accessToken });
     expect(res.status).toBe(403);
   });
+
+  it("refresh exchanges a refresh_token for a new access token", async () => {
+    const reg = await registerCompany();
+    createdCompanies.push(reg);
+
+    const login = await loginAs(reg.email, reg.password);
+    const refreshToken = login.body.data?.refresh_token as string;
+    expect(refreshToken).toBeTruthy();
+
+    const refreshed = await api.post<{
+      data?: { access_token: string; refresh_token: string };
+    }>("/api/auth/refresh", { body: { refresh_token: refreshToken } });
+    expect(refreshed.status).toBe(200);
+    expect(refreshed.body.data?.access_token).toBeTruthy();
+
+    const me = await api.get("/api/auth/me", {
+      token: refreshed.body.data!.access_token,
+    });
+    expect(me.status).toBe(200);
+  });
+
+  it("forgot-password accepts a valid email without leaking account existence", async () => {
+    const reg = await registerCompany();
+    createdCompanies.push(reg);
+
+    const res = await api.post<{ data?: { sent: boolean } }>("/api/auth/forgot-password", {
+      body: { email: reg.email },
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.data?.sent).toBe(true);
+
+    const unknown = await api.post("/api/auth/forgot-password", {
+      body: { email: uniqueEmail("nobody") },
+    });
+    expect(unknown.status).toBe(200);
+  });
 });

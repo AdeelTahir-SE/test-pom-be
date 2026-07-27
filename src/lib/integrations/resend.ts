@@ -17,18 +17,18 @@ export async function sendWelcomeEmail(params: {
   const apiKey = env.resendApiKey;
   if (!apiKey) return false;
 
-  const credentialLabel = params.role === "worker" ? "Login code" : "Temporary password";
-  const subject = `Your ${params.companyName} account is ready`;
+  const credentialLabel = params.role === "worker" ? "Koda za prijavo" : "Začasno geslo";
+  const subject = `Vaš račun za ${params.companyName} je pripravljen`;
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a;">
-      <p>Hi ${params.fullName},</p>
-      <p>An account was created for you on <strong>${params.companyName}</strong>.</p>
+      <p>Pozdravljeni ${params.fullName},</p>
+      <p>Za vas je bil ustvarjen račun pri <strong>${params.companyName}</strong>.</p>
       <p style="margin: 24px 0; padding: 16px 20px; background: #f1f5f9; border-radius: 12px;">
         <span style="display:block; font-size: 11px; text-transform: uppercase; color: #64748b; letter-spacing: 0.05em;">${credentialLabel}</span>
         <span style="display:block; font-size: 22px; font-weight: 700; margin-top: 4px; letter-spacing: 0.05em;">${params.credential}</span>
       </p>
-      <p>Email: ${params.to}</p>
-      <p style="color: #64748b; font-size: 13px;">You can change this after logging in.</p>
+      <p>E-pošta: ${params.to}</p>
+      <p style="color: #64748b; font-size: 13px;">Po prijavi lahko geslo spremenite.</p>
     </div>
   `;
 

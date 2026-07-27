@@ -36,7 +36,10 @@ export const PATCH = withAuth<{ id: string }>(
 
     const updates: Record<string, unknown> = {};
     if (input.order_index !== undefined) updates.order_index = input.order_index;
-    if (input.hidden) updates.hidden_at = new Date().toISOString();
+    if (input.hidden) {
+      updates.hidden_at = new Date().toISOString();
+      updates.hidden_by = auth.userId;
+    }
     if (input.confirm) {
       updates.action_state = { ...reminder.action_state, confirmed: true, rejected: false };
     }

@@ -1,8 +1,15 @@
 import { withAuth } from "@/lib/http/handler";
 import { ok, ApiError } from "@/lib/http/responses";
 import { getAdminClient } from "@/lib/supabase/admin";
+import {
+  boardTodayKey,
+  jobBelongsToDay,
+  parseFlexibleDate,
+} from "@/lib/officeDate";
 
 export const dynamic = "force-dynamic";
+
+const CALENDAR_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 interface JobRow {
   id: string;
@@ -10,33 +17,47 @@ interface JobRow {
   location: string | null;
   status: string;
   scheduled_at: string | null;
+  created_at: string;
+  hidden_at: string | null;
 }
 
 // GET /api/dashboard/summary — the Desktop Dashboard top bar: left side is
-// today's field overview (worker, job, location, checklist progress), right
-// side is the single highest-priority urgent office reminder. Owner/manager
-// only (Dashboard spec: workers don't see this composite view). Every value
-// is computed fresh from primary tables at request time — no derived/
-// aggregate tables, no caching of business state (Part 9).
+// field overview for the selected office day (`?date=YYYY-MM-DD`, default
+// today), right side is the single highest-priority urgent office reminder for
+// that day. Owner/manager only. Values are computed fresh from primary tables.
 export const GET = withAuth(
-  async (_request, auth) => {
+  async (request, auth) => {
     const db = getAdminClient();
+    const todayKey = boardTodayKey();
+    const rawDate = new URL(request.url).searchParams.get("date");
+    let forDate = todayKey;
+    if (rawDate !== null && rawDate !== "") {
+      if (!CALENDAR_DAY_RE.test(rawDate) || !parseFlexibleDate(rawDate)) {
+        throw new ApiError("bad_request", "Query parameter date must be YYYY-MM-DD.");
+      }
+      forDate = rawDate;
+    }
 
-    // "Today's field overview" = active (non-terminal) jobs that have an
-    // assigned worker. Daily Work Cards are created fresh each day by the
-    // office (Foundation Part 8 §2), so any non-completed/cancelled assigned
-    // job is, by construction, current field work.
     const { data: jobs, error: jobsError } = await db
       .from("jobs")
-      .select("id, title, location, status, scheduled_at")
+      .select("id, title, location, status, scheduled_at, created_at, hidden_at")
       .eq("company_id", auth.companyId)
       .in("status", ["pending", "in_progress", "waiting"])
+      .is("hidden_at", null)
       .order("scheduled_at", { ascending: true, nullsFirst: false });
     if (jobsError) {
       throw new ApiError("internal", "Failed to load jobs overview.", jobsError.message);
     }
 
-    const jobIds = (jobs ?? []).map((j: JobRow) => j.id);
+    const dayJobs = (jobs ?? []).filter((j: JobRow) =>
+      jobBelongsToDay(
+        { scheduled_at: j.scheduled_at, created_at: j.created_at },
+        forDate,
+        todayKey
+      )
+    );
+
+    const jobIds = dayJobs.map((j: JobRow) => j.id);
 
     const [assignmentsResult, checklistResult] = await Promise.all([
       jobIds.length > 0
@@ -75,9 +96,7 @@ export const GET = withAuth(
       checklistCountsByJob.set(item.job_id, entry);
     }
 
-    // Only jobs with an assigned worker belong on the field overview — an
-    // unassigned job has no one to report on.
-    const fieldOverview = (jobs ?? [])
+    const fieldOverview = dayJobs
       .filter((j: JobRow) => workerIdByJob.has(j.id))
       .map((j: JobRow) => {
         const workerId = workerIdByJob.get(j.id)!;
@@ -93,14 +112,20 @@ export const GET = withAuth(
         };
       });
 
-    const today = new Date().toISOString().slice(0, 10);
-    const { data: urgentReminder, error: reminderError } = await db
+    let urgentQuery = db
       .from("office_reminders")
       .select("id, title, description, created_at")
       .eq("company_id", auth.companyId)
       .eq("is_urgent", true)
-      .is("hidden_at", null)
-      .or(`remind_on.is.null,remind_on.lte.${today}`)
+      .is("hidden_at", null);
+
+    if (forDate === todayKey) {
+      urgentQuery = urgentQuery.or(`remind_on.is.null,remind_on.lte.${todayKey}`);
+    } else {
+      urgentQuery = urgentQuery.eq("remind_on", forDate);
+    }
+
+    const { data: urgentReminder, error: reminderError } = await urgentQuery
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
