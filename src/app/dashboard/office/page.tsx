@@ -69,6 +69,7 @@ import {
 } from "@/lib/officeDate";
 import { useOfficeBoard } from "@/hooks/useOfficeBoard";
 import { isOptimisticId, newOptimisticId } from "@/lib/optimisticId";
+import { toTelHref } from "@/lib/phone";
 
 interface ApiJobMessage {
   id: string;
@@ -1049,7 +1050,8 @@ export default function OfficeDashboard() {
                         onDismiss={() => handleDismissReminder(r.id)}
                         onArchive={() => handleDeclineReminder(r.id)}
                         onCall={() => {
-                          if (r.phone) window.location.href = `tel:${r.phone}`;
+                          const href = toTelHref(r.phone);
+                          if (href) window.location.href = href;
                         }}
                       />
                     </SortableItem>

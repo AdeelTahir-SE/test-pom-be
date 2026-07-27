@@ -10,6 +10,7 @@ import {
   auraCard,
   auraButton,
 } from "./AuraForm";
+import { isValidPhone, normalizePhone, toTelHref } from "@/lib/phone";
 
 interface AddWorkerCardProps {
   isOpen: boolean;
@@ -32,9 +33,7 @@ export function AddWorkerCard({ isOpen, onOpenChange, onAddWorker }: AddWorkerCa
   const [password, setPassword] = useState("");
   const [phoneError, setPhoneError] = useState<string | null>(null);
 
-  const sanitizePhone = (raw: string) => raw.replace(/[^0-9+\s]/g, "");
-  const isValidPhone = (raw: string) => /^\+?[0-9\s]{6,}$/.test(raw.trim());
-  const normalizedPhone = (raw: string) => raw.trim().replace(/\s+/g, "");
+  const sanitizePhone = (raw: string) => raw.replace(/[^0-9+\s./()-]/g, "");
 
   const handlePhoneChange = (raw: string) => {
     const sanitized = sanitizePhone(raw);
@@ -50,10 +49,14 @@ export function AddWorkerCard({ isOpen, onOpenChange, onAddWorker }: AddWorkerCa
     e.preventDefault();
     if (!name || !email) return;
     if (role === "manager" && password && password.length < 8) return;
+    if (phone && !isValidPhone(phone)) {
+      setPhoneError(t("modalPhoneInvalid"));
+      return;
+    }
 
     onAddWorker({
       name,
-      phone: phone && isValidPhone(phone) ? normalizedPhone(phone) : "",
+      phone: normalizePhone(phone) ?? "",
       email,
       role,
       password: role === "manager" ? password : "",
@@ -110,9 +113,9 @@ export function AddWorkerCard({ isOpen, onOpenChange, onAddWorker }: AddWorkerCa
                   <AuraLabel>{t("modalWorkerPhoneOnlyLabel")}</AuraLabel>
                   <div className="flex items-center gap-2">
                     <a
-                      href={phone && isValidPhone(phone) ? `tel:${normalizedPhone(phone)}` : "#"}
+                      href={toTelHref(phone) ?? "#"}
                       onClick={(e) => {
-                        if (!phone || !isValidPhone(phone)) {
+                        if (!toTelHref(phone)) {
                           e.preventDefault();
                         }
                       }}
@@ -121,7 +124,7 @@ export function AddWorkerCard({ isOpen, onOpenChange, onAddWorker }: AddWorkerCa
                     >
                       <div
                         className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-all ${
-                          phone && isValidPhone(phone)
+                          toTelHref(phone)
                             ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-[0_4px_10px_-2px_rgba(27,58,107,0.3)]"
                             : "bg-white border-[#1B3A6B]/25 text-slate-500"
                         }`}

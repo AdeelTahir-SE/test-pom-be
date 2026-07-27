@@ -3,6 +3,7 @@ import { withAuth } from "@/lib/http/handler";
 import { ok, ApiError } from "@/lib/http/responses";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { parseJsonBody } from "@/lib/validation/schemas";
+import { normalizePhone } from "@/lib/phone";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,7 @@ const updateUserSchema = z
     full_name: z.string().trim().min(1).optional(),
     role: z.enum(["manager", "worker"]).optional(),
     is_active: z.boolean().optional(),
-    phone: z.string().trim().min(1).optional(),
+    phone: z.string().trim().min(1).nullable().optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, {
     message: "At least one field must be provided.",
@@ -65,13 +66,32 @@ export const PATCH = withAuth<{ id: string }>(
     if (!existing) {
       throw new ApiError("not_found", "User not found.");
     }
+
+    const updates: Record<string, unknown> = { ...input };
+    if (input.phone !== undefined) {
+      updates.phone = input.phone === null ? null : normalizePhone(input.phone);
+    }
+
     if (existing.role === "owner") {
-      throw new ApiError("forbidden", "The owner account cannot be modified through this endpoint.");
+      // Owner row is otherwise immutable — but the owner must be able to set
+      // their own phone so workers get one-tap "call office" (office_contact).
+      if (params.id !== auth.userId) {
+        throw new ApiError(
+          "forbidden",
+          "The owner account cannot be modified through this endpoint."
+        );
+      }
+      if (input.role !== undefined || input.is_active !== undefined) {
+        throw new ApiError(
+          "forbidden",
+          "The owner account cannot be modified through this endpoint."
+        );
+      }
     }
 
     const { data: updated, error: updateError } = await db
       .from("users")
-      .update(input)
+      .update(updates)
       .eq("id", params.id)
       .eq("company_id", auth.companyId)
       .select("id, email, full_name, role, phone, is_active, created_at")

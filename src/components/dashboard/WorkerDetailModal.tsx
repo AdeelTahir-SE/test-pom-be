@@ -42,6 +42,7 @@ import { queryKeys } from "@/lib/query/keys";
 import { fetchJobFiles, fetchJobTimeline } from "@/lib/query/office";
 import { parseNoteText } from "./CustomerNotesBanner";
 import { formatSiDateFromIso, formatSiDateTimeFromIso, formatSiTimeFromIso } from "@/lib/officeDate";
+import { toTelHref } from "@/lib/phone";
 interface CustomerNoteDto {
   id: string;
   note: string;
@@ -615,6 +616,8 @@ export function WorkerDetailModal({
 
   if (!worker) return null;
 
+  const workerTelHref = toTelHref(worker.phone);
+
   const renderStatusSection = () => {
     if (!jobStatus || !onChangeJobStatus) return null;
     const isTerminal = jobStatus === "completed" || jobStatus === "cancelled";
@@ -705,6 +708,35 @@ export function WorkerDetailModal({
 
   const renderContentBody = () => (
     <div className="flex flex-col gap-[48px] text-[#1E293B]">
+      {/* One-tap call to the worker (phone from Dodaj zaposlenega / team profile). */}
+      <div className="flex flex-col gap-2">
+        <span
+          style={{
+            fontFamily: "'PT Sans', sans-serif",
+            fontWeight: 700,
+            fontSize: "12px",
+            color: "#5A5A65",
+            textTransform: "uppercase",
+            letterSpacing: "0.5px",
+          }}
+        >
+          {t("workerCallWorker")}
+        </span>
+        {workerTelHref ? (
+          <a
+            href={workerTelHref}
+            className="inline-flex items-center justify-center gap-2 h-11 rounded-xl bg-[#1B3A6B] text-white text-xs font-semibold no-underline hover:bg-[#142c52] transition-colors"
+          >
+            <svg width="16" height="16" viewBox="0 0 20 18" fill="currentColor" aria-hidden>
+              <path d="M7.22477 1.25722C6.8873 0.497902 6.0702 0 5.16154 0H2.10521C0.942534 0 0 0.848098 0 1.89453C0 10.7892 8.01177 18 17.8945 18C19.0572 18 19.9995 17.1516 19.9995 16.1052L20 13.354C20 12.5362 19.4469 11.8009 18.6033 11.4971L15.674 10.4429C14.9161 10.1701 14.0533 10.2929 13.4263 10.7632L12.6702 11.3307C11.7873 11.9929 10.4882 11.9402 9.67552 11.2088L7.54672 9.29106C6.73403 8.55963 6.67398 7.39134 7.40975 6.59669L8.04016 5.9163C8.56268 5.35196 8.70032 4.57516 8.39719 3.89309L7.22477 1.25722Z" />
+            </svg>
+            {worker.phone}
+          </a>
+        ) : (
+          <p className="text-xs text-slate-400">{t("workerNoWorkerPhone")}</p>
+        )}
+      </div>
+
       {renderStatusSection()}
       {/* Section: OPOMBE */}
       <div className="flex flex-col gap-3">

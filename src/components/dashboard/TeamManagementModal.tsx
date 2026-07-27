@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useLanguage } from "@/lib/useLanguage";
 import { api } from "@/lib/api-client";
+import { normalizePhone } from "@/lib/phone";
 import {
   AuraLabel,
   AuraInput,
@@ -65,12 +66,20 @@ export function TeamManagementModal({ isOpen, onOpenChange, currentUserId, onCha
   const handleSaveEdit = async () => {
     if (!editingUser) return;
     setSaving(true);
-    const res = await api.patch(`/api/users/${editingUser.id}`, {
-      full_name: editName,
-      phone: editPhone || undefined,
-      role: editRole,
-      is_active: editActive,
-    });
+    // Owner self-edit: name + phone only (role/active stay immutable).
+    const payload =
+      editingUser.role === "owner"
+        ? {
+            full_name: editName,
+            phone: normalizePhone(editPhone) ?? undefined,
+          }
+        : {
+            full_name: editName,
+            phone: normalizePhone(editPhone) ?? undefined,
+            role: editRole,
+            is_active: editActive,
+          };
+    const res = await api.patch(`/api/users/${editingUser.id}`, payload);
     setSaving(false);
     if (res.status === 200) {
       setEditingUser(null);
@@ -116,8 +125,12 @@ export function TeamManagementModal({ isOpen, onOpenChange, currentUserId, onCha
                   <button
                     key={u.id}
                     type="button"
-                    onClick={() => u.role !== "owner" && startEdit(u)}
-                    disabled={u.role === "owner"}
+                    onClick={() => {
+                      // Owner may edit their own phone (call-office); other owners locked.
+                      if (u.role === "owner" && u.id !== currentUserId) return;
+                      startEdit(u);
+                    }}
+                    disabled={u.role === "owner" && u.id !== currentUserId}
                     className="flex items-center justify-between px-3 py-3 text-left hover:bg-slate-50 disabled:hover:bg-transparent disabled:cursor-default transition-colors bg-transparent border-none"
                   >
                     <div className="flex flex-col">
@@ -165,24 +178,28 @@ export function TeamManagementModal({ isOpen, onOpenChange, currentUserId, onCha
                 />
               </div>
 
-              <div>
-                <AuraLabel>{t("modalWorkerRoleLabel")}</AuraLabel>
-                <AuraSelect value={editRole} onChange={(e) => setEditRole(e.target.value as "worker" | "manager")}>
-                  <option value="worker">{t("modalWorkerRoleWorker")}</option>
-                  <option value="manager">{t("modalWorkerRoleManager")}</option>
-                </AuraSelect>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  {editRole === "manager" ? t("modalWorkerRoleManagerHelper") : t("modalWorkerRoleWorkerHelper")}
-                </p>
-              </div>
+              {editingUser.role !== "owner" && (
+                <>
+                  <div>
+                    <AuraLabel>{t("modalWorkerRoleLabel")}</AuraLabel>
+                    <AuraSelect value={editRole} onChange={(e) => setEditRole(e.target.value as "worker" | "manager")}>
+                      <option value="worker">{t("modalWorkerRoleWorker")}</option>
+                      <option value="manager">{t("modalWorkerRoleManager")}</option>
+                    </AuraSelect>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      {editRole === "manager" ? t("modalWorkerRoleManagerHelper") : t("modalWorkerRoleWorkerHelper")}
+                    </p>
+                  </div>
 
-              <AuraCheckbox
-                checked={editActive}
-                onChange={setEditActive}
-                label={t("teamActiveLabel")}
-              />
-              {editingUser.id === currentUserId && !editActive && (
-                <p className="text-[11px] text-red-500">{t("teamCannotDeactivateSelf")}</p>
+                  <AuraCheckbox
+                    checked={editActive}
+                    onChange={setEditActive}
+                    label={t("teamActiveLabel")}
+                  />
+                  {editingUser.id === currentUserId && !editActive && (
+                    <p className="text-[11px] text-red-500">{t("teamCannotDeactivateSelf")}</p>
+                  )}
+                </>
               )}
 
               <div className="flex gap-2">

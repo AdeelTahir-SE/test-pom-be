@@ -38,9 +38,16 @@ describe("Local smoke — 02-01 remaining gaps", () => {
     created.push(owner);
     expect(owner.status).toBe(201);
 
-    // Give owner a phone so worker can call.
-    const db = (await import("@/lib/supabase/admin")).getAdminClient();
-    await db.from("users").update({ phone: "+38640111222" }).eq("id", owner.userId!);
+    // Owner sets their own phone (Team → edit self) so workers can call office.
+    const phoneRes = await api.patch<{ data?: { user: { phone: string | null } } }>(
+      `/api/users/${owner.userId}`,
+      {
+        token: owner.accessToken!,
+        body: { phone: "+386 40 111 222" },
+      }
+    );
+    expect(phoneRes.status).toBe(200);
+    expect(phoneRes.body.data?.user.phone).toBe("+38640111222");
 
     const ownerMe = await api.get<{
       data?: {
@@ -61,6 +68,46 @@ describe("Local smoke — 02-01 remaining gaps", () => {
     // temporary_password is returned once — factories don't expose it; verify
     // office_contact shape via owner token is enough for Call/Email wiring.
     expect(ownerMe.body.data?.office_contact?.full_name).toBeTruthy();
+  });
+
+  it("worker phone is stored so manager can one-tap call (tel:)", async () => {
+    const owner = await registerCompany();
+    created.push(owner);
+
+    const create = await api.post<{
+      data?: { user: { id: string; phone: string | null; full_name: string } };
+    }>("/api/users", {
+      token: owner.accessToken!,
+      body: {
+        email: `call-worker-${Date.now()}@example.com`,
+        full_name: "Call Me Worker",
+        role: "worker",
+        phone: "+386 41 555 666",
+      },
+    });
+    expect(create.status).toBe(201);
+    // Create route normalizes spaces/punctuation for reliable tel: links.
+    expect(create.body.data?.user.phone).toBe("+38641555666");
+
+    const list = await api.get<{ data?: { users: { id: string; phone: string | null }[] } }>(
+      "/api/users",
+      { token: owner.accessToken! }
+    );
+    const row = list.body.data?.users.find((u) => u.id === create.body.data!.user.id);
+    expect(row?.phone).toBe("+38641555666");
+
+    const { toTelHref } = await import("@/lib/phone");
+    expect(toTelHref(row!.phone)).toBe("tel:+38641555666");
+
+    // Owner can set their own phone (needed for worker → call office).
+    const ownerPhone = await api.patch<{
+      data?: { user: { phone: string | null } };
+    }>(`/api/users/${owner.userId}`, {
+      token: owner.accessToken!,
+      body: { phone: "+386 40 111 222" },
+    });
+    expect(ownerPhone.status).toBe(200);
+    expect(ownerPhone.body.data?.user.phone).toBe("+38640111222");
   });
 
   it("requires_attachment on checklist + card # in timeline (#16/#20/#35)", async () => {

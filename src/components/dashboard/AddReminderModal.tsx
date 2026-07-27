@@ -14,6 +14,7 @@ import {
   auraCard,
   auraButton,
 } from "./AuraForm";
+import { isValidPhone, normalizePhone, toTelHref } from "@/lib/phone";
 
 interface AddReminderModalProps {
   isOpen: boolean;
@@ -56,10 +57,8 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
   const [hasConfirm, setHasConfirm] = useState(false);
   const [hasDecline, setHasDecline] = useState(false);
 
-  // Only digits, spaces, + and leading country codes allowed
-  const sanitizePhone = (raw: string) => raw.replace(/[^0-9+\s]/g, "");
-  const isValidPhone = (raw: string) => /^\+?[0-9\s]{6,}$/.test(raw.trim());
-  const normalizedPhone = (raw: string) => raw.trim().replace(/\s+/g, "");
+  // Only digits, spaces, + and common phone punctuation allowed
+  const sanitizePhone = (raw: string) => raw.replace(/[^0-9+\s./()-]/g, "");
 
   const handlePhoneChange = (raw: string) => {
     const sanitized = sanitizePhone(raw);
@@ -75,7 +74,7 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
     e.preventDefault();
     if (!title) return;
 
-    const finalPhone = phoneNumber && isValidPhone(phoneNumber) ? normalizedPhone(phoneNumber) : "";
+    const finalPhone = normalizePhone(phoneNumber) ?? "";
     const normalizedTime = normalizeRemindTime(time) ?? "";
 
     onAddReminder({
@@ -267,9 +266,9 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
                   <AuraLabel>{t("modalPhoneLabel")}</AuraLabel>
                   <div className="flex items-center gap-2">
                     <a
-                      href={phoneNumber && isValidPhone(phoneNumber) ? `tel:${normalizedPhone(phoneNumber)}` : "#"}
+                      href={toTelHref(phoneNumber) ?? "#"}
                       onClick={(e) => {
-                        if (!phoneNumber || !isValidPhone(phoneNumber)) {
+                        if (!toTelHref(phoneNumber)) {
                           e.preventDefault();
                         }
                       }}
@@ -278,7 +277,7 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
                     >
                       <div
                         className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-all ${
-                          phoneNumber && isValidPhone(phoneNumber)
+                          toTelHref(phoneNumber)
                             ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-[0_4px_10px_-2px_rgba(27,58,107,0.3)]"
                             : "bg-white border-[#1B3A6B]/25 text-slate-500"
                         }`}

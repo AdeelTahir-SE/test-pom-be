@@ -6,6 +6,7 @@ import { parseJsonBody } from "@/lib/validation/schemas";
 import { z } from "zod";
 import { USER_ROLES } from "@/config/constants";
 import { sendWelcomeEmail } from "@/lib/integrations/resend";
+import { normalizePhone } from "@/lib/phone";
 
 // Base64url, no padding — safe to display/copy, no ambiguous characters lost.
 // Used for managers/owners only — a real credential worth 8+ characters.
@@ -101,7 +102,7 @@ export const POST = withAuth(
         email: input.email,
         full_name: input.full_name,
         role: input.role,
-        phone: input.phone ?? null,
+        phone: normalizePhone(input.phone) ?? null,
         is_active: true,
       })
       .select("id, email, full_name, role, phone, is_active, created_at")

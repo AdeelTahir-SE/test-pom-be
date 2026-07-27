@@ -2,6 +2,8 @@
 
 import React from "react";
 import { Worker, TaskItem } from "@/lib/mockData";
+import { toTelHref } from "@/lib/phone";
+import { useLanguage } from "@/lib/useLanguage";
 
 // ── Attachment icon — COMPLETED tasks (lighter, 13×15) ───────────────────────
 function AttachmentIconCompleted() {
@@ -157,8 +159,10 @@ interface WorkerCardProps {
 }
 
 export function WorkerCard({ worker, onToggleTask, date = "23/05/26", orderId = "#484", onClick, disableActions, onDismiss }: WorkerCardProps) {
+  const { t } = useLanguage();
   const done = worker.tasks.filter(t => t.completed).length;
   const total = worker.tasks.length;
+  const workerTel = toTelHref(worker.phone);
 
   return (
     <div
@@ -244,6 +248,33 @@ export function WorkerCard({ worker, onToggleTask, date = "23/05/26", orderId = 
             </svg>
           </button>
         ) : (
+        <div className="flex items-center gap-2 shrink-0">
+          {workerTel && (
+            <a
+              href={workerTel}
+              onClick={(e) => e.stopPropagation()}
+              title={`${t("workerCallWorker")}: ${worker.phone}`}
+              style={{
+                boxSizing: "border-box",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "36px",
+                height: "36px",
+                background: "#1B3A6B",
+                border: "1px solid #0d1e3a",
+                borderRadius: "12px",
+                boxShadow:
+                  "0px 8px 18px -12px rgba(15, 23, 42, 0.35), inset 0px 1px 0px 1px rgba(255,255,255,0.25)",
+                color: "#fff",
+              }}
+              aria-label={t("workerCallWorker")}
+            >
+              <svg width="16" height="16" viewBox="0 0 20 18" fill="currentColor" aria-hidden>
+                <path d="M7.22477 1.25722C6.8873 0.497902 6.0702 0 5.16154 0H2.10521C0.942534 0 0 0.848098 0 1.89453C0 10.7892 8.01177 18 17.8945 18C19.0572 18 19.9995 17.1516 19.9995 16.1052L20 13.354C20 12.5362 19.4469 11.8009 18.6033 11.4971L15.674 10.4429C14.9161 10.1701 14.0533 10.2929 13.4263 10.7632L12.6702 11.3307C11.7873 11.9929 10.4882 11.9402 9.67552 11.2088L7.54672 9.29106C6.73403 8.55963 6.67398 7.39134 7.40975 6.59669L8.04016 5.9163C8.56268 5.35196 8.70032 4.57516 8.39719 3.89309L7.22477 1.25722Z" />
+              </svg>
+            </a>
+          )}
         <div
           style={{
             width: "36px",
@@ -280,6 +311,7 @@ export function WorkerCard({ worker, onToggleTask, date = "23/05/26", orderId = 
           >
             /{total}
           </span>
+        </div>
         </div>
         )}
       </div>

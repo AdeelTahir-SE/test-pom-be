@@ -14,6 +14,7 @@ import { WorkerDetailModal } from "@/components/dashboard/WorkerDetailModal";
 import { ApiJob, ApiChecklistItem, jobToWorkerCard, jobNumber } from "@/lib/dashboardMappers";
 import { LIMITS } from "@/config/constants";
 import { formatSiDateTimeCompact } from "@/lib/officeDate";
+import { toTelHref } from "@/lib/phone";
 
 interface ApiJobMessage {
   id: string;
@@ -117,9 +118,7 @@ export default function WorkerDashboard() {
 
   const officePhone = officeContact?.phone?.trim() || "";
   const officeEmail = officeContact?.email?.trim() || "";
-  const telHref = officePhone
-    ? `tel:${officePhone.replace(/[^\d+]/g, "")}`
-    : undefined;
+  const telHref = toTelHref(officePhone) ?? undefined;
   const mailHref = officeEmail ? `mailto:${officeEmail}` : undefined;
 
   const handleCallOffice = () => {

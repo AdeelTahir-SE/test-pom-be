@@ -6,6 +6,7 @@ import { parseJsonBody } from "@/lib/validation/schemas";
 import { notifyUser } from "@/lib/services/notifications";
 import { LIMITS, REMINDER_ACTIONS } from "@/config/constants";
 import { normalizeRemindTime } from "@/lib/officeDate";
+import { normalizePhone } from "@/lib/phone";
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +95,7 @@ export const POST = withAuth(
         remind_on: input.remind_on ?? null,
         remind_time: remindTime,
         actions: input.actions ?? [],
-        phone: input.phone ?? null,
+        phone: normalizePhone(input.phone) ?? null,
         link: input.link ?? null,
         order_index: orderIndex,
       })
