@@ -5,6 +5,7 @@
 // touching a dozen already-built, styled components during integration.
 import type { Worker, TaskItem, Order, Message } from "@/lib/mockData";
 import type { TranslationKey } from "@/lib/translations";
+import { formatSiDateTimeCompact } from "@/lib/officeDate";
 
 type Translate = (key: TranslationKey) => string;
 
@@ -54,6 +55,8 @@ export interface ApiOfficeReminder {
   description: string | null;
   is_urgent: boolean;
   remind_on: string | null;
+  /** Form-entered wall clock (HH:mm). Never derived from created_at. */
+  remind_time: string | null;
   actions: string[];
   action_state: { confirmed?: boolean; rejected?: boolean };
   phone: string | null;
@@ -74,9 +77,9 @@ export interface ApiNotification {
   created_at: string;
 }
 
+/** Checklist / message stamps: time today, date · time on other days. */
 export function formatTime(iso: string | null): string {
-  if (!iso) return "";
-  return new Date(iso).toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" });
+  return formatSiDateTimeCompact(iso);
 }
 
 export function initials(name: string): string {
@@ -141,8 +144,11 @@ export function reminderToCard(
     id: r.id,
     title: r.title,
     description: r.description ?? "",
-    time: formatTime(r.created_at),
-    createdAt: formatTime(r.created_at),
+    // Bottom big time = form-entered time (never created_at / system clock).
+    time: r.remind_time?.trim() || "",
+    // Top tiny time is rendered as a live system clock in CommunicationCard;
+    // createdAt is unused for PISARNA display but kept for Order shape compat.
+    createdAt: "",
     priority: r.is_urgent ? "nujno" : "normalna",
     status: r.action_state?.confirmed
       ? "potrjeno"

@@ -22,6 +22,7 @@ interface ReminderDto {
   description: string | null;
   is_urgent: boolean;
   remind_on: string | null;
+  remind_time: string | null;
   actions: string[];
   action_state: { confirmed?: boolean; rejected?: boolean };
   order_index: number;
@@ -40,6 +41,23 @@ function isoDateOffset(days: number): string {
 }
 
 describe("Phase 11 — Office Reminders (PISARNA)", () => {
+  it("stores form remind_time separately from created_at", async () => {
+    const owner = await registerCompany();
+    createdCompanies.push(owner);
+
+    const res = await api.post<{ data?: { reminder: ReminderDto } }>("/api/office-reminders", {
+      token: owner.accessToken,
+      body: {
+        title: "Meeting prep",
+        remind_on: isoDateOffset(0),
+        remind_time: "16:48",
+      },
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.data?.reminder.remind_time).toBe("16:48");
+    expect(res.body.data?.reminder.remind_on).toBe(isoDateOffset(0));
+  });
+
   it("owner creates a reminder with title only", async () => {
     const owner = await registerCompany();
     createdCompanies.push(owner);

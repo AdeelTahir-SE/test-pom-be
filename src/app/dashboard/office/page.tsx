@@ -57,6 +57,8 @@ import {
 } from "@dnd-kit/sortable";
 import {
   formatSiDate,
+  formatSiDateFromDayKey,
+  isoToLocalDayKey,
   jobBelongsToDay,
   localDayToScheduledAt,
   notificationBelongsToDay,
@@ -464,9 +466,16 @@ export default function OfficeDashboard() {
   };
 
   const handleAddReminder = (reminderData: {
-    title: string; description: string; isUrgent: boolean;
-    hasAttachment: boolean; hasEmail: boolean; phoneNumber: string; hasConfirm: boolean; hasDecline: boolean;
-    date?: string;
+    title: string;
+    description: string;
+    time: string;
+    date: string;
+    isUrgent: boolean;
+    hasAttachment: boolean;
+    hasEmail: boolean;
+    phoneNumber: string;
+    hasConfirm: boolean;
+    hasDecline: boolean;
   }) => {
     const actions: string[] = [];
     if (reminderData.hasAttachment) actions.push('attachment');
@@ -476,6 +485,7 @@ export default function OfficeDashboard() {
     if (reminderData.hasDecline) actions.push('reject');
 
     const remindDay = parseFlexibleDate(reminderData.date ?? "") ?? selectedDate;
+    const remindTime = reminderData.time.trim() || null;
     const tempId = newOptimisticId();
     const now = new Date().toISOString();
     const optimistic: ApiOfficeReminder = {
@@ -484,6 +494,7 @@ export default function OfficeDashboard() {
       description: reminderData.description || null,
       is_urgent: reminderData.isUrgent,
       remind_on: toIsoDate(remindDay),
+      remind_time: remindTime,
       actions,
       action_state: {},
       phone: reminderData.phoneNumber || null,
@@ -503,6 +514,7 @@ export default function OfficeDashboard() {
         actions,
         phone: reminderData.phoneNumber || undefined,
         remind_on: toIsoDate(remindDay),
+        remind_time: remindTime || undefined,
       });
       if (res.status === 201 && res.data) {
         setReminders((prev) => prev.map((r) => (r.id === tempId ? res.data!.reminder : r)));
@@ -858,10 +870,7 @@ export default function OfficeDashboard() {
                 </p>
               ) : (
                 <UrgentRow
-                  time={new Date(dayUrgent.created_at).toLocaleTimeString(
-                    'sl-SI',
-                    { hour: '2-digit', minute: '2-digit' },
-                  )}
+                  time={dayUrgent.remind_time?.trim() || "—"}
                   title={dayUrgent.title}
                   subtitle={dayUrgent.description ?? undefined}
                 />
@@ -939,9 +948,12 @@ export default function OfficeDashboard() {
                         <WorkerCard
                           worker={workerCard}
                           onToggleTask={handleToggleTask}
-                          date={new Date(job.created_at).toLocaleDateString(
-                            'sl-SI',
-                          )}
+                          date={
+                            formatSiDateFromDayKey(
+                              isoToLocalDayKey(job.scheduled_at) ??
+                                isoToLocalDayKey(job.created_at)
+                            ) || formatSiDate(new Date(job.created_at))
+                          }
                           orderId={jobNumber(job)}
                           onClick={() => {
                             setSelectedWorkerJobId(job.id);
@@ -991,7 +1003,7 @@ export default function OfficeDashboard() {
                       title: 'Dodajte zaznamke za vodjo',
                       description: '',
                       time: '10:30',
-                      createdAt: 'ČAS',
+                      createdAt: '',
                       priority: 'normalna',
                       status: 'caka_potrditev',
                       workerId: '',

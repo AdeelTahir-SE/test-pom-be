@@ -47,6 +47,18 @@ export const GET = withAuth(
   { roles: ["owner", "manager"] }
 );
 
+/** Normalize form wall-clock time to HH:mm (24h). Rejects invalid values. */
+function normalizeRemindTime(raw: string | undefined): string | null {
+  if (!raw?.trim()) return null;
+  const trimmed = raw.trim().replace(".", ":");
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return null;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 const createReminderSchema = z.object({
   title: z.string().trim().min(1, "Title is required."),
   description: z
@@ -56,6 +68,8 @@ const createReminderSchema = z.object({
     .optional(),
   is_urgent: z.boolean().optional(),
   remind_on: z.string().date().optional(),
+  /** Wall-clock time from the form (HH:mm). Independent of created_at / system clock. */
+  remind_time: z.string().trim().min(1).optional(),
   actions: z.array(z.enum(REMINDER_ACTIONS as unknown as [string, ...string[]])).optional(),
   phone: z.string().trim().min(1).optional(),
   link: z.string().trim().min(1).optional(),
@@ -78,6 +92,8 @@ export const POST = withAuth(
       .maybeSingle();
     const orderIndex = (last?.order_index ?? -1) + 1;
 
+    const remindTime = normalizeRemindTime(input.remind_time);
+
     const { data: reminder, error } = await db
       .from("office_reminders")
       .insert({
@@ -87,6 +103,7 @@ export const POST = withAuth(
         description: input.description ?? null,
         is_urgent: input.is_urgent ?? false,
         remind_on: input.remind_on ?? null,
+        remind_time: remindTime,
         actions: input.actions ?? [],
         phone: input.phone ?? null,
         link: input.link ?? null,

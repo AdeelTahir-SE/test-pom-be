@@ -161,6 +161,8 @@ export interface OfficeReminderRow {
   description: string | null;
   is_urgent: boolean;
   remind_on: string | null;
+  /** Form-entered wall clock (HH:mm), not created_at. */
+  remind_time: string | null;
   actions: string[];
   action_state: Record<string, unknown>;
   phone: string | null;

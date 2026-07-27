@@ -1,7 +1,11 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Order } from "@/lib/mockData";
+
+function formatSystemClock(date: Date = new Date()): string {
+  return date.toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" });
+}
 
 interface CommunicationCardProps {
   order: Order & {
@@ -31,6 +35,16 @@ export function CommunicationCard({
   buttonsConfig = "attachment-tick-decline",
   showRedButton = false,
 }: CommunicationCardProps) {
+  // Top tiny time = live system clock (never form date/time or created_at).
+  const [systemClock, setSystemClock] = useState(formatSystemClock);
+
+  useEffect(() => {
+    const tick = () => setSystemClock(formatSystemClock());
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
   return (
     <div
       style={{
@@ -85,7 +99,7 @@ export function CommunicationCard({
           }}
           className="flex-1 min-w-0"
         >
-          {order.workerName} • {order.createdAt}
+          {order.workerName} • {systemClock}
         </span>
 
         {/* Top-Right Buttons */}

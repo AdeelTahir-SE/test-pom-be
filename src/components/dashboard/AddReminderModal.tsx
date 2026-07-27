@@ -79,7 +79,7 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
     onAddReminder({
       title,
       description,
-      time: time || new Date().toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" }),
+      time,
       date: date || new Date().toLocaleDateString("sl-SI"),
       isUrgent,
       hasAttachment,

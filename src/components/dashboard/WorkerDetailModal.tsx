@@ -40,8 +40,8 @@ import { describeTimelineEvent, documentTypeLabel } from "@/lib/timeline/describ
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
 import { fetchJobFiles, fetchJobTimeline } from "@/lib/query/office";
-import { CustomerNotesBanner, parseNoteText } from "./CustomerNotesBanner";
-
+import { parseNoteText } from "./CustomerNotesBanner";
+import { formatSiDateFromIso, formatSiDateTimeFromIso, formatSiTimeFromIso } from "@/lib/officeDate";
 interface CustomerNoteDto {
   id: string;
   note: string;
@@ -104,6 +104,7 @@ interface AttachmentItem {
 
 interface TimelineItem {
   id: string;
+  /** Always `DD.MM.YYYY · HH:mm` — date and time from stored created_at. */
   time: string;
   text: string;
   type: "step" | "attachment" | "message" | "voice" | "other";
@@ -359,8 +360,8 @@ export function WorkerDetailModal({
       (filesQuery.data ?? []).map((f) => ({
         id: f.id,
         name: f.file_name,
-        time: new Date(f.created_at).toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" }),
-        date: new Date(f.created_at).toLocaleDateString("sl-SI"),
+        time: formatSiTimeFromIso(f.created_at),
+        date: formatSiDateFromIso(f.created_at),
         url: f.signed_url,
         ocrText: f.ocr_text,
         documentType: f.document_type,
@@ -376,7 +377,7 @@ export function WorkerDetailModal({
         .reverse()
         .map((e) => ({
           id: e.id,
-          time: new Date(e.created_at).toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" }),
+          time: formatSiDateTimeFromIso(e.created_at),
           text: describeTimelineEvent(e, t, cardNumber),
           type: TIMELINE_TYPE_BY_EVENT[e.event_type] ?? "other",
         })),
@@ -895,7 +896,9 @@ export function WorkerDetailModal({
                     </span>
                   )}
                 </div>
-                <span className="text-xs text-[#64748B] font-normal shrink-0">{att.time}</span>
+                <span className="text-xs text-[#64748B] font-normal shrink-0 text-right whitespace-nowrap">
+                  {att.date ? `${att.date} · ${att.time}` : att.time}
+                </span>
               </button>
             );
           })}
@@ -926,7 +929,7 @@ export function WorkerDetailModal({
           {timeline.map((event) => (
             <div key={event.id} className="flex items-start justify-between gap-3">
               <div className="flex gap-2">
-                <span className="text-xs text-[#64748B] font-normal shrink-0 mt-0.5">
+                <span className="text-xs text-[#64748B] font-normal shrink-0 mt-0.5 whitespace-nowrap">
                   {event.time}
                 </span>
                 <span

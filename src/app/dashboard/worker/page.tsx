@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { WorkerDetailModal } from "@/components/dashboard/WorkerDetailModal";
 import { ApiJob, ApiChecklistItem, jobToWorkerCard, jobNumber } from "@/lib/dashboardMappers";
 import { LIMITS } from "@/config/constants";
+import { formatSiDateTimeCompact } from "@/lib/officeDate";
 
 interface ApiJobMessage {
   id: string;
@@ -374,7 +375,7 @@ export default function WorkerDashboard() {
                       </button>
                       {task.is_completed && task.completed_at && (
                         <span className="shrink-0" style={{ fontFamily: "'PT Sans', sans-serif", fontSize: "12px", color: "#94A3B8" }}>
-                          {new Date(task.completed_at).toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" })}
+                          {formatSiDateTimeCompact(task.completed_at)}
                         </span>
                       )}
                     </div>

@@ -17,6 +17,61 @@ export function formatSiDate(d: Date): string {
   return `${day}.${m}.${d.getFullYear()}`;
 }
 
+export function formatSiTime(d: Date): string {
+  return d.toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" });
+}
+
+/** `YYYY-MM-DD` → `DD.MM.YYYY` for display. */
+export function formatSiDateFromDayKey(dayKey: string | null | undefined): string {
+  if (!dayKey || !/^\d{4}-\d{2}-\d{2}$/.test(dayKey)) return "";
+  const parts = dayKey.split("-");
+  const y = Number(parts[0]);
+  const m = Number(parts[1]);
+  const d = Number(parts[2]);
+  if (!y || !m || !d) return "";
+  return formatSiDate(new Date(y, m - 1, d));
+}
+
+export function formatSiTimeFromIso(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return formatSiTime(d);
+}
+
+export function formatSiDateFromIso(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return formatSiDate(d);
+}
+
+/**
+ * Full stamp for audit/timeline: date and time are always both present in storage;
+ * UI shows both as `DD.MM.YYYY · HH:mm`.
+ */
+export function formatSiDateTimeFromIso(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${formatSiDate(d)} · ${formatSiTime(d)}`;
+}
+
+/**
+ * Compact stamp: time only when same local calendar day as `relativeTo`,
+ * otherwise date · time (Mark: sometimes only time, sometimes both).
+ */
+export function formatSiDateTimeCompact(
+  iso: string | null | undefined,
+  relativeTo: Date = new Date()
+): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  if (isSameLocalDay(d, relativeTo)) return formatSiTime(d);
+  return `${formatSiDate(d)} · ${formatSiTime(d)}`;
+}
+
 export function addDays(d: Date, days: number): Date {
   const next = startOfLocalDay(d);
   next.setDate(next.getDate() + days);

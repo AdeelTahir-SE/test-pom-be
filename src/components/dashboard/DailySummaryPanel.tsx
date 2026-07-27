@@ -34,7 +34,7 @@ export function DailySummaryPanel({ dayKey, onJumpToDay }: DailySummaryPanelProp
   const [history, setHistory] = useState<DailySummaryDto[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-    // Load once per selected day — do not re-fetch on parent re-renders / language fn identity.
+  // Load once per selected day — do not re-fetch on parent re-renders / language fn identity.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -58,17 +58,17 @@ export function DailySummaryPanel({ dayKey, onJumpToDay }: DailySummaryPanelProp
     };
   }, [dayKey]);
 
-const openHistory = async () => {
-  setHistoryOpen(true);
-  setHistoryLoading(true);
-  const res = await api.get<{ summaries: DailySummaryDto[] }>("/api/daily-summaries");
-  setHistoryLoading(false);
-  if (res.status === 200 && res.data) {
-    setHistory(res.data.summaries);
-  } else {
-    setHistory([]);
-  }
-};
+  const openHistory = async () => {
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    const res = await api.get<{ summaries: DailySummaryDto[] }>("/api/daily-summaries");
+    setHistoryLoading(false);
+    if (res.status === 200 && res.data) {
+      setHistory(res.data.summaries);
+    } else {
+      setHistory([]);
+    }
+  };
 
   const selectHistoryItem = (item: DailySummaryDto) => {
     setHistoryOpen(false);
