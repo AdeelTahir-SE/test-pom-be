@@ -351,7 +351,7 @@ export const translations = {
     modalConfirmStepSuffix: "zaključen.",
     modalConfirmStepMissingTitle: "Priponka manjka",
     modalConfirmStepMissingDesc: "Za zaključek tega koraka morate priložiti datoteko.",
-    modalConfirmStepSubmit: "Potrdi zaključek",
+    modalConfirmStepSubmit: "Potrjujem",
 
     customerNotesTitle: "Pomembno za to stranko",
     customerNotesEmpty: "Ni trajnih opomb za to stranko.",
@@ -450,8 +450,8 @@ export const translations = {
     officeChatTitle: "Klepet z delavcem",
 
     // Job status lifecycle (live)
-    modalSectionStatus: "Stanje",
-    jobStatusPending: "Čaka",
+    modalSectionStatus: "",
+    jobStatusPending: "Izbriši kartico",
     jobStatusInProgress: "V teku",
     jobStatusWaiting: "Čaka na nadaljevanje",
     jobStatusCompleted: "Zaključeno",
@@ -942,7 +942,7 @@ export const translations = {
     officeChatTitle: "Chat with worker",
 
     // Job status lifecycle (live)
-    modalSectionStatus: "Status",
+    modalSectionStatus: "",
     jobStatusPending: "Pending",
     jobStatusInProgress: "In Progress",
     jobStatusWaiting: "Waiting",

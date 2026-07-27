@@ -130,9 +130,10 @@ interface SortableTaskItemProps {
   onClick: () => void;
   onDelete: () => void;
   deleteLabel: string;
+  onAttachmentClick?: () => void;
 }
 
-function SortableTaskItem({ task, onClick, onDelete, deleteLabel }: SortableTaskItemProps) {
+function SortableTaskItem({ task, onClick, onDelete, deleteLabel, onAttachmentClick }: SortableTaskItemProps) {
   const {
     attributes,
     listeners,
@@ -206,7 +207,11 @@ function SortableTaskItem({ task, onClick, onDelete, deleteLabel }: SortableTask
         <div className="flex items-center gap-1.5 ml-auto">
           {(task.attachment || task.requiresAttachment) && (
             <Paperclip
-              className={`w-3.5 h-3.5 shrink-0 ${task.attachment ? "text-slate-300" : "text-slate-400"}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onAttachmentClick?.();
+              }}
+              className={`w-3.5 h-3.5 shrink-0 cursor-pointer ${task.attachment ? "text-slate-300" : "text-slate-400"}`}
             />
           )}
           {task.completed && task.time && (
@@ -254,6 +259,7 @@ export function WorkerDetailModal({
   // Confirm step completion
   const [confirmStepId, setConfirmStepId] = React.useState<string | null>(null);
   const [confirmUploading, setConfirmUploading] = React.useState(false);
+  const [confirmStepFile, setConfirmStepFile] = React.useState<File | null>(null);
 
   // Confirm step deletion
   const [deleteStepId, setDeleteStepId] = React.useState<string | null>(null);
@@ -634,13 +640,13 @@ export function WorkerDetailModal({
               letterSpacing: "0.5px",
             }}
           >
-            {t("modalSectionStatus")}
+            {}
           </span>
           <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${STATUS_BADGE_CLASSES[jobStatus]}`}>
             {t(STATUS_LABEL_KEY[jobStatus])}
           </span>
         </div>
-        {!isTerminal && (
+        {/* {!isTerminal && (
           <div className="flex flex-wrap gap-2">
             {jobStatus === "pending" && (
               <button
@@ -691,7 +697,7 @@ export function WorkerDetailModal({
               </button>
             )}
           </div>
-        )}
+        )} */}
         {jobStatus === "completed" && (
           <div className="flex flex-wrap gap-2">
             <button
@@ -860,6 +866,7 @@ export function WorkerDetailModal({
                   }}
                   onDelete={() => setDeleteStepId(task.id)}
                   deleteLabel={t("modalDeleteStep")}
+                  onAttachmentClick={() => setAttachOnlyOpen(true)}
                 />
               ))}
             </div>
@@ -1181,7 +1188,7 @@ export function WorkerDetailModal({
                 </h3>
               </div>
 
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-3 mb-4">
                 <AuraFileInput
                   id="attach-only-file"
                   onFile={setAttachOnlyFile}
@@ -1193,21 +1200,11 @@ export function WorkerDetailModal({
                 )}
               </div>
 
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAttachOnlyOpen(false);
-                    setAttachOnlyFile(null);
-                  }}
-                  className="flex-1 h-9 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors"
-                >
-                  {t("modalCancel")}
-                </button>
+              <div className="flex justify-center">
                 <button
                   type="submit"
                   disabled={!attachOnlyFile || attachOnlyUploading}
-                  className="flex-1 h-9 rounded-xl bg-[#1B3A6B] hover:bg-[#142c52] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold transition-colors"
+                  className="w-[160px] h-9 rounded-xl bg-[#1B3A6B] hover:bg-[#142c52] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold uppercase transition-colors"
                 >
                   {attachOnlyUploading ? t("modalUploading") : t("modalAdd")}
                 </button>
@@ -1219,7 +1216,10 @@ export function WorkerDetailModal({
 
       {/* ── Sub-Dialog: Confirm step finished ── */}
       <Dialog open={!!confirmStepId} onOpenChange={(open) => {
-        if (!open) setConfirmStepId(null);
+        if (!open) {
+          setConfirmStepId(null);
+          setConfirmStepFile(null);
+        }
       }}>
         <DialogContent
           style={{
@@ -1240,59 +1240,65 @@ export function WorkerDetailModal({
               <div className={auraCard}>
                 <div className="flex flex-col gap-4 text-slate-800">
                   <div className="text-center">
-                    <h3 className="text-xl font-semibold tracking-tight text-slate-900">
-                      {t("modalConfirmStepTitle")}
-                    </h3>
+                    {missingAttachment ? (
+                      <h3 className="text-xl font-semibold tracking-tight text-slate-900">
+                        {t("modalConfirmStepMissingTitle")}
+                      </h3>
+                    ) : (
+                      <h3 className="text-xl font-semibold tracking-tight text-slate-900">
+                        {t("modalConfirmStepPrefix")} {t("modalConfirmStepSuffix")}
+                      </h3>
+                    )}
                   </div>
 
-                  <p className="text-sm text-slate-600 text-center">
-                    {t("modalConfirmStepPrefix")} <strong className="text-slate-900">{task.text}</strong> {t("modalConfirmStepSuffix")}
-                  </p>
-
                   {missingAttachment && (
-                    <div className="flex flex-col gap-3 p-3 rounded-xl bg-red-50 border border-red-100">
-                      <p className="text-sm text-red-600 font-semibold text-center">
-                        {t("modalConfirmStepMissingTitle")}
-                      </p>
+                    <div className="flex flex-col gap-3">
                       <p className="text-xs text-slate-500 text-center">
                         {t("modalConfirmStepMissingDesc")}
                       </p>
                       <AuraFileInput
                         id="confirm-step-attachment"
-                        onFile={async (file) => {
-                          setConfirmUploading(true);
-                          const success = await uploadJobFile(file, task.id);
-                          setConfirmUploading(false);
-                          if (success) {
-                            setTasks(prev => prev.map(t => t.id === task.id ? { ...t, attachment: true } : t));
-                          }
-                        }}
+                        onFile={setConfirmStepFile}
                       />
-                      {confirmUploading && (
-                        <span className="text-[11px] text-slate-400 text-center">{t("modalUploading")}</span>
+                      {confirmStepFile && (
+                        <span className="text-[11px] text-slate-500 truncate">
+                          {confirmStepFile.name}
+                        </span>
                       )}
                     </div>
                   )}
 
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setConfirmStepId(null)}
-                      className="flex-1 h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors"
-                    >
-                      {t("modalCancel")}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={missingAttachment}
-                      onClick={async () => {
-                        await handleToggleComplete(task);
-                        setConfirmStepId(null);
-                      }}
-                      className="flex-1 h-10 rounded-xl bg-[#1B3A6B] hover:bg-[#142c52] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold transition-colors"
-                    >
-                      {t("modalConfirmStepSubmit")}
-                    </button>
+                  <div className="flex justify-center">
+                    {missingAttachment ? (
+                      <button
+                        type="button"
+                        disabled={!confirmStepFile || confirmUploading}
+                        onClick={async () => {
+                          if (!confirmStepFile) return;
+                          setConfirmUploading(true);
+                          const success = await uploadJobFile(confirmStepFile, task.id);
+                          setConfirmUploading(false);
+                          if (success) {
+                            setTasks(prev => prev.map(t => t.id === task.id ? { ...t, attachment: true } : t));
+                            setConfirmStepFile(null);
+                          }
+                        }}
+                        className="w-[160px] h-10 rounded-xl bg-[#1B3A6B] hover:bg-[#142c52] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold uppercase transition-colors"
+                      >
+                        {confirmUploading ? t("modalUploading") : t("modalAdd")}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await handleToggleComplete(task);
+                          setConfirmStepId(null);
+                        }}
+                        className="w-[160px] h-10 rounded-xl bg-[#1B3A6B] hover:bg-[#142c52] text-white text-xs font-semibold uppercase transition-colors"
+                      >
+                        {t("modalConfirmStepSubmit")}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1612,7 +1618,7 @@ export function WorkerDetailModal({
         >
           <div className={auraCard}>
             <div className="flex flex-col gap-4 text-[#1E293B]">
-              <div className="text-center pb-2 border-b border-[#1B3A6B]/10">
+              <div className="text-center pb-2">
                 <h3 className="text-lg font-bold tracking-tight text-slate-900">
                   Zaznamki za naročnika
                 </h3>
@@ -1639,7 +1645,7 @@ export function WorkerDetailModal({
                   maxLength={60}
                   placeholder="Zapišite poljubno opombo za tega naročnika..."
                   rows={3}
-                  className="bg-slate-50 border-none ring-1 ring-[#1B3A6B]/15 focus:ring-2 focus:ring-[#1B3A6B]"
+                  className="bg-slate-50 border-none ring-1 ring-[#1B3A6B]/15 rounded focus:ring-1 focus:ring-[#1B3A6B]/15 focus:outline-none"
                 />
                 <p className="mt-1.5 text-[10px] text-slate-400/90 leading-normal">
                   Če gre za več opomnikov, je priporočljivo, da so zapisani ločeno, vsak za sebe.
@@ -1650,7 +1656,7 @@ export function WorkerDetailModal({
                 <button
                   type="button"
                   onClick={() => setNewNoteType("once")}
-                  className="flex items-start gap-3 text-left w-full bg-transparent border-none p-0 outline-none cursor-pointer group"
+                  className="flex items-center gap-3 text-left w-full bg-transparent border-none p-0 outline-none cursor-pointer group"
                 >
                   <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-all ${
                     newNoteType === "once"
@@ -1673,7 +1679,7 @@ export function WorkerDetailModal({
                 <button
                   type="button"
                   onClick={() => setNewNoteType("always")}
-                  className="flex items-start gap-3 text-left w-full bg-transparent border-none p-0 outline-none cursor-pointer group"
+                  className="flex items-center gap-3 text-left w-full bg-transparent border-none p-0 outline-none cursor-pointer group"
                 >
                   <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-all ${
                     newNoteType === "always"
@@ -1694,7 +1700,7 @@ export function WorkerDetailModal({
                 type="button"
                 disabled={newNoteSaving || !newNoteText.trim()}
                 onClick={() => void handleAddNote()}
-                className="w-full h-11 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-50 mt-1"
+                className={`${auraButton.replace("w-full", "w-[160px]")} self-center disabled:from-slate-300 disabled:to-slate-300 disabled:text-slate-500`}
               >
                 DODAJ
               </button>

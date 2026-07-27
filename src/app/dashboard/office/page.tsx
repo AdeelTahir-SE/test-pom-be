@@ -195,6 +195,7 @@ export default function OfficeDashboard() {
   const [replyLoading, setReplyLoading] = useState(false);
   const [isRecordingReply, setIsRecordingReply] = useState(false);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
+  const [composeWorkerId, setComposeWorkerId] = useState('');
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const autoStopTimerRef = useRef<NodeJS.Timeout | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -1267,51 +1268,70 @@ export default function OfficeDashboard() {
         onSaved={setCompanyNameOverride}
       />
 
-      <Dialog open={isComposeOpen} onOpenChange={setIsComposeOpen}>
+      <Dialog open={isComposeOpen} onOpenChange={(open) => { setIsComposeOpen(open); if (!open) setComposeWorkerId(''); }}>
         <DialogContent className="max-w-sm w-[90vw] p-0 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
-            <h4 className="font-bold text-sm text-slate-800">
-              {t('officeComposeTitle')}
-            </h4>
-            <p className="text-[11px] text-slate-500 mt-1">
-              {t('officeComposePickJob')}
-            </p>
-          </div>
-          <div className="max-h-[50vh] overflow-y-auto p-3 space-y-2">
-            {activeJobs.length === 0 ? (
-              <p className="text-xs text-slate-400 text-center py-6">
-                {t('officeComposeEmpty')}
-              </p>
-            ) : (
-              activeJobs.map((job) => {
-                const worker = job.worker_id
-                  ? workerById.get(job.worker_id)
-                  : undefined;
-                return (
-                  <button
-                    key={job.id}
-                    type="button"
-                    onClick={() => {
-                      setIsComposeOpen(false);
-                      void handleOpenReply(job.id);
-                    }}
-                    className="w-full text-left px-3 py-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 transition-colors"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-bold text-slate-800 truncate">
-                        {worker?.full_name ?? t('cardUnassigned')}
-                      </span>
-                      <span className="text-[10px] font-semibold text-blue-700 shrink-0">
-                        {jobNumber(job)}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                      {job.title}
-                    </p>
-                  </button>
-                );
-              })
-            )}
+          <div className="px-6 py-6 flex flex-col items-center gap-6">
+            <h3 className="text-xl font-semibold text-slate-800 text-center">
+              Pošlji sporočilo
+            </h3>
+
+            <div className="w-full flex flex-col gap-2">
+              <label className="text-sm text-slate-500">Komu</label>
+              <select
+                value={composeWorkerId}
+                onChange={(e) => setComposeWorkerId(e.target.value)}
+                className="w-full h-10 px-3 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-800 outline-none"
+              >
+                <option value="">Izberite delavca</option>
+                {workers.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.full_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-4 w-full justify-center">
+              <button
+                type="button"
+                disabled={!composeWorkerId}
+                onClick={() => {
+                  const job = activeJobs.find((j) => j.worker_id === composeWorkerId);
+                  if (!job) return;
+                  setIsComposeOpen(false);
+                  void handleOpenReply(job.id);
+                }}
+                className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-40"
+              >
+                <span style={{ width: '72px', height: '72px', borderRadius: '20px', border: '0.7px solid rgba(96, 165, 250, 0.5)', boxShadow: '0px 8px 18px -12px rgba(15, 23, 42, 0.35), inset 0px 1px 0px 1px #FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.9)' }}>
+                  <svg width="22" height="25" viewBox="0 0 32 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M20.8542 17.1124C19.2762 18.3754 8.94271 26.6494 6.55021 28.5664L2.50471 24.5209L14.0067 10.2649L20.8542 17.1124ZM28.8177 2.31188C25.7352 -0.770625 20.7357 -0.770625 17.6532 2.31188C15.6207 4.34588 15.4482 6.57487 15.3492 7.36538L23.7642 15.7804C24.4902 15.6994 26.7672 15.5269 28.8177 13.4764C31.9017 10.3939 31.9017 5.39438 28.8177 2.31188ZM14.0667 29.2219C10.6287 29.2219 9.05821 31.3624 6.84271 32.7544C5.27371 33.7384 3.78871 33.2389 3.07471 32.3554C2.81521 32.0389 2.07421 30.8989 3.33571 29.5924L3.14821 29.4049L1.45921 27.7684C-0.598793 29.8924 -0.234293 32.4304 1.04071 34.0039C2.50321 35.8099 5.44471 36.7219 8.23321 34.9714C10.6107 33.4789 11.6637 31.8394 14.0667 29.2219Z" fill="#6D778E"/>
+                  </svg>
+                </span>
+                <span className="text-[11px] font-medium text-slate-600 uppercase tracking-wide">GLASOVNO</span>
+              </button>
+
+              <span className="text-xs text-slate-500 uppercase"></span>
+
+              <button
+                type="button"
+                disabled={!composeWorkerId}
+                onClick={() => {
+                  const job = activeJobs.find((j) => j.worker_id === composeWorkerId);
+                  if (!job) return;
+                  setIsComposeOpen(false);
+                  void handleOpenReply(job.id);
+                }}
+                className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-40"
+              >
+                <span style={{ width: '72px', height: '72px', borderRadius: '20px', border: '0.7px solid rgba(96, 165, 250, 0.5)', boxShadow: '0px 8px 18px -12px rgba(15, 23, 42, 0.35), inset 0px 1px 0px 1px #FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.9)' }}>
+                  <svg width="26" height="24" viewBox="0 0 40 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M18.478 25.9492C16.388 32.7082 16.002 33.714 16.002 34.5892C16.002 35.5815 16.772 36 17.256 36C17.8 36 19.472 35.3228 24.914 33.1898L18.478 25.9492ZM20.254 23.9513L26.694 31.1962L39.51 16.794C39.836 16.4272 40 15.948 40 15.4643C40 14.985 39.836 14.5035 39.51 14.1345C38.35 12.8317 36.594 10.8563 35.432 9.5535C35.106 9.18675 34.678 9.00225 34.25 9.00225C33.824 9.00225 33.394 9.18675 33.066 9.5535L20.254 23.9513ZM14 21.9375C14 21.033 13.288 20.25 12.5 20.25C7.378 20.25 6.622 20.25 1.5 20.25C0.712 20.25 0 21.033 0 21.9375C0 22.842 0.712 23.625 1.5 23.625H12.5C13.288 23.625 14 22.842 14 21.9375ZM24 15.1875C24 14.283 23.288 13.5 22.5 13.5C17.378 13.5 6.622 13.5 1.5 13.5C0.712 13.5 0 14.283 0 15.1875C0 16.092 0.712 16.875 1.5 16.875H22.5C23.288 16.875 24 16.092 24 15.1875ZM24 8.4375C24 7.533 23.288 6.75 22.5 6.75C17.378 6.75 6.622 6.75 1.5 6.75C0.712 6.75 0 7.533 0 8.4375C0 9.342 0.712 10.125 1.5 10.125H22.5C23.288 10.125 24 9.342 24 8.4375ZM24 1.6875C24 0.783 23.288 0 22.5 0C17.378 0 6.622 0 1.5 0C0.712 0 0 0.783 0 1.6875C0 2.592 0.712 3.375 1.5 3.375H22.5C23.288 3.375 24 2.592 24 1.6875Z" fill="#6D778E"/>
+                  </svg>
+                </span>
+                <span className="text-[11px] font-medium text-slate-600 uppercase tracking-wide">TEKSTOVNO</span>
+              </button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
