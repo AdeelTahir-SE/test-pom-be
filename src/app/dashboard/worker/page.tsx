@@ -8,12 +8,12 @@ import { api } from "@/lib/api-client";
 import { LogOut, Mic, Send, Search as SearchIcon } from "lucide-react";
 import { SearchModal } from "@/components/dashboard/SearchModal";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { WorkerDetailModal } from "@/components/dashboard/WorkerDetailModal";
 import { OfficeCard } from "@/components/dashboard/OfficeCard";
 import { ApiJob, ApiChecklistItem, jobToWorkerCard, jobNumber } from "@/lib/dashboardMappers";
 import type { Message } from "@/lib/mockData";
 import { LIMITS } from "@/config/constants";
+import { formatSiDateTimeCompact } from "@/lib/officeDate";
 import { toTelHref } from "@/lib/phone";
 
 interface ApiJobMessage {
@@ -53,26 +53,50 @@ export default function WorkerDashboard() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const autoStopTimerRef = useRef<NodeJS.Timeout | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  /** Prevents double-tap starting two recordings before React state updates. */
+  const recordingLockRef = useRef(false);
 
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
-  const loadAll = useCallback(async () => {
-    const jobsRes = await api.get<{ jobs: ApiJob[] }>("/api/jobs");
-    const activeJob =
-      (jobsRes.data?.jobs ?? []).find((j) => j.status !== "completed" && j.status !== "cancelled") ?? null;
-    setJob(activeJob);
-
-    if (activeJob) {
-      const [checklistRes, messagesRes, unreadRes] = await Promise.all([
-        api.get<{ checklist: ApiChecklistItem[] }>(`/api/jobs/${activeJob.id}/checklist`),
-        api.get<{ messages: ApiJobMessage[] }>(`/api/jobs/${activeJob.id}/messages`),
-        api.get<{ unread_count: number }>("/api/messages/unread-count"),
-      ]);
-      setChecklist(checklistRes.data?.checklist ?? []);
-      setMessages(messagesRes.data?.messages ?? []);
-      setUnreadCount(unreadRes.data?.unread_count ?? 0);
+  const clearRecordingTimers = () => {
+    if (autoStopTimerRef.current) {
+      clearTimeout(autoStopTimerRef.current);
+      autoStopTimerRef.current = null;
     }
-    setDataLoading(false);
+  };
+
+  const releaseRecordingLock = () => {
+    clearRecordingTimers();
+    recordingLockRef.current = false;
+    setIsRecording(false);
+  };
+
+  const loadAll = useCallback(async () => {
+    try {
+      const jobsRes = await api.get<{ jobs: ApiJob[] }>("/api/jobs");
+      const activeJob =
+        (jobsRes.data?.jobs ?? []).find((j) => j.status !== "completed" && j.status !== "cancelled") ?? null;
+      setJob(activeJob);
+
+      if (activeJob) {
+        const [checklistRes, messagesRes, unreadRes] = await Promise.all([
+          api.get<{ checklist: ApiChecklistItem[] }>(`/api/jobs/${activeJob.id}/checklist`),
+          api.get<{ messages: ApiJobMessage[] }>(`/api/jobs/${activeJob.id}/messages`),
+          api.get<{ unread_count: number }>("/api/messages/unread-count"),
+        ]);
+        setChecklist(checklistRes.data?.checklist ?? []);
+        setMessages(messagesRes.data?.messages ?? []);
+        setUnreadCount(unreadRes.data?.unread_count ?? 0);
+      } else {
+        setChecklist([]);
+        setMessages([]);
+        setUnreadCount(0);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDataLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -136,6 +160,13 @@ export default function WorkerDashboard() {
   const handleToggleTask = async (id: string) => {
     const item = checklist.find((c) => c.id === id);
     if (!item || item.is_completed) return;
+    const ordered = [...checklist].sort((a, b) => a.order_index - b.order_index);
+    const next = ordered.find((c) => !c.is_completed);
+    if (!next || next.id !== item.id) return;
+    if (item.requires_attachment && !item.has_attachment) {
+      showToast(t("modalConfirmStepMissingTitle"));
+      return;
+    }
     const res = await api.patch<{ item: ApiChecklistItem }>(`/api/checklist-items/${id}`, { is_completed: true });
     if (res.status === 200 && res.data) {
       setChecklist((prev) => prev.map((c) => (c.id === id ? res.data!.item : c)));
@@ -167,7 +198,8 @@ export default function WorkerDashboard() {
   };
 
   const handleStartRecord = async () => {
-    if (!job) return;
+    if (!job || recordingLockRef.current || isRecording) return;
+    recordingLockRef.current = true;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
@@ -177,7 +209,9 @@ export default function WorkerDashboard() {
       };
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
+        releaseRecordingLock();
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        if (blob.size === 0) return;
         const formData = new FormData();
         formData.append("audio", blob, "voice-message.webm");
         const res = await api.post<{ message: ApiJobMessage }>(`/api/jobs/${job.id}/voice-message`, formData);
@@ -190,18 +224,14 @@ export default function WorkerDashboard() {
       mediaRecorderRef.current = recorder;
       setIsRecording(true);
       autoStopTimerRef.current = setTimeout(() => {
-        if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
-        setIsRecording(false);
+        if (mediaRecorderRef.current?.state === "recording") {
+          mediaRecorderRef.current.stop();
+        }
       }, LIMITS.VOICE_MAX_SECONDS * 1000);
     } catch {
+      releaseRecordingLock();
       showToast(t("workerMicUnavailable"));
     }
-  };
-
-  const handleStopRecord = () => {
-    if (autoStopTimerRef.current) clearTimeout(autoStopTimerRef.current);
-    mediaRecorderRef.current?.stop();
-    setIsRecording(false);
   };
 
   const done = checklist.filter((c) => c.is_completed).length;
@@ -441,7 +471,7 @@ export default function WorkerDashboard() {
                         )}
 {task.is_completed && task.completed_at && (
   <span style={{ fontFamily: "'PT Sans', sans-serif", fontWeight: 400, fontSize: "12px", lineHeight: "16px", letterSpacing: "0.1px", color: "#D3D3D3", textAlign: "right" }}>
-    {new Date(task.completed_at).toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" })}
+    {formatSiDateTimeCompact(task.completed_at)}
   </span>
 )}
                       </div>
@@ -592,7 +622,7 @@ export default function WorkerDashboard() {
               >
                 <button
                   onClick={handleStartRecord}
-                  disabled={!job}
+                  disabled={!job || isRecording}
                   className="flex-1 flex flex-col items-center gap-2 group cursor-pointer bg-transparent border-none p-0 outline-none disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <div
@@ -605,7 +635,7 @@ export default function WorkerDashboard() {
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      background: "transparent"
+                      background: "transparent",
                     }}
                     className="group-hover:scale-[1.03] transition-transform"
                   >
@@ -774,9 +804,6 @@ export default function WorkerDashboard() {
             <p className="text-xs text-slate-500 max-w-[220px] mt-3 leading-normal">
               {t("workerRecordingDesc")}
             </p>
-            <Button onClick={handleStopRecord} className="mt-8 rounded-full h-11 px-6 bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs cursor-pointer">
-              {t("workerStopRecord")}
-            </Button>
           </div>
         </DialogContent>
       </Dialog>

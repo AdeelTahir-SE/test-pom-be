@@ -129,6 +129,7 @@ export async function fetchJobFiles(jobId: string) {
         ocr_text: string | null;
         document_type: string | null;
         document_preview: string | null;
+        checklist_item_id?: string | null;
       }>;
     }>(`/api/jobs/${jobId}/files`)
   );

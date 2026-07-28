@@ -70,16 +70,19 @@ export function describeTimelineEvent(
   switch (e.event_type) {
     case "job_created": {
       const title = typeof meta.title === "string" ? meta.title : "";
-      return card
+      const worker =
+        typeof meta.worker_name === "string" && meta.worker_name ? meta.worker_name : "";
+      const base = card
         ? `${t("timelineJobCreated")}: ${card}${title ? ` · ${title}` : ""}`
         : `${t("timelineJobCreated")}: ${title}`;
+      return worker ? `${base} · ${worker}` : base;
     }
     case "worker_assigned":
-      // Prefer card #ID (useful later) over bare "worker assigned".
-      return card
-        ? `${t("timelineCard")}: ${card}`
-        : typeof meta.worker_name === "string" && meta.worker_name
-          ? `${t("timelineWorkerAssigned")}: ${meta.worker_name}`
+      // Later reassignment — always show who was assigned (not bare card #).
+      return typeof meta.worker_name === "string" && meta.worker_name
+        ? `${t("timelineWorkerAssigned")}: ${meta.worker_name}${card ? ` · ${card}` : ""}`
+        : card
+          ? `${t("timelineWorkerAssigned")}: ${card}`
           : t("timelineWorkerAssigned");
     case "job_updated":
       if (meta.hidden === true) {

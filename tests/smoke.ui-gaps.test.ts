@@ -151,20 +151,20 @@ describe("Local smoke — 02-01 remaining gaps", () => {
     const reqItem = checklist.body.data!.checklist.find((c) => c.label === "Fotografiraj");
     expect(reqItem?.requires_attachment).toBe(true);
 
-    // Timeline should include worker_assigned with job_seq for card wording.
+    // Timeline should include job_created with job_seq for card wording.
     const events = await getTimelineEvents(job.id);
-    const assigned = events.find((e) => e.event_type === "worker_assigned");
-    expect(assigned).toBeTruthy();
+    const created = events.find((e) => e.event_type === "job_created");
+    expect(created).toBeTruthy();
     const line = describeTimelineEvent(
       {
-        event_type: assigned!.event_type,
-        metadata: assigned!.metadata as Record<string, unknown>,
+        event_type: created!.event_type,
+        metadata: created!.metadata as Record<string, unknown>,
       },
       tSl,
       card
     );
     expect(line).toContain(card);
-    expect(line).toMatch(/Kartica/);
+    expect(line).toMatch(/Delovni nalog ustvarjen/);
 
     // Office can message worker (compose + path) (#51)
     const msg = await api.post<{ data?: { message: { id: string } } }>(

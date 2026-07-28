@@ -17,7 +17,7 @@ describe("formatCardId", () => {
 });
 
 describe("describeTimelineEvent", () => {
-  it("prefers card id for worker_assigned", () => {
+  it("shows worker name for worker_assigned (reassignment)", () => {
     const line = describeTimelineEvent(
       {
         event_type: "worker_assigned",
@@ -25,8 +25,8 @@ describe("describeTimelineEvent", () => {
       },
       tSl
     );
-    expect(line).toBe("Kartica: #001");
-    expect(line).not.toContain("Delavec dodeljen");
+    expect(line).toContain("Janez");
+    expect(line).toContain("#001");
   });
 
   it("falls back to cardNumber prop when metadata has no job_seq", () => {
@@ -35,7 +35,8 @@ describe("describeTimelineEvent", () => {
       tEn,
       "#003"
     );
-    expect(line).toBe("Card: #003");
+    expect(line).toContain("Janez");
+    expect(line).toContain("#003");
   });
 
   it("includes card id on attachment uploads", () => {

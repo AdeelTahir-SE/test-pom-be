@@ -197,8 +197,35 @@ export default function OfficeDashboard() {
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeWorkerId, setComposeWorkerId] = useState('');
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
   const autoStopTimerRef = useRef<NodeJS.Timeout | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+
+  // Stop mic/timer if the page unmounts mid-recording (navigate away / logout).
+  useEffect(() => {
+    return () => {
+      if (autoStopTimerRef.current) {
+        clearTimeout(autoStopTimerRef.current);
+        autoStopTimerRef.current = null;
+      }
+      const recorder = mediaRecorderRef.current;
+      if (recorder) {
+        // Prevent onstop from uploading after unmount.
+        recorder.ondataavailable = null;
+        recorder.onstop = null;
+        if (recorder.state === "recording") {
+          try {
+            recorder.stop();
+          } catch {
+            // ignore — recorder may already be stopping
+          }
+        }
+        mediaRecorderRef.current = null;
+      }
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    };
+  }, []);
 
   // Template/example cards shown in an otherwise-empty column so first-time
   // users see what a real card looks like, instead of a blank "no items" box.
@@ -319,15 +346,23 @@ export default function OfficeDashboard() {
   const handleToggleTask = async (_workerId: string, taskId: string) => {
     const item = Object.values(mergedChecklistsByJob).flat().find((i) => i.id === taskId);
     if (!item || isOptimisticId(item.id) || isOptimisticId(item.job_id)) return;
+    // Completed steps stay permanently done (Mark a2).
+    if (item.is_completed) return;
 
-    const nextCompleted = !item.is_completed;
+    const siblings = [...(mergedChecklistsByJob[item.job_id] ?? [])].sort(
+      (a, b) => a.order_index - b.order_index
+    );
+    const next = siblings.find((i) => !i.is_completed);
+    if (!next || next.id !== item.id) return;
+    if (item.requires_attachment && !item.has_attachment) return;
+
     const patchLocal = (list: ApiChecklistItem[]) =>
       list.map((i) =>
         i.id === taskId
           ? {
               ...i,
-              is_completed: nextCompleted,
-              completed_at: nextCompleted ? new Date().toISOString() : null,
+              is_completed: true,
+              completed_at: new Date().toISOString(),
             }
           : i
       );
@@ -343,7 +378,7 @@ export default function OfficeDashboard() {
     );
 
     const res = await api.patch<ApiChecklistItem>(`/api/checklist-items/${taskId}`, {
-      is_completed: nextCompleted,
+      is_completed: true,
     });
     if (res.status === 200 && res.data) {
       setChecklistsByJob((prev) => ({
@@ -379,6 +414,10 @@ export default function OfficeDashboard() {
     steps: { text: string; requiresAttachment: boolean }[];
   }) => {
     const parsed = parseFlexibleDate(taskData.datum) ?? selectedDate;
+    if (parsed.getTime() < startOfLocalDay().getTime()) {
+      alert("Datum ne sme biti v preteklosti.");
+      return;
+    }
     const scheduledAt = localDayToScheduledAt(parsed);
     const tempId = newOptimisticId();
     const now = new Date().toISOString();
@@ -684,6 +723,7 @@ export default function OfficeDashboard() {
     if (!replyJobId) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
       const recorder = new MediaRecorder(stream);
       audioChunksRef.current = [];
       recorder.ondataavailable = (e) => {
@@ -691,15 +731,24 @@ export default function OfficeDashboard() {
       };
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
+        if (mediaStreamRef.current === stream) mediaStreamRef.current = null;
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         const formData = new FormData();
         formData.append('audio', blob, 'voice-message.webm');
-        const res = await api.post<{ message: ApiJobMessage }>(
-          `/api/jobs/${replyJobId}/voice-message`,
-          formData,
-        );
-        if ((res.status === 200 || res.status === 201) && res.data) {
-          setReplyMessages((prev) => [...prev, res.data!.message]);
+        try {
+          const res = await api.post<{ message: ApiJobMessage }>(
+            `/api/jobs/${replyJobId}/voice-message`,
+            formData,
+          );
+          if ((res.status === 200 || res.status === 201) && res.data) {
+            setReplyMessages((prev) => [...prev, res.data!.message]);
+          } else {
+            console.error(res.error);
+            alert(res.error?.message ?? "Glasovnega sporočila ni bilo mogoče poslati.");
+          }
+        } catch (err) {
+          console.error(err);
+          alert("Glasovnega sporočila ni bilo mogoče poslati.");
         }
       };
       recorder.start();

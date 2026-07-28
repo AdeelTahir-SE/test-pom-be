@@ -39,7 +39,7 @@ async function setupCompanyWithWorker() {
 }
 
 describe("Phase 4 — Jobs Engine", () => {
-  it("owner creates a job with an assigned worker; timeline logs job_created + worker_assigned", async () => {
+  it("owner creates a job with an assigned worker; timeline logs a single job_created (with worker)", async () => {
     const { owner, worker } = await setupCompanyWithWorker();
 
     const res = await api.post<{ data?: { job: JobDto } }>("/api/jobs", {
@@ -52,9 +52,10 @@ describe("Phase 4 — Jobs Engine", () => {
     expect(res.body.data?.job.worker_id).toBe(worker.userId);
 
     const events = await getTimelineEvents(res.body.data!.job.id);
-    expect(events.map((e) => e.event_type)).toEqual(
-      expect.arrayContaining(["job_created", "worker_assigned"])
-    );
+    expect(events.map((e) => e.event_type)).toContain("job_created");
+    expect(events.map((e) => e.event_type)).not.toContain("worker_assigned");
+    const created = events.find((e) => e.event_type === "job_created");
+    expect(created?.metadata?.worker_id).toBe(worker.userId);
   });
 
   it("manager can also create a job", async () => {
@@ -153,8 +154,9 @@ describe("Phase 4 — Jobs Engine", () => {
 
     const events = await getTimelineEvents(jobId);
     expect(events.map((e) => e.event_type)).toEqual(
-      expect.arrayContaining(["job_created", "worker_assigned", "status_changed", "job_completed"])
+      expect.arrayContaining(["job_created", "status_changed", "job_completed"])
     );
+    expect(events.map((e) => e.event_type)).not.toContain("worker_assigned");
   });
 
   it("rejects an invalid status transition (pending -> completed)", async () => {

@@ -299,4 +299,63 @@ describe("Add-on 2 — Customer Knowledge (API)", () => {
     expect(notes.status).toBe(200);
     expect(notes.body.data?.notes[0]!.note).toBe("Call reception before entering.");
   });
+
+  it("creates distinct customers for similar but different names", async () => {
+    const owner = await registerCompany();
+    createdCompanies.push(owner);
+
+    const a = await api.post<NoteCreateDto>("/api/customers/notes", {
+      token: owner.accessToken,
+      body: { customer_name: "Jerry d.o.o.", note: "Note for d.o.o." },
+    });
+    const b = await api.post<NoteCreateDto>("/api/customers/notes", {
+      token: owner.accessToken,
+      body: { customer_name: "Jerry Gmbh", note: "Note for Gmbh" },
+    });
+    expect(a.status).toBe(201);
+    expect(b.status).toBe(201);
+    expect(a.body.data?.customer.id).not.toBe(b.body.data?.customer.id);
+    expect(a.body.data?.customer.name).toBe("Jerry d.o.o.");
+    expect(b.body.data?.customer.name).toBe("Jerry Gmbh");
+  });
+
+  it("job create stores customer exactly and registers the customer row", async () => {
+    const owner = await registerCompany();
+    createdCompanies.push(owner);
+
+    const customer = "Nowak";
+    const jobRes = await api.post<{ data?: { job: { id: string; customer: string | null } } }>(
+      "/api/jobs",
+      {
+        token: owner.accessToken,
+        body: { title: "Exact customer", customer },
+      }
+    );
+    expect(jobRes.status).toBe(201);
+    expect(jobRes.body.data?.job.customer).toBe(customer);
+
+    const notes = await api.get<NotesListDto>(
+      `/api/customers/notes?name=${encodeURIComponent(customer)}`,
+      { token: owner.accessToken }
+    );
+    expect(notes.status).toBe(200);
+    expect(notes.body.data?.customer?.name).toBe(customer);
+  });
+
+  it("rejects past scheduled_at on job create", async () => {
+    const owner = await registerCompany();
+    createdCompanies.push(owner);
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(12, 0, 0, 0);
+
+    const res = await api.post("/api/jobs", {
+      token: owner.accessToken,
+      body: {
+        title: "Past job",
+        scheduled_at: yesterday.toISOString(),
+      },
+    });
+    expect(res.status).toBe(400);
+  });
 });

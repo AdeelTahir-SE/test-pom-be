@@ -68,7 +68,6 @@ describe("Phase 6 — Timeline (read API)", () => {
     const events = res.body.data!.timeline;
     expect(events.map((e) => e.event_type)).toEqual([
       "job_created",
-      "worker_assigned",
       "checklist_completed",
       "status_changed",
     ]);

@@ -5,8 +5,10 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { parseJsonBody } from "@/lib/validation/schemas";
 import { createTimelineEvent } from "@/lib/timeline/events";
 import { notifyUser } from "@/lib/services/notifications";
+import { findOrCreateCustomer } from "@/lib/services/customers";
 import { JOB_STATUSES } from "@/config/constants";
 import { assertValidWorker } from "@/lib/services/jobs";
+import { isScheduledAtInPast } from "@/lib/officeDate";
 
 export const dynamic = "force-dynamic";
 
@@ -93,6 +95,22 @@ export const POST = withAuth(
     const input = await parseJsonBody(request, createJobSchema);
     const db = getAdminClient();
 
+    if (input.scheduled_at && isScheduledAtInPast(input.scheduled_at)) {
+      throw new ApiError(
+        "bad_request",
+        "Scheduled date cannot be in the past. Use today or a future date."
+      );
+    }
+
+    // Persist customer exactly as entered (trim/collapse spaces only) and
+    // ensure a distinct customers row — similar names stay different customers.
+    const customerName = input.customer
+      ? input.customer.trim().replace(/\s+/g, " ")
+      : null;
+    if (customerName) {
+      await findOrCreateCustomer(db, auth.companyId, customerName);
+    }
+
     let assignedWorkerName: string | null = null;
     if (input.worker_id) {
       const worker = await assertValidWorker(db, auth.companyId, input.worker_id);
@@ -107,7 +125,7 @@ export const POST = withAuth(
         title: input.title,
         description: input.description ?? null,
         priority: input.priority ?? null,
-        customer: input.customer ?? null,
+        customer: customerName,
         location: input.location ?? null,
         scheduled_at: input.scheduled_at ?? null,
         metadata: input.metadata ?? {},
@@ -119,12 +137,19 @@ export const POST = withAuth(
       throw new ApiError("internal", "Failed to create job.", jobError?.message);
     }
 
+    // One create event (include worker when assigned at create) — avoids the
+    // near-duplicate job_created + worker_assigned pair on the card timeline.
     await createTimelineEvent(db, {
       companyId: auth.companyId,
       jobId: job.id,
       eventType: "job_created",
       userId: auth.userId,
-      metadata: { title: job.title, job_seq: job.company_seq },
+      metadata: {
+        title: job.title,
+        job_seq: job.company_seq,
+        ...(assignedWorkerName ? { worker_name: assignedWorkerName } : {}),
+        ...(input.worker_id ? { worker_id: input.worker_id } : {}),
+      },
     });
 
     if (input.worker_id) {
@@ -137,13 +162,6 @@ export const POST = withAuth(
       if (assignError) {
         throw new ApiError("internal", "Job created but assignment failed.", assignError.message);
       }
-      await createTimelineEvent(db, {
-        companyId: auth.companyId,
-        jobId: job.id,
-        eventType: "worker_assigned",
-        userId: auth.userId,
-        metadata: { worker_id: input.worker_id, worker_name: assignedWorkerName, job_seq: job.company_seq },
-      });
       // Quick Reaction Event (§25): job assigned -> notify worker.
       await notifyUser(db, {
         companyId: auth.companyId,

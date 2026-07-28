@@ -177,7 +177,7 @@ describe("Phase 5 — Checklist System", () => {
     expect(res.status).toBe(400);
   });
 
-  it("owner/manager can edit label, order_index, requires_attachment, and un-complete", async () => {
+  it("owner/manager can edit label, order_index, requires_attachment; cannot un-complete", async () => {
     const { owner, jobId, workerToken } = await setupCompanyWithWorkerAndJob();
     const created = await api.post<{ data?: { item: ChecklistItemDto } }>(
       `/api/jobs/${jobId}/checklist`,
@@ -197,18 +197,70 @@ describe("Phase 5 — Checklist System", () => {
     expect(edited.body.data?.item.order_index).toBe(5);
     expect(edited.body.data?.item.requires_attachment).toBe(true);
 
+    // Clear requires_attachment so complete is allowed without a file.
+    await api.patch(`/api/checklist-items/${itemId}`, {
+      token: owner.accessToken,
+      body: { requires_attachment: false },
+    });
+
     await api.patch(`/api/checklist-items/${itemId}`, {
       token: workerToken,
       body: { is_completed: true },
     });
 
-    const uncompleted = await api.patch<{ data?: { item: ChecklistItemDto } }>(
-      `/api/checklist-items/${itemId}`,
-      { token: owner.accessToken, body: { is_completed: false } }
+    const uncompleted = await api.patch(`/api/checklist-items/${itemId}`, {
+      token: owner.accessToken,
+      body: { is_completed: false },
+    });
+    expect(uncompleted.status).toBe(400);
+  });
+
+  it("only the first incomplete step can be completed", async () => {
+    const { owner, jobId, workerToken } = await setupCompanyWithWorkerAndJob();
+    const first = await api.post<{ data?: { item: ChecklistItemDto } }>(
+      `/api/jobs/${jobId}/checklist`,
+      { token: owner.accessToken, body: { label: "First" } }
     );
-    expect(uncompleted.status).toBe(200);
-    expect(uncompleted.body.data?.item.is_completed).toBe(false);
-    expect(uncompleted.body.data?.item.completed_at).toBeNull();
+    const second = await api.post<{ data?: { item: ChecklistItemDto } }>(
+      `/api/jobs/${jobId}/checklist`,
+      { token: owner.accessToken, body: { label: "Second" } }
+    );
+
+    const blocked = await api.patch(`/api/checklist-items/${second.body.data!.item.id}`, {
+      token: workerToken,
+      body: { is_completed: true },
+    });
+    expect(blocked.status).toBe(409);
+
+    const okFirst = await api.patch(`/api/checklist-items/${first.body.data!.item.id}`, {
+      token: workerToken,
+      body: { is_completed: true },
+    });
+    expect(okFirst.status).toBe(200);
+
+    const okSecond = await api.patch(`/api/checklist-items/${second.body.data!.item.id}`, {
+      token: workerToken,
+      body: { is_completed: true },
+    });
+    expect(okSecond.status).toBe(200);
+  });
+
+  it("requires_attachment blocks complete until a file is linked", async () => {
+    const { owner, jobId, workerToken } = await setupCompanyWithWorkerAndJob();
+    const created = await api.post<{ data?: { item: ChecklistItemDto } }>(
+      `/api/jobs/${jobId}/checklist`,
+      {
+        token: owner.accessToken,
+        body: { label: "Photo step", requires_attachment: true },
+      }
+    );
+    const itemId = created.body.data!.item.id;
+
+    const blocked = await api.patch(`/api/checklist-items/${itemId}`, {
+      token: workerToken,
+      body: { is_completed: true },
+    });
+    expect(blocked.status).toBe(409);
   });
 
   it("a worker not assigned to the job is blocked from its checklist (403)", async () => {

@@ -1,11 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState } from "react";
 import { X } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useLanguage } from "@/lib/useLanguage";
-import { api } from "@/lib/api-client";
-import { CustomerNotesBanner } from "./CustomerNotesBanner";
+import { parseFlexibleDate, startOfLocalDay } from "@/lib/officeDate";
 import {
   AuraLabel,
   AuraInput,
@@ -23,12 +22,6 @@ interface TaskStepInput {
 
 function newStep(): TaskStepInput {
   return { id: Math.random().toString(36).slice(2), text: "", requiresAttachment: false };
-}
-
-interface CustomerNoteDto {
-  id: string;
-  note: string;
-  created_at: string;
 }
 
 interface AddTaskModalProps {
@@ -54,6 +47,7 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
   const [kraj, setKraj] = useState("");
   const [narocnik, setNarocnik] = useState("");
   const [datum, setDatum] = useState(defaultDate);
+  const [dateError, setDateError] = useState<string | null>(null);
   const [workerId, setWorkerId] = useState("");
   const [steps, setSteps] = useState<TaskStepInput[]>(() => [
     newStep(),
@@ -61,32 +55,14 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
     newStep(),
     newStep(),
   ]);
-  const [customerNotes, setCustomerNotes] = useState<CustomerNoteDto[]>([]);
-  const notesRequestRef = useRef(0);
   const hasNoSteps = steps.filter((s) => s.text.trim().length > 0).length === 0;
 
   React.useEffect(() => {
-    if (isOpen) setDatum(defaultDate);
-  }, [isOpen, defaultDate]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const name = narocnik.trim();
-    if (name.length < 2) {
-      setCustomerNotes([]);
-      return;
+    if (isOpen) {
+      setDatum(defaultDate);
+      setDateError(null);
     }
-    const requestId = ++notesRequestRef.current;
-    const timer = window.setTimeout(async () => {
-      const res = await api.get<{ notes: CustomerNoteDto[] }>(
-        `/api/customers/notes?name=${encodeURIComponent(name)}`
-      );
-      if (notesRequestRef.current !== requestId) return;
-      if (res.status === 200 && res.data) setCustomerNotes(res.data.notes);
-      else setCustomerNotes([]);
-    }, 350);
-    return () => window.clearTimeout(timer);
-  }, [narocnik, isOpen]);
+  }, [isOpen, defaultDate]);
 
   const resetAll = () => {
     setStep(1);
@@ -94,14 +70,30 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
     setKraj("");
     setNarocnik("");
     setDatum(defaultDate);
+    setDateError(null);
     setWorkerId("");
     setSteps([newStep(), newStep(), newStep(), newStep()]);
-    setCustomerNotes([]);
+  };
+
+  const assertDateNotPast = (raw: string): boolean => {
+    const parsed = parseFlexibleDate(raw);
+    if (!parsed) {
+      // Empty / unparsed — board will default to selected day; allow through.
+      setDateError(null);
+      return true;
+    }
+    if (parsed.getTime() < startOfLocalDay().getTime()) {
+      setDateError("Datum ne sme biti v preteklosti.");
+      return false;
+    }
+    setDateError(null);
+    return true;
   };
 
   const handleNext = (e: React.FormEvent) => {
     e.preventDefault();
     if (!workerId || !opravilo) return;
+    if (!assertDateNotPast(datum)) return;
     setStep(2);
   };
 
@@ -127,6 +119,10 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
     e.preventDefault();
     const valid = steps.filter((s) => s.text.trim().length > 0);
     if (valid.length === 0) return;
+    if (!assertDateNotPast(datum)) {
+      setStep(1);
+      return;
+    }
     onAddTask({
       workerId,
       opravilo,
@@ -218,20 +214,22 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                   />
                 </div>
 
-                {customerNotes.length > 0 && (
-                  <CustomerNotesBanner notes={customerNotes} compact />
-                )}
-
                 <div>
                   <AuraLabel>{t("modalTaskDate")}</AuraLabel>
                   <AuraInput
                     type="text"
                     value={datum}
-                    onChange={(e) => setDatum(e.target.value)}
+                    onChange={(e) => {
+                      setDatum(e.target.value);
+                      if (dateError) setDateError(null);
+                    }}
                     maxLength={10}
                     placeholder="02.02.2026"
                     className="placeholder:text-slate-300"
                   />
+                  {dateError && (
+                    <p className="mt-1 text-[11px] text-red-500">{dateError}</p>
+                  )}
                 </div>
 
                 <div>
@@ -281,10 +279,6 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                   Dodaj nalogo
                 </h3>
               </div>
-
-              {customerNotes.length > 0 && (
-                <CustomerNotesBanner notes={customerNotes} compact />
-              )}
 
               {/* Tasks List container */}
               <div className="flex flex-col gap-3.5 max-h-[320px] overflow-y-auto p-1.5 custom-ios-scrollbar">

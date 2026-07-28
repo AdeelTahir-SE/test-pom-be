@@ -91,9 +91,11 @@ describe("Phase 13 — End-to-End Scenario", () => {
       });
 
       // 6. Worker uploads a file as evidence for the second item.
+      const form = uploadForm("scaffolding photo notes", "damage-notes.txt");
+      form.append("checklist_item_id", item2.body.data!.item.id);
       const fileRes = await api.post<{ data?: { files: FileDto[] } }>(
         `/api/jobs/${jobId}/files`,
-        { token: workerToken, body: uploadForm("scaffolding photo notes", "damage-notes.txt") }
+        { token: workerToken, body: form }
       );
       expect(fileRes.status).toBe(201);
       await api.patch(`/api/checklist-items/${item2.body.data!.item.id}`, {
@@ -129,7 +131,6 @@ describe("Phase 13 — End-to-End Scenario", () => {
       const eventTypes = timelineRes.body.data!.timeline.map((e) => e.event_type);
       expect(eventTypes).toEqual([
         "job_created",
-        "worker_assigned",
         "status_changed", // -> in_progress
         "checklist_completed", // item1
         "document_uploaded", // damage-notes.txt

@@ -54,18 +54,67 @@ async function loadForMutation(db: SupabaseClient, auth: CompanyUserContext, ite
   return { item, job, isWorker };
 }
 
+/** Only the top incomplete step (lowest order_index) may be completed. */
+async function assertIsNextCompletable(
+  db: SupabaseClient,
+  jobId: string,
+  item: { id: string; order_index: number }
+) {
+  const { data: siblings, error } = await db
+    .from("job_checklist_items")
+    .select("id, order_index, is_completed")
+    .eq("job_id", jobId)
+    .order("order_index", { ascending: true });
+  if (error) {
+    throw new ApiError("internal", "Failed to load checklist order.", error.message);
+  }
+  const next = (siblings ?? []).find((s) => !s.is_completed);
+  if (!next || next.id !== item.id) {
+    throw new ApiError(
+      "conflict",
+      "Only the first incomplete step can be marked done. Move it to the top first."
+    );
+  }
+}
+
+async function assertAttachmentPresentIfRequired(
+  db: SupabaseClient,
+  jobId: string,
+  item: { id: string; requires_attachment: boolean }
+) {
+  if (!item.requires_attachment) return;
+  const { data: file, error } = await db
+    .from("job_files")
+    .select("id")
+    .eq("job_id", jobId)
+    .eq("checklist_item_id", item.id)
+    .is("hidden_at", null)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    throw new ApiError("internal", "Failed to check step attachment.", error.message);
+  }
+  if (!file) {
+    throw new ApiError(
+      "conflict",
+      "This step requires an attachment before it can be completed."
+    );
+  }
+}
+
 // Workers may ONLY mark an item complete (Mobile Actions §36 lists "Mark
 // checklist item complete", not editing or un-completing) — .strict() plus
 // z.literal(true) rejects false or any other field outright.
 const workerUpdateSchema = z.object({ is_completed: z.literal(true) }).strict();
 
-// Owner/manager have full edit rights (Permission Matrix §12: Create/Edit Checklist).
+// Owner/manager may edit label / order / requires_attachment, and complete —
+// but never un-complete (Mark a2: completed stays permanently done).
 const managerUpdateSchema = z
   .object({
     label: z.string().trim().min(1).optional(),
     order_index: z.number().int().min(0).optional(),
     requires_attachment: z.boolean().optional(),
-    is_completed: z.boolean().optional(),
+    is_completed: z.literal(true).optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, {
     message: "At least one field must be provided.",
@@ -80,6 +129,11 @@ export const PATCH = withAuth<{ id: string }>(async (request, auth, { params }) 
     ? await parseJsonBody(request, workerUpdateSchema)
     : await parseJsonBody(request, managerUpdateSchema);
 
+  if (item.is_completed && input.is_completed === true) {
+    // Idempotent no-op complete.
+    return ok({ item });
+  }
+
   const updates: Record<string, unknown> = {};
   if (!isWorker) {
     if ("label" in input && input.label !== undefined) updates.label = input.label;
@@ -92,9 +146,15 @@ export const PATCH = withAuth<{ id: string }>(async (request, auth, { params }) 
   }
 
   const completingNow = input.is_completed === true && !item.is_completed;
-  if (input.is_completed !== undefined) {
-    updates.is_completed = input.is_completed;
-    updates.completed_at = input.is_completed ? new Date().toISOString() : null;
+  if (completingNow) {
+    await assertIsNextCompletable(db, job.id, item);
+    await assertAttachmentPresentIfRequired(db, job.id, item);
+    updates.is_completed = true;
+    updates.completed_at = new Date().toISOString();
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return ok({ item });
   }
 
   const { data: updated, error: updateError } = await db

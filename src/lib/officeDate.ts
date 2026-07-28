@@ -213,3 +213,23 @@ export function getZonedDayAndHour(
   return { calendarDay: `${year}-${month}-${day}`, hour };
 }
 
+/** Calendar day of an ISO timestamp in the app business timezone. */
+export function isoToAppDayKey(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  if (CALENDAR_DAY_RE.test(iso)) return iso;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return getZonedDayAndHour(d).calendarDay;
+}
+
+/** True when `scheduled_at` falls on a calendar day before today (app TZ). */
+export function isScheduledAtInPast(
+  scheduledAt: string,
+  now: Date = new Date()
+): boolean {
+  const dayKey = isoToAppDayKey(scheduledAt);
+  if (!dayKey) return true;
+  const todayKey = getZonedDayAndHour(now).calendarDay;
+  return dayKey < todayKey;
+}
+

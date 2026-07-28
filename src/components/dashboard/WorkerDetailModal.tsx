@@ -5,7 +5,6 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Worker } from "@/lib/mockData";
 import { api } from "@/lib/api-client";
 import { useLanguage } from "@/lib/useLanguage";
-import type { TranslationKey } from "@/lib/translations";
 import type { JobStatus } from "@/config/constants";
 import { Paperclip, GripVertical, X } from "lucide-react";
 import {
@@ -41,8 +40,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
 import { fetchJobFiles, fetchJobTimeline } from "@/lib/query/office";
 import { parseNoteText } from "./CustomerNotesBanner";
-import { formatSiDateFromIso, formatSiDateTimeFromIso, formatSiTimeFromIso } from "@/lib/officeDate";
-import { toTelHref } from "@/lib/phone";
+import { formatSiDateFromIso, formatSiTimeFromIso } from "@/lib/officeDate";
 interface CustomerNoteDto {
   id: string;
   note: string;
@@ -67,22 +65,6 @@ interface WorkerDetailModalProps {
   canManageCustomerNotes?: boolean;
 }
 
-const STATUS_BADGE_CLASSES: Record<JobStatus, string> = {
-  pending: "bg-slate-100 text-slate-500",
-  in_progress: "bg-blue-50 text-blue-600",
-  waiting: "bg-amber-50 text-amber-600",
-  completed: "bg-green-50 text-green-700",
-  cancelled: "bg-red-50 text-red-600",
-};
-
-const STATUS_LABEL_KEY: Record<JobStatus, TranslationKey> = {
-  pending: "jobStatusPending",
-  in_progress: "jobStatusInProgress",
-  waiting: "jobStatusWaiting",
-  completed: "jobStatusCompleted",
-  cancelled: "jobStatusCancelled",
-};
-
 interface TaskItem {
   id: string;
   text: string;
@@ -101,11 +83,12 @@ interface AttachmentItem {
   ocrText: string | null;
   documentType: string | null;
   documentPreview: string | null;
+  checklistItemId: string | null;
 }
 
 interface TimelineItem {
   id: string;
-  /** Always `DD.MM.YYYY · HH:mm` — date and time from stored created_at. */
+  /** Card timeline shows time only (date is implied by the board day). */
   time: string;
   text: string;
   type: "step" | "attachment" | "message" | "voice" | "other";
@@ -129,11 +112,11 @@ interface SortableTaskItemProps {
   task: TaskItem;
   onClick: () => void;
   onDelete: () => void;
+  onOpenAttachment?: () => void;
   deleteLabel: string;
-  onAttachmentClick?: () => void;
 }
 
-function SortableTaskItem({ task, onClick, onDelete, deleteLabel, onAttachmentClick }: SortableTaskItemProps) {
+function SortableTaskItem({ task, onClick, onDelete, onOpenAttachment, deleteLabel }: SortableTaskItemProps) {
   const {
     attributes,
     listeners,
@@ -206,13 +189,29 @@ function SortableTaskItem({ task, onClick, onDelete, deleteLabel, onAttachmentCl
         {/* Completion time / clip icon — show clip when required OR already attached */}
         <div className="flex items-center gap-1.5 ml-auto">
           {(task.attachment || task.requiresAttachment) && (
-            <Paperclip
+            <span
+              role={onOpenAttachment ? "button" : undefined}
+              tabIndex={onOpenAttachment ? 0 : undefined}
               onClick={(e) => {
+                if (!onOpenAttachment) return;
                 e.stopPropagation();
-                onAttachmentClick?.();
+                onOpenAttachment();
               }}
-              className={`w-3.5 h-3.5 shrink-0 cursor-pointer ${task.attachment ? "text-slate-300" : "text-slate-400"}`}
-            />
+              onKeyDown={(e) => {
+                if (!onOpenAttachment) return;
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onOpenAttachment();
+                }
+              }}
+              className="inline-flex"
+              title={task.attachment ? "Odpri priponko" : undefined}
+            >
+              <Paperclip
+                className={`w-3.5 h-3.5 shrink-0 ${task.attachment ? "text-slate-300" : "text-slate-400"}`}
+              />
+            </span>
           )}
           {task.completed && task.time && (
             <span className="text-xs text-[#D3D3D3] font-normal">{task.time}</span>
@@ -373,6 +372,7 @@ export function WorkerDetailModal({
         ocrText: f.ocr_text,
         documentType: f.document_type,
         documentPreview: f.document_preview,
+        checklistItemId: f.checklist_item_id ?? null,
       })),
     [filesQuery.data]
   );
@@ -384,7 +384,7 @@ export function WorkerDetailModal({
         .reverse()
         .map((e) => ({
           id: e.id,
-          time: formatSiDateTimeFromIso(e.created_at),
+          time: formatSiTimeFromIso(e.created_at),
           text: describeTimelineEvent(e, t, cardNumber),
           type: TIMELINE_TYPE_BY_EVENT[e.event_type] ?? "other",
         })),
@@ -622,128 +622,10 @@ export function WorkerDetailModal({
 
   if (!worker) return null;
 
-  const workerTelHref = toTelHref(worker.phone);
-
-  const renderStatusSection = () => {
-    if (!jobStatus || !onChangeJobStatus) return null;
-    const isTerminal = jobStatus === "completed" || jobStatus === "cancelled";
-    return (
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <span
-            style={{
-              fontFamily: "'PT Sans', sans-serif",
-              fontWeight: 700,
-              fontSize: "12px",
-              color: "#5A5A65",
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-            }}
-          >
-            {}
-          </span>
-          <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${STATUS_BADGE_CLASSES[jobStatus]}`}>
-            {t(STATUS_LABEL_KEY[jobStatus])}
-          </span>
-        </div>
-        {/* {!isTerminal && (
-          <div className="flex flex-wrap gap-2">
-            {jobStatus === "pending" && (
-              <button
-                onClick={() => onChangeJobStatus("in_progress")}
-                className="text-xs font-semibold px-3 py-2 rounded-xl bg-[#1B3A6B] text-white hover:bg-[#142c52] transition-colors cursor-pointer"
-              >
-                {t("jobActionStart")}
-              </button>
-            )}
-            {jobStatus === "in_progress" && (
-              <>
-                <button
-                  onClick={() => onChangeJobStatus("waiting")}
-                  className="text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
-                >
-                  {t("jobActionWait")}
-                </button>
-                <button
-                  onClick={requestComplete}
-                  className="text-xs font-semibold px-3 py-2 rounded-xl bg-[#1B3A6B] text-white hover:bg-[#142c52] transition-colors cursor-pointer"
-                >
-                  {t("jobActionComplete")}
-                </button>
-              </>
-            )}
-            {jobStatus === "waiting" && (
-              <>
-                <button
-                  onClick={() => onChangeJobStatus("in_progress")}
-                  className="text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
-                >
-                  {t("jobActionResume")}
-                </button>
-                <button
-                  onClick={requestComplete}
-                  className="text-xs font-semibold px-3 py-2 rounded-xl bg-[#1B3A6B] text-white hover:bg-[#142c52] transition-colors cursor-pointer"
-                >
-                  {t("jobActionComplete")}
-                </button>
-              </>
-            )}
-            {canCancelJob && (
-              <button
-                onClick={() => onChangeJobStatus("cancelled")}
-                className="text-xs font-semibold px-3 py-2 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
-              >
-                {t("jobActionCancel")}
-              </button>
-            )}
-          </div>
-        )} */}
-        {jobStatus === "completed" && (
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => openSaveNoteDialog(false)}
-              className="text-xs font-semibold px-3 py-2 rounded-xl border border-amber-200 text-amber-800 bg-amber-50 hover:bg-amber-100 transition-colors cursor-pointer"
-            >
-              {t("customerNotesSaveBtn")}
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
+  const firstIncompleteId = tasks.find((t) => !t.completed)?.id ?? null;
 
   const renderContentBody = () => (
     <div className="flex flex-col gap-[48px] text-[#1E293B]">
-      {/* One-tap call to the worker (phone from Dodaj zaposlenega / team profile). */}
-      <div className="flex flex-col gap-2">
-        <span
-          style={{
-            fontFamily: "'PT Sans', sans-serif",
-            fontWeight: 700,
-            fontSize: "12px",
-            color: "#5A5A65",
-            textTransform: "uppercase",
-            letterSpacing: "0.5px",
-          }}
-        >
-          {t("workerCallWorker")}
-        </span>
-        {workerTelHref ? (
-          <a
-            href={workerTelHref}
-            className="inline-flex items-center justify-center gap-2 h-11 rounded-xl bg-[#1B3A6B] text-white text-xs font-semibold no-underline hover:bg-[#142c52] transition-colors"
-          >
-            <svg width="16" height="16" viewBox="0 0 20 18" fill="currentColor" aria-hidden>
-              <path d="M7.22477 1.25722C6.8873 0.497902 6.0702 0 5.16154 0H2.10521C0.942534 0 0 0.848098 0 1.89453C0 10.7892 8.01177 18 17.8945 18C19.0572 18 19.9995 17.1516 19.9995 16.1052L20 13.354C20 12.5362 19.4469 11.8009 18.6033 11.4971L15.674 10.4429C14.9161 10.1701 14.0533 10.2929 13.4263 10.7632L12.6702 11.3307C11.7873 11.9929 10.4882 11.9402 9.67552 11.2088L7.54672 9.29106C6.73403 8.55963 6.67398 7.39134 7.40975 6.59669L8.04016 5.9163C8.56268 5.35196 8.70032 4.57516 8.39719 3.89309L7.22477 1.25722Z" />
-            </svg>
-            {worker.phone}
-          </a>
-        ) : (
-          <p className="text-xs text-slate-400">{t("workerNoWorkerPhone")}</p>
-        )}
-      </div>
-
-      {renderStatusSection()}
       {/* Section: OPOMBE */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
@@ -862,11 +744,16 @@ export function WorkerDetailModal({
                   task={task}
                   onClick={() => {
                     if (task.completed) return;
+                    // Only the top incomplete step can be marked done (drag others up first).
+                    if (task.id !== firstIncompleteId) return;
                     setConfirmStepId(task.id);
+                  }}
+                  onOpenAttachment={() => {
+                    const att = attachments.find((a) => a.checklistItemId === task.id);
+                    if (att) setPreviewAttachment(att);
                   }}
                   onDelete={() => setDeleteStepId(task.id)}
                   deleteLabel={t("modalDeleteStep")}
-                  onAttachmentClick={() => setAttachOnlyOpen(true)}
                 />
               ))}
             </div>
@@ -1462,54 +1349,6 @@ export function WorkerDetailModal({
               </div>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Sub-Dialog: Confirm step deletion ── */}
-      <Dialog open={!!deleteStepId} onOpenChange={(open) => {
-        if (!open) setDeleteStepId(null);
-      }}>
-        <DialogContent
-          style={{
-            background: "transparent",
-            border: "none",
-            boxShadow: "none",
-            padding: 0,
-            maxWidth: "380px",
-            width: "90%",
-          }}
-          className="outline-none"
-        >
-          <div className={auraCard}>
-            <div className="flex flex-col gap-4 text-slate-800">
-              <div className="text-center">
-                <h3 className="text-xl font-semibold tracking-tight text-slate-900">
-                  Potrdi izbris te naloge
-                </h3>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDeleteStepId(null)}
-                  className="flex-1 h-9 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors"
-                >
-                  Prekliči
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (deleteStepId) {
-                      await handleDeleteTask(deleteStepId);
-                      setDeleteStepId(null);
-                    }
-                  }}
-                  className="flex-1 h-9 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition-colors"
-                >
-                  Izbriši
-                </button>
-              </div>
-            </div>
-          </div>
         </DialogContent>
       </Dialog>
 

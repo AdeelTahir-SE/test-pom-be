@@ -24,6 +24,16 @@ describe("Add-on 2 — customer name normalization", () => {
     expect(normalizeCustomerName("NOVAK D.O.O.")).toBe("novak d.o.o.");
   });
 
+  it("keeps similar but different legal names distinct", () => {
+    expect(normalizeCustomerName("Jerry d.o.o.")).not.toBe(
+      normalizeCustomerName("Jerry Gmbh")
+    );
+    expect(normalizeCustomerName("Jerry d.o.o.")).not.toBe(
+      normalizeCustomerName("Jery d.o.o.")
+    );
+    expect(normalizeCustomerName("Nowak")).not.toBe(normalizeCustomerName("Novak"));
+  });
+
   it("normalizes note text the same way for duplicate checks", () => {
     expect(normalizeNoteText("  Side  entrance  ")).toBe("side entrance");
   });
