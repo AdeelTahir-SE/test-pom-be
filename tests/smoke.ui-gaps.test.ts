@@ -153,12 +153,12 @@ describe("Local smoke — 02-01 remaining gaps", () => {
 
     // Timeline should include job_created with job_seq for card wording.
     const events = await getTimelineEvents(job.id);
-    const created = events.find((e) => e.event_type === "job_created");
-    expect(created).toBeTruthy();
+    const createdEvent = events.find((e) => e.event_type === "job_created");
+    expect(createdEvent).toBeTruthy();
     const line = describeTimelineEvent(
       {
-        event_type: created!.event_type,
-        metadata: created!.metadata as Record<string, unknown>,
+        event_type: createdEvent!.event_type,
+        metadata: createdEvent!.metadata as Record<string, unknown>,
       },
       tSl,
       card

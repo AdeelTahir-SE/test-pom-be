@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { X } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useLanguage } from "@/lib/useLanguage";
 import { parseFlexibleDate, startOfLocalDay } from "@/lib/officeDate";
+import { CustomerNotesBanner } from "./CustomerNotesBanner";
 import {
   AuraLabel,
   AuraInput,
@@ -41,7 +42,7 @@ interface AddTaskModalProps {
 }
 
 export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", onAddTask }: AddTaskModalProps) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [step, setStep] = useState<1 | 2>(1);
   const [opravilo, setOpravilo] = useState("");
   const [kraj, setKraj] = useState("");
@@ -55,6 +56,8 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
     newStep(),
     newStep(),
   ]);
+  const [customerNotes, setCustomerNotes] = useState<any[]>([]);
+  const notesRequestRef = useRef(0);
   const hasNoSteps = steps.filter((s) => s.text.trim().length > 0).length === 0;
 
   React.useEffect(() => {
@@ -73,6 +76,7 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
     setDateError(null);
     setWorkerId("");
     setSteps([newStep(), newStep(), newStep(), newStep()]);
+    setCustomerNotes([]);
   };
 
   const assertDateNotPast = (raw: string): boolean => {
@@ -280,6 +284,9 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                 </h3>
               </div>
 
+              {customerNotes.length > 0 && (
+                <CustomerNotesBanner notes={customerNotes} compact />
+              )}
               {/* Tasks List container */}
               <div className="flex flex-col gap-3.5 max-h-[320px] overflow-y-auto p-1.5 custom-ios-scrollbar">
                 {steps.map((s, index) => (

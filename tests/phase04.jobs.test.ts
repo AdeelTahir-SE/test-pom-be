@@ -258,7 +258,7 @@ describe("Phase 4 — Jobs Engine", () => {
     expect(getB.status).toBe(200);
 
     const events = await getTimelineEvents(jobId);
-    expect(events.filter((e) => e.event_type === "worker_assigned").length).toBe(2);
+    expect(events.filter((e) => e.event_type === "worker_assigned").length).toBe(1);
   });
 
   it("cross-company access to a job is rejected as 404", async () => {

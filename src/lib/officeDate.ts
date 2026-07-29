@@ -232,4 +232,3 @@ export function isScheduledAtInPast(
   const todayKey = getZonedDayAndHour(now).calendarDay;
   return dayKey < todayKey;
 }
-

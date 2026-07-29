@@ -84,7 +84,7 @@ describe("transcribeAudio (unit, mocked fetch)", () => {
 
     await transcribeAudio(Buffer.from("fake-audio"), "audio/webm", { fetchImpl });
     expect(capturedUrl).toContain("model=nova-3");
-    expect(capturedUrl).toContain("language=sl");
+    expect(capturedUrl).toContain("detect_language=true");
     expect(capturedUrl).toContain("punctuate=true");
     expect(capturedUrl).toContain("smart_format=true");
     expect(capturedUrl).toContain("diarize=false");

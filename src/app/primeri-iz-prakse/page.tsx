@@ -328,20 +328,20 @@ Nič se ne izgubi med klici, elektronsko pošto in sporočili.`,
       <Navbar />
 
       {/* Main Container */}
-      <main className="relative z-10 max-w-7xl mx-auto px-6 lg:pt-44 pt-28 pb-20 w-full flex-grow flex items-start">
+      <main className="relative z-10 max-w-7xl mx-auto px-6 lg:pt-44 pt-36 pb-20 w-full flex-grow flex items-start">
         <div className="grid lg:grid-cols-[1.05fr_0.95fr] gap-12 lg:gap-16 items-center w-full">
           {/* Left Column - Normal Content */}
-          <div className="flex flex-col gap-5 max-w-[596px]">
-            <span className="text-[#3B82F6] text-[12px] font-medium tracking-[-0.48px] uppercase">
+          <div className="flex flex-col items-center lg:items-start text-center lg:text-left gap-5 max-w-[596px] w-full min-w-0">
+            <span className="text-[#3B82F6] text-xs font-medium tracking-[0.05em] uppercase mb-1" style={{ fontFamily: "'Inter', sans-serif" }}>
               DOBRA ORGANIZACIJA
             </span>
 
-            <h1 className="text-[44px] leading-[60px] tracking-[-1.5px] font-normal text-[#020617] font-sans">
+            <h1 className="text-2xl md:text-[44px] leading-tight md:leading-[60px] tracking-[-0.04em] font-light text-[#020617]" style={{ fontFamily: "'Inter', sans-serif" }}>
               Dobra organizacija ni strošek. <br />
               Je konkurenčna prednost.
             </h1>
 
-            <div className="text-[18px] leading-[28px] font-light text-[#475569] space-y-4">
+            <div className="text-base md:text-[18px] leading-7 md:leading-[28px] font-light text-slate-600 lg:text-[#475569] space-y-4" style={{ fontFamily: "'Inter', sans-serif" }}>
               <p>
                 Uspešna podjetja rastejo zaradi ljudi. Najuspešnejša zaradi odlične organizacije.
                 Aplikacija Pomocnik.net lahko pri tem pomaga.
@@ -352,7 +352,7 @@ Nič se ne izgubi med klici, elektronsko pošto in sporočili.`,
               </p>
             </div>
 
-            <div className="mt-4 flex flex-col gap-4">
+            <div className="mt-10 w-full flex flex-col items-center lg:items-start gap-4">
               <Link
                 href="/register"
                 className="w-full sm:w-fit inline-flex items-center justify-center gap-2 rounded-full px-8 bg-gradient-to-b from-[#3B82F6] to-[#2563EB] border border-[#1D4ED8] text-white text-[14px] font-normal shadow-[0px_4px_12px_rgba(59,130,246,0.3),inset_0px_1px_0px_rgba(255,255,255,0.35)] hover:-translate-y-0.5 active:translate-y-0 hover:from-[#2563EB] hover:to-[#1D4ED8] transition-all duration-300 select-none cursor-pointer"
@@ -360,7 +360,7 @@ Nič se ne izgubi med klici, elektronsko pošto in sporočili.`,
               >
                 Pridružite se
               </Link>
-              <p className="text-[14px] font-light leading-[20px] text-[#64748B] max-w-[596px]">
+              <p className="text-[14px] font-light leading-[20px] text-[#64748B] max-w-[596px] text-center lg:text-left">
                 Če ugotovite, da vam aplikacija ne prihrani časa, ne izboljša delovnega procesa oz ne
                 prinaša dodane vrednosti, vam brez vprašanj povrnemo denar.
               </p>
@@ -368,19 +368,19 @@ Nič se ne izgubi med klici, elektronsko pošto in sporočili.`,
           </div>
 
           {/* Right Column - Slider */}
-          <div className="relative w-full max-w-[556px] justify-self-center lg:justify-self-end">
+          <div className="relative w-full max-w-[570px] min-w-0 justify-self-center lg:justify-self-end">
             {/* Outer Container (Overlay + Shadow) */}
             <div
-              className="relative overflow-hidden rounded-[32px] bg-white/5 border border-white shadow-[0px_30px_80px_-35px_rgba(15,23,42,0.35),inset_0px_2px_0px_1px_#FFFFFF] p-6 md:p-8 flex flex-col gap-6"
+              className="relative overflow-hidden rounded-[32px] bg-white/5 border border-white shadow-[0px_30px_80px_-35px_rgba(15,23,42,0.35),inset_0px_2px_0px_1px_#FFFFFF] px-5 py-6 md:px-8 md:py-8 lg:pt-12 lg:pb-0 flex flex-col gap-6 h-auto lg:h-[820px]"
               style={{
-                background: "rgba(255, 255, 255, 0.002)",
+                background: "linear-gradient(135deg, rgba(191, 219, 254, 0.4) 0%, rgba(255, 255, 255, 0.2) 50%, rgba(186, 230, 253, 0.3) 100%)",
                 boxShadow: "0px 30px 80px -35px rgba(15, 23, 42, 0.35), inset 0px 2px 0px 1px #FFFFFF",
               }}
             >
               {/* Slider Header */}
               <div className="flex justify-between items-start gap-4">
                 <div className="flex flex-col gap-1">
-                  <h2 className="text-[30px] font-normal tracking-[-0.75px] text-[#0F172A] leading-[36px]">
+                  <h2 className="text-2xl md:text-[30px] font-normal tracking-[-0.75px] text-[#0F172A] leading-tight md:leading-[36px]">
                     Primeri iz prakse
                   </h2>
                   <p className="text-[14px] font-normal leading-[20px] text-[#334155]">
@@ -393,43 +393,55 @@ Nič se ne izgubi med klici, elektronsko pošto in sporočili.`,
               </div>
 
               {/* Cards List for active slide */}
-              <div className="flex flex-col gap-4 min-h-[505px] justify-start transition-all duration-500 ease-in-out">
-                {(slides[activeSlide] || { cards: [] }).cards.map((card, cardIdx) => {
-                  const IconComp = card.icon;
-                  return (
+              <div className="relative lg:flex-1 overflow-hidden">
+                <div
+                  className="relative w-full lg:absolute lg:inset-0 flex transition-transform duration-500 ease-in-out"
+                  style={{ transform: `translateX(-${activeSlide * 100}%)` }}
+                >
+                  {slides.map((slide) => (
                     <div
-                      key={cardIdx}
-                      className="flex gap-4 p-4 bg-white border border-[#E2E8F0] shadow-[0px_2px_8px_rgba(15,23,42,0.03),inset_0px_1px_0px_1px_#FFFFFF] rounded-[16px] transition-all duration-300 hover:shadow-[0px_8px_20px_-8px_rgba(15,23,42,0.1)] hover:scale-[1.01]"
+                      key={slide.id}
+                      className="w-full lg:h-full shrink-0 flex flex-col gap-4"
                     >
-                      <div className="w-8 h-8 rounded-lg bg-[#EEF2FF] flex items-center justify-center text-blue-500 shrink-0 mt-0.5">
-                        <IconComp className="w-[18px] h-[18px] text-[#3B82F6]" />
-                      </div>
+                      {slide.cards.map((card, cardIdx) => {
+                        const IconComp = card.icon;
+                        return (
+                          <div
+                            key={cardIdx}
+                            className="flex gap-4 p-4 bg-white border border-[#E2E8F0] shadow-[0px_2px_8px_rgba(15,23,42,0.03),inset_0px_1px_0px_1px_#FFFFFF] rounded-[16px] transition-all duration-300 hover:shadow-[0px_8px_20px_-8px_rgba(15,23,42,0.1)] hover:scale-[1.01]"
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-[#EEF2FF] flex items-center justify-center text-blue-500 shrink-0 mt-0.5">
+                              <IconComp className="w-[18px] h-[18px] text-[#3B82F6]" />
+                            </div>
 
-                      <div className="flex-1 flex flex-col">
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-[14px] font-normal text-[#1E293B] leading-[20px]">
-                            {card.title}
-                          </span>
-                          <span className="text-[12px] font-normal leading-[16px] text-[#3B82F6] bg-[#EFF6FF] border border-[#DBEAFE] rounded-full px-2 py-0.5 select-none">
-                            {card.badge}
-                          </span>
-                        </div>
+                            <div className="flex-1 flex flex-col">
+                              <div className="flex items-center justify-between gap-4">
+                                <span className="text-[14px] font-normal text-[#1E293B] leading-[20px]">
+                                  {card.title}
+                                </span>
+                                <span className="text-[12px] font-normal leading-[16px] text-[#3B82F6] bg-[#EFF6FF] border border-[#DBEAFE] rounded-full px-2 py-0.5 select-none">
+                                  {card.badge}
+                                </span>
+                              </div>
 
-                        <span className="text-[12px] font-normal text-[#64748B] mt-1 leading-[16px]">
-                          {card.quote}
-                        </span>
+                              <span className="text-[12px] font-normal text-[#64748B] mt-1 leading-[16px]">
+                                {card.quote}
+                              </span>
 
-                        <div className="text-[12px] font-light text-[#64748B] mt-2 leading-[16px] space-y-1">
-                          {formatDescription(card.desc)}
-                        </div>
-                      </div>
+                              <div className="text-[12px] font-light text-[#64748B] mt-2 leading-[16px] space-y-1">
+                                {formatDescription(card.desc)}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
 
               {/* Navigation Indicators */}
-              <div className="flex items-center justify-center gap-6 mt-2 select-none">
+              <div className="flex items-center justify-center gap-6 mt-4 lg:mt-auto pb-4 lg:pb-8 select-none">
                 <button
                   onClick={handlePrev}
                   className="p-2 text-[#94A3B8] hover:text-[#0F172A] transition-colors rounded-full hover:bg-slate-100/50"
