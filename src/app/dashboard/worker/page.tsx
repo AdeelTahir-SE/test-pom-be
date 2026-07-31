@@ -46,6 +46,9 @@ export default function WorkerDashboard() {
   const [detailKey, setDetailKey] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  const [checklistUploadFile, setChecklistUploadFile] = useState<Record<string, File>>({});
+  const [checklistUploading, setChecklistUploading] = useState<Record<string, boolean>>({});
+
   const [messages, setMessages] = useState<ApiJobMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [inboundNotifs, setInboundNotifs] = useState<ApiNotification[]>([]);
@@ -191,15 +194,49 @@ export default function WorkerDashboard() {
     if (!item || item.is_completed) return;
     const ordered = [...checklist].sort((a, b) => a.order_index - b.order_index);
     const next = ordered.find((c) => !c.is_completed);
-    if (!next || next.id !== item.id) return;
+    if (!next || next.id !== item.id) {
+      showToast(t("modalConfirmStepMissingTitle"));
+      return;
+    }
     if (item.requires_attachment && !item.has_attachment) {
       showToast(t("modalConfirmStepMissingTitle"));
       return;
     }
-    const res = await api.patch<{ item: ApiChecklistItem }>(`/api/checklist-items/${id}`, { is_completed: true });
-    if (res.status === 200 && res.data) {
-      setChecklist((prev) => prev.map((c) => (c.id === id ? res.data!.item : c)));
-      showToast(t("workerTaskUpdated"));
+    try {
+      const res = await api.patch<{ item: ApiChecklistItem }>(`/api/checklist-items/${id}`, { is_completed: true });
+      if (res.status === 200 && res.data) {
+        setChecklist((prev) => prev.map((c) => (c.id === id ? res.data!.item : c)));
+        showToast(t("workerTaskUpdated"));
+      } else {
+        showToast(res.error?.message || t("workerTaskUpdateFailed"));
+      }
+    } catch (err) {
+      console.error(err);
+      showToast(t("workerTaskUpdateFailed"));
+    }
+  };
+
+  const handleChecklistUpload = async (id: string) => {
+    const file = checklistUploadFile[id];
+    if (!file || !job) return;
+    setChecklistUploading((prev) => ({ ...prev, [id]: true }));
+    try {
+      const formData = new FormData();
+      formData.append("files", file);
+      formData.append("checklist_item_id", id);
+      const res = await api.post<{ files: unknown[] }>(`/api/jobs/${job.id}/files`, formData);
+      if (res.status === 200 || res.status === 201) {
+        setChecklist((prev) => prev.map((c) => (c.id === id ? { ...c, has_attachment: true } : c)));
+        setChecklistUploadFile((prev) => ({ ...prev, [id]: null as unknown as File }));
+        showToast(t("workerTaskUpdated"));
+      } else {
+        showToast(t("workerTaskUpdateFailed"));
+      }
+    } catch (err) {
+      console.error(err);
+      showToast(t("workerTaskUpdateFailed"));
+    } finally {
+      setChecklistUploading((prev) => ({ ...prev, [id]: false }));
     }
   };
 
@@ -493,52 +530,85 @@ export default function WorkerDashboard() {
                 <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "20px 20px 20px 20px" }}>
                   {displayChecklist.length === 0 && <p className="text-sm text-slate-400">—</p>}
                   {displayChecklist.map((task) => (
-                    <div key={task.id} className="flex items-center gap-2 w-full group">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleTask(task.id)}
-                        className="shrink-0 flex items-center justify-center transition-all"
-                        style={{
-                          width: "16px",
-                          height: "16px",
-                          background: task.is_completed ? "transparent" : "#E1E4E8",
-                          borderRadius: "4px",
-                          border: task.is_completed ? "2px solid #41C46D" : "none"
-                        }}
-                      >
-                        {task.is_completed && (
-                          <svg width="10" height="7" viewBox="0 0 10 7" fill="none">
-                            <path d="M1 3.5L3.5 6L9 1" stroke="#41C46D" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleToggleTask(task.id)}
-                        className="flex-1 text-left truncate transition-all bg-transparent border-none p-0 outline-none"
-                        style={{
-                          fontFamily: "'PT Sans', sans-serif",
-                          fontWeight: 400,
-                          fontSize: task.is_completed ? "12px" : "14px",
-                          lineHeight: task.is_completed ? "16px" : "18px",
-                          letterSpacing: task.is_completed ? "-0.2px" : "0.1px",
-                          color: "#64748B"
-                        }}
-                      >
-                        {task.label}
-                      </button>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {task.has_attachment && (
-                          <svg width="13" height="15" viewBox="0 0 14 16" fill="none" className="text-slate-400">
-                            <path d="M0.5 7.54918L6.15229 1.78552C7.83319 0.0714946 10.5585 0.0714946 12.2394 1.78552C13.9203 3.49954 13.9201 6.27867 12.2392 7.99269L5.71734 14.6431C4.59674 15.7858 2.7802 15.7856 1.6596 14.6429C0.538995 13.5002 0.53872 11.6478 1.65932 10.5051L8.1812 3.85471C8.7415 3.28337 9.65041 3.28337 10.2107 3.85471C10.771 4.42605 10.7706 5.35216 10.2103 5.9235L4.55802 11.6872" stroke="currentColor" strokeOpacity="0.15" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        )}
+                    <div key={task.id} className="flex flex-col gap-1 w-full group">
+                      <div className="flex items-center gap-2 w-full">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleTask(task.id)}
+                          className="shrink-0 flex items-center justify-center transition-all"
+                          style={{
+                            width: "16px",
+                            height: "16px",
+                            background: task.is_completed ? "transparent" : "#E1E4E8",
+                            borderRadius: "4px",
+                            border: task.is_completed ? "2px solid #41C46D" : "none"
+                          }}
+                        >
+                          {task.is_completed && (
+                            <svg width="10" height="7" viewBox="0 0 10 7" fill="none">
+                              <path d="M1 3.5L3.5 6L9 1" stroke="#41C46D" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleTask(task.id)}
+                          className="flex-1 text-left truncate transition-all bg-transparent border-none p-0 outline-none"
+                          style={{
+                            fontFamily: "'PT Sans', sans-serif",
+                            fontWeight: 400,
+                            fontSize: task.is_completed ? "12px" : "14px",
+                            lineHeight: task.is_completed ? "16px" : "18px",
+                            letterSpacing: task.is_completed ? "-0.2px" : "0.1px",
+                            color: "#64748B"
+                          }}
+                        >
+                          {task.label}
+                        </button>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {task.has_attachment && (
+                            <svg width="13" height="15" viewBox="0 0 14 16" fill="none" className="text-slate-400">
+                              <path d="M0.5 7.54918L6.15229 1.78552C7.83319 0.0714946 10.5585 0.0714946 12.2394 1.78552C13.9203 3.49954 13.9201 6.27867 12.2392 7.99269L5.71734 14.6431C4.59674 15.7858 2.7802 15.7856 1.6596 14.6429C0.538995 13.5002 0.53872 11.6478 1.65932 10.5051L8.1812 3.85471C8.7415 3.28337 9.65041 3.28337 10.2107 3.85471C10.771 4.42605 10.7706 5.35216 10.2103 5.9235L4.55802 11.6872" stroke="currentColor" strokeOpacity="0.15" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          )}
 {task.is_completed && task.completed_at && (
   <span style={{ fontFamily: "'PT Sans', sans-serif", fontWeight: 400, fontSize: "12px", lineHeight: "16px", letterSpacing: "0.1px", color: "#D3D3D3", textAlign: "right" }}>
     {formatSiDateTimeCompact(task.completed_at)}
   </span>
 )}
+                        </div>
                       </div>
+                      {/* File upload for tasks requiring attachment */}
+                      {task.requires_attachment && !task.has_attachment && !task.is_completed && (
+                        <div className="flex items-center gap-2 ml-6">
+                          <input
+                            type="file"
+                            id={`file-${task.id}`}
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) setChecklistUploadFile((prev) => ({ ...prev, [task.id]: file }));
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => document.getElementById(`file-${task.id}`)?.click()}
+                            className="text-[11px] text-slate-500 px-2 py-1 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 transition-colors"
+                          >
+                            {checklistUploadFile[task.id]?.name || t("fileInputSelect")}
+                          </button>
+                          {checklistUploadFile[task.id] && (
+                            <button
+                              type="button"
+                              onClick={() => handleChecklistUpload(task.id)}
+                              disabled={checklistUploading[task.id]}
+                              className="text-[11px] px-2 py-1 rounded-lg bg-[#1B3A6B] text-white hover:bg-[#142c52] disabled:opacity-50 transition-colors"
+                            >
+                              {checklistUploading[task.id] ? t("modalUploading") : t("modalAdd")}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -719,16 +789,10 @@ export default function WorkerDashboard() {
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      background: "transparent",
-                      position: "relative"
+                      background: "transparent"
                     }}
                     className="group-hover:scale-[1.03] transition-transform"
                   >
-                    {unreadCount > 0 && (
-                      <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-                        {unreadCount > 9 ? "9+" : unreadCount}
-                      </span>
-                    )}
                     <svg width="40" height="36" viewBox="0 0 40 36" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <path d="M18.478 25.9492C16.388 32.7082 16.002 33.714 16.002 34.5892C16.002 35.5815 16.772 36 17.256 36C17.8 36 19.472 35.3228 24.914 33.1898L18.478 25.9492ZM20.254 23.9513L26.694 31.1962L39.51 16.794C39.836 16.4272 40 15.948 40 15.4643C40 14.985 39.836 14.5035 39.51 14.1345C38.35 12.8317 36.594 10.8563 35.432 9.5535C35.106 9.18675 34.678 9.00225 34.25 9.00225C33.824 9.00225 33.394 9.18675 33.066 9.5535L20.254 23.9513ZM14 21.9375C14 21.033 13.288 20.25 12.5 20.25C7.378 20.25 6.622 20.25 1.5 20.25C0.712 20.25 0 21.033 0 21.9375C0 22.842 0.712 23.625 1.5 23.625H12.5C13.288 23.625 14 22.842 14 21.9375ZM24 15.1875C24 14.283 23.288 13.5 22.5 13.5C17.378 13.5 6.622 13.5 1.5 13.5C0.712 13.5 0 14.283 0 15.1875C0 16.092 0.712 16.875 1.5 16.875H22.5C23.288 16.875 24 16.092 24 15.1875ZM24 8.4375C24 7.533 23.288 6.75 22.5 6.75C17.378 6.75 6.622 6.75 1.5 6.75C0.712 6.75 0 7.533 0 8.4375C0 9.342 0.712 10.125 1.5 10.125H22.5C23.288 10.125 24 9.342 24 8.4375ZM24 1.6875C24 0.783 23.288 0 22.5 0C17.378 0 6.622 0 1.5 0C0.712 0 0 0.783 0 1.6875C0 2.592 0.712 3.375 1.5 3.375H22.5C23.288 3.375 24 2.592 24 1.6875Z" fill="#6D778E"/>
                     </svg>

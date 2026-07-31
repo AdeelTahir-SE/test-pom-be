@@ -1,6 +1,5 @@
 "use client";
-
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api, setSession } from "@/lib/api-client";
 import { useLanguage } from "@/lib/useLanguage";
@@ -8,8 +7,8 @@ import Link from "next/link";
 
 interface OAuthLoginResponse {
   needs_registration?: boolean;
-  access_token: string;
-  refresh_token: string;
+access_token?: string;
+refresh_token?: string;
   user: {
     id: string;
     email: string;
@@ -23,11 +22,14 @@ export default function AuthCallbackPage() {
   const { t } = useLanguage();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function finish() {
+  const processingRef = useRef(false);
+  
+useEffect(() => {
+  let cancelled = false;
+  async function finish() {
+  if (processingRef.current) return;
+  processingRef.current = true;
+    
       const params = new URLSearchParams(window.location.search);
       const code = params.get("code");
       const errorDescription = params.get("error_description") || params.get("error");
@@ -54,13 +56,15 @@ export default function AuthCallbackPage() {
           return;
         }
 
-        setSession(res.data.access_token, res.data.refresh_token);
+        if (res.data.access_token && res.data.refresh_token) {
+  setSession(res.data.access_token, res.data.refresh_token);
+}
 
         if (res.data.needs_registration || !res.data.user.role) {
-          const q = new URLSearchParams({ google: "1" });
+          const q = new URLSearchParams();
           if (res.data.user.full_name) q.set("name", res.data.user.full_name);
           if (res.data.user.email) q.set("email", res.data.user.email);
-          router.replace(`/register?${q.toString()}`);
+          router.replace(`/register/complete-profile?${q.toString()}`);
           return;
         }
 
@@ -69,11 +73,13 @@ export default function AuthCallbackPage() {
         } else {
           router.replace("/dashboard/office");
         }
-  } catch {
-        if (!cancelled) {
-          setError(t("authGoogleFailed"));
-        }
-      }
+} catch {
+  processingRef.current = false;
+
+  if (!cancelled) {
+    setError(t("authGoogleFailed"));
+  }
+}
     }
 
     void finish();

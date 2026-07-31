@@ -10,7 +10,6 @@ import { api } from '@/lib/api-client';
 import {
   Columns3,
   Folder,
-  CreditCard,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -116,8 +115,8 @@ export default function DatabaseDashboard() {
   useEffect(() => {
     setCurrentPage(1);
     if (activeTab === 0) {
-      setSortField('full_name');
-      setSortOrder('asc');
+      setSortField('created_at');
+      setSortOrder('desc');
     } else if (activeTab === 1) {
       setSortField('date');
       setSortOrder('desc');
@@ -142,6 +141,7 @@ export default function DatabaseDashboard() {
       project: 'Prenova kopalnice',
       worker: 'Adam K.',
       attachments: ['scan003.jpg', 'contract.doc', 'photo01.jpg'],
+      notes: 'Ključ je na recepciji. Parkiraj za hišo.',
     },
     {
       id: 'j-2',
@@ -150,6 +150,7 @@ export default function DatabaseDashboard() {
       project: 'Dostava na dom',
       worker: 'Jack',
       attachments: [],
+      notes: '',
     },
     {
       id: 'j-3',
@@ -158,6 +159,7 @@ export default function DatabaseDashboard() {
       project: 'Transport Ljubljana - Muenchen',
       worker: 'Slippy Joe',
       attachments: ['Cargo list'],
+      notes: 'Preveri dovoljenja za mednarodni transport.',
     },
   ];
 
@@ -195,49 +197,55 @@ export default function DatabaseDashboard() {
     invoices: [
       {
         id: 'a-i1',
+        jobId: 'job-1',
         date: '2026-07-24',
         project: 'Prenova kopalnice',
-        name: 'scan003.jpg',
+        name: 'racun_001.pdf',
         aiDetails: 'Hotel ABX d.o.o.\n684,20€\n12.06.2026',
       },
       {
         id: 'a-i2',
+        jobId: 'job-2',
         date: '2026-07-24',
         project: 'Dostava na dom',
-        name: 'Jack',
+        name: 'racun_002.pdf',
         aiDetails: 'Servisni zapisnik\nHotel ABG\nServis klimatske naprave\nOpravil: Marko',
       },
       {
         id: 'a-i3',
+        jobId: 'job-3',
         date: '2026-07-24',
         project: 'Transport Ljubljana - Muenchen',
-        name: 'Slippy Joe',
+        name: 'racun_003.pdf',
         aiDetails: 'Cargo list\n24t pšenice\n12.06.2026',
       },
     ],
     documents: [
       {
         id: 'a-d1',
+        jobId: 'job-1',
         date: '2026-07-24',
         project: 'Prenova kopalnice',
-        name: 'scan003.jpg',
-        aiDetails: 'Hotel ABX d.o.o.\n684,20€\n12.06.2026',
+        name: 'pogodba.pdf',
+        aiDetails: 'Pogodba št. 123/2026\nPrenova kopalnice\nPlačano',
       },
       {
         id: 'a-d2',
+        jobId: 'job-2',
         date: '2026-07-24',
         project: 'Dostava na dom',
-        name: 'Jack',
-        aiDetails: 'Servisni zapisnik\nHotel ABG\nServis klimatske naprave\nOpravil: Marko',
+        name: 'navodila.pdf',
+        aiDetails: 'Navodila za dostavo\nPodrobnosti o pakiranju',
       },
     ],
     photos: [
       {
         id: 'a-p1',
+        jobId: 'job-1',
         date: '2026-07-24',
         project: 'Prenova kopalnice',
-        name: 'scan003.jpg',
-        aiDetails: 'Hotel ABX d.o.o.\n684,20€\n12.06.2026',
+        name: 'slika_001.jpg',
+        aiDetails: 'Predelava stene\nVgradnja novih oken',
       },
     ],
   };
@@ -300,7 +308,7 @@ export default function DatabaseDashboard() {
 
   // Staff list filtering & sorting
   const getFilteredStaff = () => {
-    let result = [...staffList];
+    let result = [...staffList].filter((s) => s.is_active);
     const query = searchQueries[0]?.toLowerCase() || '';
 
     if (query) {
@@ -342,10 +350,12 @@ export default function DatabaseDashboard() {
   const getFilteredAttachments = () => {
     let result =
       attachmentSubTab === 0
-        ? mockAttachments.invoices
+        ? [...mockAttachments.invoices, ...mockAttachments.documents, ...mockAttachments.photos]
         : attachmentSubTab === 1
-          ? mockAttachments.documents
-          : mockAttachments.photos;
+          ? mockAttachments.invoices
+          : attachmentSubTab === 2
+            ? mockAttachments.documents
+            : mockAttachments.photos;
 
     return getSortedData(result);
   };
@@ -390,7 +400,7 @@ export default function DatabaseDashboard() {
   const startIndex = (currentPage - 1) * rowsPerPage;
   const paginatedDataset = activeDataset.slice(startIndex, startIndex + rowsPerPage);
 
-  // Deactivate / Delete Staff member
+  // Soft delete Staff member (sets is_active to false, hides from list but keeps all data)
   const handleDeactivateStaff = async () => {
     if (!userToDelete) return;
     setDeletingUser(true);
@@ -402,7 +412,7 @@ export default function DatabaseDashboard() {
         await loadStaff();
         setUserToDelete(null);
       } else {
-        alert(res.error?.message || 'Napaka pri deaktivaciji sodelavca.');
+        alert(res.error?.message || 'Napaka pri brisanju sodelavca.');
       }
     } catch (err) {
       console.error(err);
@@ -464,6 +474,14 @@ export default function DatabaseDashboard() {
     fontFamily: 'Inter, sans-serif',
     fontWeight: 400,
     fontSize: '14px',
+    lineHeight: '24px',
+    verticalAlign: 'middle',
+  };
+
+  const tdStyle12 = {
+    fontFamily: 'Inter, sans-serif',
+    fontWeight: 400,
+    fontSize: '12px',
     lineHeight: '24px',
     verticalAlign: 'middle',
   };
@@ -593,25 +611,16 @@ export default function DatabaseDashboard() {
               <span className='font-inter font-medium text-base leading-6 align-middle'>Terenska kartica</span>
             </button>
 
-            <Link
-              href="/dashboard/office?open=settings"
+            <a
+              href="https://buy.stripe.com/test"
+              target="_blank"
+              rel="noopener noreferrer"
               className="flex items-center gap-3 px-3 py-2.5 rounded-[8px] text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer w-full"
             >
               <Folder className="h-4.5 w-4.5 shrink-0 text-slate-500" />
               <span className='font-inter font-medium text-base leading-6 align-middle'>Naročilo</span>
-            </Link>
+            </a>
           </nav>
-        </div>
-
-        {/* Bottom Subscription info (8px Border Radius) */}
-        <div className="px-1">
-          <Link
-            href="/dashboard/office?open=settings"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-[8px] text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer"
-          >
-            <CreditCard className="h-4.5 w-4.5 shrink-0 text-slate-500" />
-            <span className='font-inter font-medium text-base leading-6 align-middle'>Naro</span>
-          </Link>
         </div>
       </aside>
 
@@ -698,15 +707,23 @@ export default function DatabaseDashboard() {
                   <span className="w-32 text-[#8A94A6] text-sm">Podjetje</span>
                   <span className="text-[#242731] text-sm font-medium">{company?.name || 'Nokia d.o.o.'}</span>
                 </div>
-                <button onClick={() => alert('Dopolni')} className="text-[#3B82F6] hover:underline text-sm font-medium cursor-pointer">
-                  Dopolni
-                </button>
+              </div>
+
+              {/* Panoga row */}
+              <div className="flex gap-12 py-2 border-b border-slate-100">
+                <span className="w-32 text-[#8A94A6] text-sm">Panoga</span>
+                <span className="text-[#242731] text-sm font-medium">{company?.business_module || 'Whatever they write'}</span>
               </div>
               
               {/* Telefon row */}
               <div className="flex gap-12 py-2 border-b border-slate-100">
                 <span className="w-32 text-[#8A94A6] text-sm">Telefon</span>
-                <span className="text-[#242731] text-sm font-medium">{officeContact?.phone || user?.phone || '052-026-288'}</span>
+                <input
+                  type="text"
+                  defaultValue={officeContact?.phone || user?.phone || ''}
+                  placeholder="Vnesite telefonsko številko"
+                  className="text-[#242731] text-sm font-medium bg-transparent border-none outline-none focus:ring-0 p-0 w-48"
+                />
               </div>
 
               {/* E-pošta row */}
@@ -726,18 +743,6 @@ export default function DatabaseDashboard() {
                     Spremeni geslo
                   </button>
                 </div>
-              </div>
-
-              {/* Panoga row */}
-              <div className="flex gap-12 py-2 border-b border-slate-100">
-                <span className="w-32 text-[#8A94A6] text-sm">Panoga</span>
-                <span className="text-[#242731] text-sm font-medium">{company?.business_module || 'Whatever they write'}</span>
-              </div>
-
-              {/* Št. zaposlenih row */}
-              <div className="flex gap-12 py-2 border-b border-slate-100">
-                <span className="w-32 text-[#8A94A6] text-sm">Št. zaposlenih</span>
-                <span className="text-[#242731] text-sm font-medium">1-5</span>
               </div>
             </div>
           ) : (
@@ -781,22 +786,22 @@ export default function DatabaseDashboard() {
                                 </td>
                                 <td className="px-6 py-4 text-slate-800" style={tdStyle14}>
                                   {member.role === 'owner'
-                                    ? 'Lastnik'
+                                    ? 'Vodja'
                                     : member.role === 'manager'
-                                      ? 'Vodja'
-                                      : 'Terenski delavec'}
+                                      ? 'Pisarna'
+                                      : 'Teren'}
                                 </td>
-                                <td className="px-6 py-4 text-slate-800" style={tdStyle14}>
+                                <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
                                   {formatDate(member.created_at)}
                                 </td>
-                                <td className="px-6 py-4 text-slate-800" style={tdStyle14}>
+                                <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
                                   {member.phone || '—'}
                                 </td>
-                                <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle14}>
+                                <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle12}>
                                   {member.email}
                                 </td>
                                 <td className="px-6 py-4 text-right" style={tdStyle10}>
-                                  {member.role !== 'owner' && member.is_active ? (
+                                  {member.role !== 'owner' ? (
                                     <button
                                       onClick={() => setUserToDelete(member)}
                                       className="hover:underline cursor-pointer"
@@ -804,8 +809,6 @@ export default function DatabaseDashboard() {
                                     >
                                       Izbriši
                                     </button>
-                                  ) : !member.is_active ? (
-                                    <span className="italic">Deaktiviran</span>
                                   ) : (
                                     <span>—</span>
                                   )}
@@ -829,48 +832,35 @@ export default function DatabaseDashboard() {
                             {renderHeaderCell('Datum', 'date', true)}
                             {renderHeaderCell('Stranka', 'customer', true)}
                             {renderHeaderCell('Dela', undefined, false)}
-                            {renderHeaderCell('Terenec', 'worker', true)}
-                            {renderHeaderCell('Priponke', undefined, false)}
+                            {renderHeaderCell('Zaznamki', undefined, false)}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {paginatedDataset.length === 0 ? (
                             <tr>
-                              <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                              <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
                                 Ni najdenih opravil.
                               </td>
                             </tr>
                           ) : (
                             paginatedDataset.map((job) => (
                               <tr key={job.id} className="hover:bg-slate-50/50 transition-colors">
-                                <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle14}>
+                                <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle12}>
                                   {formatDate(job.date)}
                                 </td>
-                                <td className="px-6 py-4 text-slate-800 font-medium" style={tdStyle14}>
+                                <td className="px-6 py-4 text-slate-800 font-medium" style={tdStyle12}>
                                   {job.customer}
                                 </td>
-                                <td className="px-6 py-4 text-slate-800" style={tdStyle14}>
-                                  {job.project}
+                                <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
+                                  <button
+                                    onClick={() => router.push(`/dashboard/office?job=${job.id}`)}
+                                    className="text-left hover:underline cursor-pointer bg-transparent border-none p-0 outline-none"
+                                  >
+                                    {job.project}
+                                  </button>
                                 </td>
-                                <td className="px-6 py-4 text-slate-800" style={tdStyle14}>
-                                  {job.worker}
-                                </td>
-                                <td className="px-6 py-4 text-slate-800" style={tdStyle14}>
-                                  <div className="flex flex-col gap-1">
-                                    {job.attachments.length === 0 ? (
-                                      <span className="text-slate-400">—</span>
-                                    ) : (
-                                      job.attachments.map((file: string, idx: number) => (
-                                        <button
-                                          key={idx}
-                                          onClick={() => alert(`Odpira se datoteka: ${file}`)}
-                                          className="text-[12px] text-blue-600 hover:text-blue-800 hover:underline text-left cursor-pointer font-medium"
-                                        >
-                                          {file}
-                                        </button>
-                                      ))
-                                    )}
-                                  </div>
+                                <td className="px-6 py-4 text-slate-800 max-w-[300px] break-words whitespace-pre-line" style={tdStyle12}>
+                                  {job.notes || '—'}
                                 </td>
                               </tr>
                             ))
@@ -891,50 +881,30 @@ export default function DatabaseDashboard() {
                             {renderHeaderCell('Datum', 'date', true)}
                             {renderHeaderCell('Stranka', 'name', true)}
                             {renderHeaderCell('Dela', undefined, false)}
-                            {renderHeaderCell('Saved notes', undefined, false)}
-                            {renderHeaderCell('Opomniki', undefined, false)}
-                            {renderHeaderCell('timeline', undefined, false)}
+                            {renderHeaderCell('Zaznamki', undefined, false)}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {paginatedDataset.length === 0 ? (
                             <tr>
-                              <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                              <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
                                 Ni najdenih strank.
                               </td>
                             </tr>
                           ) : (
                             paginatedDataset.map((cust) => (
                               <tr key={cust.id} className="hover:bg-slate-50/50 transition-colors">
-                                <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle14}>
+                                <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle12}>
                                   {formatDate(cust.date)}
                                 </td>
-                                <td className="px-6 py-4 text-slate-800 font-medium" style={tdStyle14}>
+                                <td className="px-6 py-4 text-slate-800 font-medium" style={tdStyle12}>
                                   {cust.name}
                                 </td>
-                                <td className="px-6 py-4 text-slate-800" style={tdStyle14}>
+                                <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
                                   {cust.project}
                                 </td>
-                                <td className="px-6 py-4 text-slate-800 max-w-[200px] break-words whitespace-pre-line" style={tdStyle14}>
+                                <td className="px-6 py-4 text-slate-800 max-w-[300px] break-words whitespace-pre-line" style={tdStyle12}>
                                   {cust.notes || '—'}
-                                </td>
-                                <td className="px-6 py-4 text-slate-800" style={tdStyle14}>
-                                  <div className="flex flex-col">
-                                    {cust.reminders.length === 0 ? (
-                                      <span>—</span>
-                                    ) : (
-                                      cust.reminders.map((rem: string, idx: number) => (
-                                        <span key={idx}>{rem}</span>
-                                      ))
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4 text-slate-800" style={tdStyle14}>
-                                  <div className="flex flex-col">
-                                    {cust.timeline.map((item: string, idx: number) => (
-                                      <span key={idx}>{item}</span>
-                                    ))}
-                                  </div>
                                 </td>
                               </tr>
                             ))
@@ -951,7 +921,7 @@ export default function DatabaseDashboard() {
                     {/* Category bar matching the exact screenshot visual layout */}
                     <div className="px-6 py-3 border-b border-slate-100 bg-slate-50/30 flex items-center justify-between">
                       <div className="flex gap-6">
-                        {['Računi', 'Dokumenti', 'Slike'].map((sub, idx) => (
+                        {['Vse', 'Računi', 'Dokumenti', 'Slike'].map((sub, idx) => (
                           <button
                             key={idx}
                             onClick={() => {
@@ -981,7 +951,7 @@ export default function DatabaseDashboard() {
                         <thead>
                           <tr className="border-b border-slate-200 bg-slate-50/60">
                             {renderHeaderCell('Datum', 'date', true)}
-                            {renderHeaderCell('Dela', undefined, false)}
+                            {renderHeaderCell('Dela', 'project', true)}
                             {renderHeaderCell('ime priponke', undefined, false)}
                             {renderHeaderCell('AI Extract', undefined, false)}
                           </tr>
@@ -996,16 +966,21 @@ export default function DatabaseDashboard() {
                           ) : (
                             paginatedDataset.map((item) => (
                               <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                                <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle14}>
+                                <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle12}>
                                   {formatDate(item.date)}
                                 </td>
-                                <td className="px-6 py-4 text-slate-800" style={tdStyle14}>
-                                  {item.project}
+                                <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
+                                  <button
+                                    onClick={() => router.push(`/dashboard/office?job=${item.jobId}`)}
+                                    className="text-left hover:underline cursor-pointer bg-transparent border-none p-0 outline-none"
+                                  >
+                                    {item.project}
+                                  </button>
                                 </td>
-                                <td className="px-6 py-4 text-blue-600 font-medium cursor-pointer hover:underline" style={tdStyle14}>
+                                <td className="px-6 py-4 text-blue-600 font-medium cursor-pointer hover:underline" style={tdStyle12}>
                                   {item.name}
                                 </td>
-                                <td className="px-6 py-4 text-slate-800 whitespace-pre-line leading-relaxed" style={tdStyle14}>
+                                <td className="px-6 py-4 text-slate-800 whitespace-pre-line leading-relaxed" style={tdStyle12}>
                                   {item.aiDetails}
                                 </td>
                               </tr>
@@ -1024,11 +999,11 @@ export default function DatabaseDashboard() {
                       <table className="w-full text-left border-collapse text-xs">
                         <thead>
                           <tr className="border-b border-slate-200 bg-slate-50/60">
-                            {renderHeaderCell('Datum', 'date', true)}
-                            {renderHeaderCell('Napisal', 'who', true)}
-                            {renderHeaderCell('Dela', undefined, false)}
-                            {renderHeaderCell('Saved notes', undefined, false)}
-                            {renderHeaderCell('Čas', undefined, false)}
+                            {renderHeaderCell('Dodano', 'date', true)}
+                            {renderHeaderCell('Kdo', 'who', true)}
+                            {renderHeaderCell('Kaj', undefined, false)}
+                            {renderHeaderCell('Podrobno', undefined, false)}
+                            <th className="px-6 py-4 font-normal text-slate-500 text-xs tracking-normal text-right"></th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -1041,20 +1016,34 @@ export default function DatabaseDashboard() {
                           ) : (
                             paginatedDataset.map((note) => (
                               <tr key={note.id} className="hover:bg-slate-50/50 transition-colors">
-                                <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle14}>
-                                  {formatDate(note.date)}
+                                <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle12}>
+                                  {formatDate(note.date)} | {note.time}
                                 </td>
-                                <td className="px-6 py-4 text-slate-800" style={tdStyle14}>
+                                <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
                                   {note.who}
                                 </td>
-                                <td className="px-6 py-4 text-slate-800" style={tdStyle14}>
+                                <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
                                   {note.project}
                                 </td>
-                                <td className="px-6 py-4 text-slate-800 max-w-[300px]" style={tdStyle14}>
+                                <td className="px-6 py-4 text-slate-800 max-w-[300px]" style={tdStyle12}>
                                   {note.content || '—'}
                                 </td>
-                                <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle14}>
-                                  {note.time}
+                                <td className="px-6 py-4 text-right" style={tdStyle10}>
+                                  <button
+                                    onClick={() => {
+                                      const updated = mockOfficeNotes.filter((n) => n.id !== note.id);
+                                      // This is a frontend-only soft delete - in real app would call API
+                                      console.log('Soft delete note:', note.id);
+                                    }}
+                                    className="hover:text-red-600 cursor-pointer transition-colors"
+                                    style={{ color: '#24273166' }}
+                                  >
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M3 6h18" />
+                                      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                                      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                                    </svg>
+                                  </button>
                                 </td>
                               </tr>
                             ))
@@ -1127,18 +1116,18 @@ export default function DatabaseDashboard() {
         </main>
       </div>
 
-      {/* DEACTIVATE STAFF CONFIRMATION DIALOG */}
+      {/* DELETE STAFF CONFIRMATION DIALOG */}
       <Dialog open={!!userToDelete} onOpenChange={(open) => !open && setUserToDelete(null)}>
         <DialogContent className="max-w-sm w-[90vw] bg-white rounded-[8px] p-6 border border-slate-200">
           <DialogHeader>
             <DialogTitle className="text-base font-semibold text-slate-900">
-              Deaktivacija sodelavca
+              Brisanje sodelavca
             </DialogTitle>
           </DialogHeader>
           <div className="text-xs text-slate-600 my-4 leading-relaxed">
-            Ali ste prepričani, da želite deaktivirati sodelavca{' '}
-            <strong className="text-slate-900">{userToDelete?.full_name}</strong>? Uporabnik ne bo
-            imel več dostopa do platforme.
+            Ali ste prepričani, da želite izbrisati sodelavca{' '}
+            <strong className="text-slate-900">{userToDelete?.full_name}</strong>? Sodelavec ne bo več
+            prikazan v seznamu, vendar bodo vsi njegovi podatki (opravila, opombe, zgodovina) ohranjeni.
           </div>
           <DialogFooter className="flex gap-2">
             <button
@@ -1152,7 +1141,7 @@ export default function DatabaseDashboard() {
               disabled={deletingUser}
               className="flex-1 h-9 rounded-[8px] bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
             >
-              {deletingUser ? 'Deaktiviranje...' : 'Deaktiviraj'}
+              {deletingUser ? 'Brisanje...' : 'Izbriši'}
             </button>
           </DialogFooter>
         </DialogContent>

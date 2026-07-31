@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useLanguage } from "@/lib/useLanguage";
+import { api, getToken } from "@/lib/api-client";
 import type { BusinessModule } from "@/config/business-modules";
-
-const STARTER_MODULES: BusinessModule[] = ["construction", "cleaning", "installation"];
 
 const MODULE_LABELS: Record<BusinessModule, string> = {
   construction: "Gradbeništvo",
@@ -16,6 +16,8 @@ const MODULE_LABELS: Record<BusinessModule, string> = {
   moving: "Drugo",
 };
 
+const STARTER_MODULES = Object.keys(MODULE_LABELS) as BusinessModule[];
+
 const COMPANY_SIZE_OPTIONS = [
   { value: "", label: "Velikost podjetja (ni obvezno)" },
   { value: "1-5", label: "1–5 zaposlenih" },
@@ -23,13 +25,26 @@ const COMPANY_SIZE_OPTIONS = [
   { value: "15+", label: "15+ zaposlenih" },
 ];
 
+interface GoogleRegisterResponse {
+  user: { id: string; role: string };
+  company: { id: string };
+}
+
 export default function CompleteProfilePage() {
   const { t } = useLanguage();
+  const router = useRouter();
   const [company, setCompany] = useState("");
   const [businessModule, setBusinessModule] = useState<BusinessModule | "">("");
   const [companySize, setCompanySize] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const name = params.get("name");
+    if (name) setCompany(name);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,8 +57,30 @@ export default function CompleteProfilePage() {
       return;
     }
 
-    // Placeholder: wired for now, backend integration pending.
-    setSubmitting(false);
+    const token = getToken();
+    if (!token) {
+      setSubmitting(false);
+      setError("Manjka overitveni žeton. Prosimo, prijavite se znova.");
+      return;
+    }
+
+    try {
+  const res = await api.post<GoogleRegisterResponse>("/api/auth/register/google", {
+    company_name: company,
+    business_module: businessModule,
+  });
+
+  if (res.status !== 201 || !res.data) {
+    setError(res.error?.message ?? "Registracija ni uspela. Poskusite znova.");
+    return;
+  }
+
+  router.push("/dashboard/office");
+} catch {
+  setError("Registracija ni uspela. Poskusite znova.");
+} finally {
+  setSubmitting(false);
+}
   };
 
   return (

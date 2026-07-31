@@ -178,11 +178,11 @@ export const translations = {
     authLoginSubtitle: "Povežite pisarno in teren v enoten delovni dan.",
     authEmailLabel: "E-poštni naslov",
     authPasswordLabel: "Geslo",
-    authForgotPassword: "Pozabljeno geslo?",
+    authForgotPassword: "Forgot Your Password?",
     authDemoRoleLabel: "Izbira vloge za demo predogled",
     authRoleOffice: "Vodstvo / Pisarna",
     authRoleWorker: "Terenski delavec",
-    authLoginBtn: "Prijava",
+    authLoginBtn: "Sign In",
     authNoAccount: "Še nimate računa?",
     authCreateAccount: "Ustvari brezplačen račun",
     authLoginFailed: "Prijava ni uspela. Preverite e-pošto in geslo.",
@@ -219,7 +219,7 @@ export const translations = {
     authEmailPlaceholder: "janez@podjetje.si",
     authPassPlaceholder: "Najmanj 8 znakov",
     authAgreeTerms: "Strinjam se s splošnimi pogoji uporabe in varovanjem zasebnosti.",
-    authRegisterBtn: "Registracija",
+    authRegisterBtn: "Sign Up",
     authHasAccount: "Že imate račun?",
 
     // Office Dashboard (live)
@@ -274,6 +274,7 @@ export const translations = {
     workerStopRecord: "Ustavi in pošlji transkript",
     workerMicUnavailable: "Dostop do mikrofona ni na voljo.",
     workerTaskUpdated: "Status opravila posodobljen!",
+    workerTaskUpdateFailed: "Napaka pri posodobitvi opravila.",
     workerVoiceSent: "Glasovno sporočilo poslano!",
     workerLoading: "Nalaganje…",
 
@@ -778,6 +779,7 @@ export const translations = {
     workerStopRecord: "Stop and send transcript",
     workerMicUnavailable: "Microphone access is unavailable.",
     workerTaskUpdated: "Task status updated!",
+    workerTaskUpdateFailed: "Failed to update task.",
     workerVoiceSent: "Voice message sent!",
     workerLoading: "Loading…",
 

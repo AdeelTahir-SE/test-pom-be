@@ -93,10 +93,8 @@ export function describeTimelineEvent(
     case "worker_assigned":
       // Later reassignment — always show who was assigned (not bare card #).
       return typeof meta.worker_name === "string" && meta.worker_name
-        ? `${t("timelineWorkerAssigned")}: ${meta.worker_name}${card ? ` · ${card}` : ""}`
-        : card
-          ? `${t("timelineWorkerAssigned")}: ${card}`
-          : t("timelineWorkerAssigned");
+        ? `${t("timelineWorkerAssigned")}: ${meta.worker_name}`
+        : t("timelineWorkerAssigned");
     case "job_updated":
       if (meta.kind === "customer_note") {
         const sender =
@@ -113,22 +111,18 @@ export function describeTimelineEvent(
           ? `${t("timelineJobHidden")}: ${card}`
           : t("timelineJobHidden");
       }
-      return card ? `${t("timelineJobUpdated")}: ${card}` : t("timelineJobUpdated");
+      return t("timelineJobUpdated");
     case "status_changed":
       if (meta.to && typeof meta.to === "string" && meta.to in STATUS_LABEL_KEY) {
         const status = t(STATUS_LABEL_KEY[meta.to as JobStatus]);
-        return card
-          ? `${t("timelineStatusChanged")}: ${card} · ${status}`
-          : `${t("timelineStatusChanged")}: ${status}`;
+        return `${t("timelineStatusChanged")}: ${status}`;
       }
-      return card ? `${t("timelineStatusChanged")}: ${card}` : t("timelineStatusChanged");
+      return t("timelineStatusChanged");
     case "job_completed":
-      return card ? `${t("timelineJobCompleted")}: ${card}` : t("timelineJobCompleted");
+      return t("timelineJobCompleted");
     case "checklist_completed": {
       const label = typeof meta.label === "string" ? meta.label : "";
-      return card
-        ? `${t("timelineChecklistCompleted")}: ${card} · ${label}`
-        : `${t("timelineChecklistCompleted")}: ${label}`;
+      return `${t("timelineChecklistCompleted")}: ${label}`;
     }
     case "image_uploaded":
     case "document_uploaded": {
@@ -137,13 +131,11 @@ export function describeTimelineEvent(
         e.event_type === "image_uploaded"
           ? t("timelineImageUploaded")
           : t("timelineDocumentUploaded");
-      return card ? `${prefix}: ${card} · ${name}` : `${prefix}: ${name}`;
+      return `${prefix}: ${name}`;
     }
     case "file_hidden": {
       const name = typeof meta.file_name === "string" ? meta.file_name : "";
-      return card
-        ? `${t("timelineFileHidden")}: ${card} · ${name}`
-        : `${t("timelineFileHidden")}: ${name}`;
+      return `${t("timelineFileHidden")}: ${name}`;
     }
     case "ocr_completed": {
       // Add-on 1: prefer "📄 Invoice · file.pdf" over bare "OCR completed".
@@ -151,10 +143,9 @@ export function describeTimelineEvent(
       const fileName = typeof meta.file_name === "string" ? meta.file_name : "";
       if (docLabel) {
         const head = `📄 ${docLabel}`;
-        if (fileName) return card ? `${head}: ${card} · ${fileName}` : `${head} · ${fileName}`;
-        return card ? `${head}: ${card}` : head;
+        return fileName ? `${head} · ${fileName}` : head;
       }
-      return card ? `${t("timelineOcrCompleted")}: ${card}` : t("timelineOcrCompleted");
+      return t("timelineOcrCompleted");
     }
     case "voice_message_transcribed": {
       const base = meta.transcribed ? t("timelineVoiceTranscribed") : t("timelineVoiceReceived");
@@ -181,10 +172,8 @@ export function describeTimelineEvent(
       return s ? `${withSender} · ${s}` : withSender;
     }
     case "notification_deleted":
-      return card
-        ? `${t("timelineNotificationDeleted")}: ${card}`
-        : t("timelineNotificationDeleted");
+      return t("timelineNotificationDeleted");
     default:
-      return e.event_type.replace(/_/g, " ");
+      return e.event_type.replaceAll("_", " ");
   }
 }

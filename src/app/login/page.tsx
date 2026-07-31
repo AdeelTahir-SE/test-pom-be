@@ -43,15 +43,18 @@ export default function LoginPage() {
 
 const handleLogin = async (e: React.FormEvent) => {
   e.preventDefault();
+
+  if (submitting) return;
+
   setError(null);
   setInfo(null);
   setSubmitting(true);
 
   try {
     const res = await api.post<LoginResponse>("/api/auth/login", {
-      email,
-      password,
-    });
+  email: email.trim().toLowerCase(),
+  password,
+});
 
     if (res.status !== 200 || !res.data) {
       setError(res.error?.message ?? t("authLoginFailed"));
@@ -59,9 +62,11 @@ const handleLogin = async (e: React.FormEvent) => {
     }
 
     routeAfterLogin(res.data);
-  } finally {
-    setSubmitting(false);
-  }
+} catch {
+  setError(t("authLoginFailed"));
+} finally {
+  setSubmitting(false);
+}
 };
 
   const handleGoogle = async () => {
@@ -77,9 +82,11 @@ const handleLogin = async (e: React.FormEvent) => {
     }
 
     window.location.href = res.data.url;
-  } finally {
-    setGoogleLoading(false);
-  }
+} catch {
+  setError(t("authGoogleFailed"));
+} finally {
+  setGoogleLoading(false);
+}
 };
 
   return (
@@ -121,15 +128,16 @@ const handleLogin = async (e: React.FormEvent) => {
                 <path d="m3 7 9 6 9-6" />
               </svg>
             </span>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder={t("authEmailLabel")}
-              aria-label={t("authEmailLabel")}
-              required
-              className="w-full h-[52px] pl-12 pr-4 rounded-[8px] border border-slate-300 bg-[#F5F5F5] text-sm text-slate-900 placeholder-slate-400 focus:outline-none"
-            />
+           <input
+  type="email"
+  autoComplete="email"
+  value={email}
+  onChange={(e) => setEmail(e.target.value)}
+  placeholder={t("authEmailLabel")}
+  aria-label={t("authEmailLabel")}
+  required
+  className="w-full h-[52px] pl-12 pr-4 rounded-[8px] border border-slate-300 bg-[#F5F5F5] text-sm text-slate-900 placeholder-slate-400 focus:outline-none"
+/>
           </div>
 
           <div className="relative -mb-2">
@@ -141,14 +149,15 @@ const handleLogin = async (e: React.FormEvent) => {
                 </svg>
               </span>
               <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder={t("authPasswordLabel")}
-                aria-label={t("authPasswordLabel")}
-                required
-                className="w-full h-[52px] pl-12 pr-4 rounded-[8px] border border-slate-300 bg-[#F5F5F5] text-sm text-slate-900 placeholder-slate-400 focus:outline-none"
-              />
+  type="password"
+  autoComplete="current-password"
+  value={password}
+  onChange={(e) => setPassword(e.target.value)}
+  placeholder={t("authPasswordLabel")}
+  aria-label={t("authPasswordLabel")}
+  required
+  className="w-full h-[52px] pl-12 pr-4 rounded-[8px] border border-slate-300 bg-[#F5F5F5] text-sm text-slate-900 placeholder-slate-400 focus:outline-none"
+/>
             </div>
             <div className="text-right mt-1 mb-5">
               <Link href="/forgot-password" className="text-xs text-slate-500 hover:text-slate-700">

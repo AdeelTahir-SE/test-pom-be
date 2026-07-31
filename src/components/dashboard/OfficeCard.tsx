@@ -149,8 +149,9 @@ export function OfficeCard({
             color: "rgba(70, 84, 103, 0.5)",
             textTransform: "uppercase",
             whiteSpace: "nowrap",
+            width: "180px",
           }}
-          className="text-xs md:text-sm flex-1 min-w-0"
+          className="text-xs md:text-sm shrink-0"
         >
           {message.workerName} • {message.time}
         </span>

@@ -13,80 +13,108 @@ export default function ForgotPasswordPage() {
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    const res = await api.post<{ message?: string }>("/api/auth/forgot-password", { email });
-    setSubmitting(false);
+  e.preventDefault();
+
+  if (submitting) return;
+
+  setError(null);
+  setSubmitting(true);
+
+  try {
+    const res = await api.post<{ message?: string }>(
+      "/api/auth/forgot-password",
+      { email: email.trim().toLowerCase() }
+    );
+
     if (res.status >= 400) {
-      setError(res.error?.message ?? t("authForgotError"));
+      setError(t("authForgotError"));
       return;
     }
+
     setDone(true);
-  };
+  } catch {
+    setError(t("authForgotError"));
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-12 relative overflow-hidden font-sans text-slate-800">
-      <div className="relative z-10 w-full max-w-md rounded-[2.5rem] bg-white/75 backdrop-blur-2xl border border-white shadow-[0_30px_70px_-30px_rgba(15,23,42,0.3),inset_0_2px_0_white] p-8 sm:p-10">
-        <div className="flex flex-col items-center mb-8">
-          <Link href="/" className="flex items-center gap-3 group mb-6">
-            <span className="w-10 h-10 rounded-full bg-gradient-to-b from-white to-slate-100 border border-slate-200 flex items-center justify-center">
-              <span className="font-['Inter',sans-serif] text-xs font-semibold text-[#1B3A6B]">PN</span>
-            </span>
-            <span className="font-['Inter',sans-serif] text-base font-semibold tracking-[-0.08em] text-slate-950">
-              pomocnik.net
-            </span>
-          </Link>
-          <h2 className="text-2xl font-light tracking-tight text-slate-950">{t("authForgotTitle")}</h2>
-          <p className="text-xs text-slate-500 font-light mt-1.5 text-center leading-relaxed">
-            {t("authForgotSubtitle")}
-          </p>
-        </div>
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-[#0b0f19] px-4 py-12 relative overflow-hidden font-sans text-slate-800 dark:text-slate-100">
+      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+        <div className="aura-bg-blob-one absolute top-[5%] left-[-15%] w-[40rem] h-[40rem] rounded-full bg-blue-200/20 blur-[8rem]" />
+        <div className="aura-bg-blob-two absolute bottom-[5%] right-[-15%] w-[45rem] h-[45rem] rounded-full bg-sky-200/18 blur-[9rem]" />
+      </div>
+
+      <div
+        className="aura-bg-dots pointer-events-none absolute inset-0 z-0 opacity-[0.04] bg-repeat"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 1px 1px, rgba(15,23,42,0.15) 1px, transparent 0)",
+          backgroundSize: "2rem 2rem",
+        }}
+      />
+
+      <div className="relative z-10 w-full max-w-md rounded-[2.5rem] bg-white/75 backdrop-blur-2xl border border-white shadow-[0_30px_70px_-30px_rgba(15,23,42,0.3),inset_0_2px_0_white] px-8 sm:px-10 py-12 sm:py-16">
+        <h2 className="text-center text-2xl font-semibold text-slate-900 mb-8">
+          {t("authForgotTitle")}
+        </h2>
+        <p className="text-center text-sm text-slate-500 mb-8">
+          {t("authForgotSubtitle")}
+        </p>
 
         {done ? (
-          <div className="space-y-5">
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800 font-medium leading-relaxed">
+          <div className="space-y-4">
+            <div className="rounded-[8px] bg-emerald-50 px-4 py-3 text-sm text-emerald-700 text-center font-medium">
               {t("authForgotSent")}
             </div>
             <Link
               href="/login"
-              className="block w-full h-11 rounded-xl bg-gradient-to-b from-[#1B3A6B] to-[#12274b] text-white text-xs font-semibold text-center leading-[2.75rem]"
+              className="block w-full h-[52px] rounded-[8px] bg-[#4A6FBF] text-white text-sm font-semibold text-center leading-[3.25rem] hover:bg-[#3d5ea6] transition-colors"
             >
               {t("authBackToLogin")}
             </Link>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-600 font-medium">
+              <div className="rounded-[8px] bg-red-50 px-4 py-2.5 text-xs text-red-600 text-center font-medium">
                 {error}
               </div>
             )}
-            <div>
-              <label className="block font-['Inter',sans-serif] text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-2">
-                {t("authEmailLabel")}
-              </label>
+
+            <div className="relative">
+              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2" />
+                  <polyline points="22,6 12,13 2,6" />
+                </svg>
+              </span>
               <input
-                type="email"
-                value={email}
+  type="email"
+  autoComplete="email"
+  value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="info@podjetje.si"
+                placeholder={t("authEmailLabel")}
                 required
-                className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-white/80 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#1B3A6B] focus:ring-1 focus:ring-[#1B3A6B]"
+                className="w-full h-[52px] pl-12 pr-4 rounded-[8px] border border-slate-300 bg-[#F5F5F5] text-sm text-slate-900 placeholder-slate-400 focus:outline-none"
               />
             </div>
+
             <button
               type="submit"
               disabled={submitting}
-              className="w-full h-11 rounded-xl bg-gradient-to-b from-[#1B3A6B] to-[#12274b] border border-[#0d1e3a] text-white text-xs font-semibold disabled:opacity-60"
+              className="w-full h-[52px] rounded-[8px] bg-[#4A6FBF] text-white text-sm font-semibold hover:bg-[#3d5ea6] disabled:opacity-60 transition-colors"
             >
               {submitting ? "…" : t("authForgotSubmit")}
             </button>
-            <p className="text-center text-xs text-slate-500">
-              <Link href="/login" className="text-[#1B3A6B] font-semibold hover:underline">
-                {t("authBackToLogin")}
-              </Link>
-            </p>
+
+            <Link
+              href="/login"
+              className="block w-full h-[52px] rounded-[8px] border-2 border-[#4A6FBF] bg-white text-[#4A6FBF] text-sm font-semibold text-center leading-[3.25rem] hover:bg-[#f0f4ff] transition-colors"
+            >
+              {t("authBackToLogin")}
+            </Link>
           </form>
         )}
       </div>

@@ -111,6 +111,8 @@ interface TimelineItem {
   time: string;
   text: string;
   type: "step" | "attachment" | "message" | "voice" | "other";
+  /** File ID for attachment events to enable clicking paperclip to open preview */
+  fileId?: string;
 }
 
 const TIMELINE_TYPE_BY_EVENT: Record<string, TimelineItem["type"]> = {
@@ -411,6 +413,7 @@ export function WorkerDetailModal({
           time: formatSiDateTimeFromIso(e.created_at),
           text: describeTimelineEvent(e, t, cardNumber),
           type: TIMELINE_TYPE_BY_EVENT[e.event_type] ?? "other",
+          fileId: e.metadata?.file_id as string | undefined,
         })),
     [timelineQuery.data, t, cardNumber]
   );
@@ -1035,7 +1038,18 @@ export function WorkerDetailModal({
                 </span>
               </div>
               {event.type === "attachment" && (
-                <Paperclip className="w-3.5 h-3.5 text-slate-300 shrink-0 mt-0.5" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (event.fileId) {
+                      const att = attachments.find((a) => a.id === event.fileId);
+                      if (att) setPreviewAttachment(att);
+                    }
+                  }}
+                  className="shrink-0 mt-0.5 bg-transparent border-none p-0 outline-none cursor-pointer hover:text-slate-400 transition-colors"
+                >
+                  <Paperclip className="w-3.5 h-3.5 text-slate-300" />
+                </button>
               )}
               {event.type === "voice" && (
                 <svg width="12" height="12" viewBox="0 0 32 36" fill="#6D778E" className="shrink-0 mt-0.5">

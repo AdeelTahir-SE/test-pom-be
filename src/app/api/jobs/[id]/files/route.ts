@@ -229,6 +229,7 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
       eventType: record.attachment_type === "image" ? "image_uploaded" : "document_uploaded",
       userId: auth.userId,
       metadata: {
+        file_id: record.id,
         file_name: record.file_name,
         attachment_type: record.attachment_type,
         job_seq: job.company_seq,
