@@ -4,6 +4,7 @@ export const queryKeys = {
     jobs: () => ["office", "jobs"] as const,
     reminders: (dayKey: string) => ["office", "reminders", dayKey] as const,
     notifications: () => ["office", "notifications"] as const,
+    communications: (dayKey: string) => ["office", "communications", dayKey] as const,
     users: () => ["office", "users"] as const,
     summary: (dayKey: string) => ["office", "summary", dayKey] as const,
     dailySummary: (dayKey: string) => ["office", "daily-summary", dayKey] as const,

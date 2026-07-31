@@ -58,7 +58,7 @@ async function setupCompanyWithWorkerAndJob() {
 }
 
 describe("Phase 8 — Messages", () => {
-  it("worker sends a message to the office (default recipient = job creator)", async () => {
+  it("worker sends a message to the office channel (owner contact; no recipient pick)", async () => {
     const { owner, jobId, workerToken } = await setupCompanyWithWorkerAndJob();
 
     const res = await api.post<{ data?: { message: MessageDto } }>(
@@ -68,8 +68,46 @@ describe("Phase 8 — Messages", () => {
     expect(res.status).toBe(201);
     expect(res.body.data?.message.recipient_id).toBe(owner.userId);
 
-    const events = await getTimelineEvents(jobId);
-    expect(events.map((e) => e.event_type)).toContain("message_sent");
+    const timeline = await api.get<{ data?: { timeline: { event_type: string }[] } }>(
+      `/api/jobs/${jobId}/timeline`,
+      { token: owner.accessToken }
+    );
+    expect(timeline.body.data?.timeline.map((e) => e.event_type)).toContain("message_sent");
+  });
+
+  it("worker cannot pass recipient_id (400) — destination is always the office channel", async () => {
+    const { owner, jobId, workerToken } = await setupCompanyWithWorkerAndJob();
+
+    const res = await api.post(`/api/jobs/${jobId}/messages`, {
+      token: workerToken,
+      body: { content: "Ping", recipient_id: owner.userId },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("worker office destination is company office contact, not job.created_by", async () => {
+    const owner = await registerCompany();
+    createdCompanies.push(owner);
+    const manager = await createCompanyUser(owner.accessToken!, { role: "manager" });
+    const worker = await createCompanyUser(owner.accessToken!, { role: "worker" });
+    const managerLogin = await loginAs(manager.email, manager.password);
+    const managerToken = managerLogin.body.data?.access_token as string;
+    const workerLogin = await loginAs(worker.email, worker.password);
+    const workerToken = workerLogin.body.data?.access_token as string;
+
+    const jobRes = await api.post<{ data?: { job: JobDto } }>("/api/jobs", {
+      token: managerToken,
+      body: { title: "Manager-created job", worker_id: worker.userId },
+    });
+    const jobId = jobRes.body.data!.job.id;
+
+    const res = await api.post<{ data?: { message: MessageDto } }>(
+      `/api/jobs/${jobId}/messages`,
+      { token: workerToken, body: { content: "Need paint." } }
+    );
+    expect(res.status).toBe(201);
+    expect(res.body.data?.message.recipient_id).toBe(owner.userId);
+    expect(res.body.data?.message.recipient_id).not.toBe(manager.userId);
   });
 
   it("owner sends a message to the assigned worker (default recipient)", async () => {
@@ -83,7 +121,7 @@ describe("Phase 8 — Messages", () => {
     expect(res.body.data?.message.is_urgent).toBe(true);
   });
 
-  it("worker cannot message another worker (403)", async () => {
+  it("worker cannot target another worker via recipient_id (400)", async () => {
     const owner = await registerCompany();
     createdCompanies.push(owner);
     const workerA = await createCompanyUser(owner.accessToken!, { role: "worker" });
@@ -100,7 +138,7 @@ describe("Phase 8 — Messages", () => {
       token: loginA.body.data?.access_token,
       body: { content: "Hey", recipient_id: workerB.userId },
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(400);
   });
 
   it("owner cannot message a worker who isn't assigned to this job (403)", async () => {
@@ -229,8 +267,8 @@ describe("Phase 8 — Messages", () => {
 });
 
 describe("Phase 8 — Notifications", () => {
-  it("sending a message creates a message_received notification for the recipient only", async () => {
-    const { owner, worker, workerToken, jobId } = await setupCompanyWithWorkerAndJob();
+  it("sending a message notifies only the direct recipient (office channel is a shared feed)", async () => {
+    const { owner, workerToken, jobId } = await setupCompanyWithWorkerAndJob();
     await api.post(`/api/jobs/${jobId}/messages`, { token: owner.accessToken, body: { content: "Hi" } });
 
     const workerNotifs = await api.get<{ data?: { notifications: NotificationDto[] } }>(
@@ -243,13 +281,98 @@ describe("Phase 8 — Notifications", () => {
       )
     ).toBe(true);
 
+    // Office outbound must NOT create a personal notification for the sender —
+    // the shared /api/office/communications feed is the office channel.
     const ownerNotifs = await api.get<{ data?: { notifications: NotificationDto[] } }>(
       "/api/notifications",
       { token: owner.accessToken }
     );
-    expect(ownerNotifs.body.data?.notifications.some((n) => n.type === "message_received")).toBe(
-      false
+    expect(
+      ownerNotifs.body.data?.notifications.some(
+        (n) => n.type === "message_received" && n.job_id === jobId
+      )
+    ).toBe(false);
+
+    const feed = await api.get<{ data?: { messages: { id: string; content: string }[] } }>(
+      `/api/office/communications?date=${new Date().toISOString().slice(0, 10)}`,
+      { token: owner.accessToken }
     );
+    expect(feed.status).toBe(200);
+    expect(feed.body.data?.messages.some((m) => m.content === "Hi")).toBe(true);
+  });
+
+  it("workers cannot read the shared office communications feed", async () => {
+    const { workerToken } = await setupCompanyWithWorkerAndJob();
+    const res = await api.get(
+      `/api/office/communications?date=${new Date().toISOString().slice(0, 10)}`,
+      { token: workerToken }
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("hiding a message from the office feed does not clear the worker notification", async () => {
+    const { owner, workerToken, jobId } = await setupCompanyWithWorkerAndJob();
+    const send = await api.post<{ data?: { message: MessageDto } }>(
+      `/api/jobs/${jobId}/messages`,
+      { token: owner.accessToken, body: { content: "Office to worker" } }
+    );
+    expect(send.status).toBe(201);
+    const messageId = send.body.data!.message.id;
+
+    const before = await api.get<{ data?: { notifications: NotificationDto[] } }>(
+      "/api/notifications",
+      { token: workerToken }
+    );
+    const inbound = before.body.data?.notifications.find(
+      (n) => n.type === "message_received" && n.job_id === jobId && !n.hidden_at
+    );
+    expect(inbound).toBeTruthy();
+
+    const hide = await api.patch(`/api/office/communications/${messageId}`, {
+      token: owner.accessToken,
+      body: { hidden: true },
+    });
+    expect(hide.status).toBe(200);
+
+    const feed = await api.get<{ data?: { messages: { id: string }[] } }>(
+      `/api/office/communications?date=${new Date().toISOString().slice(0, 10)}`,
+      { token: owner.accessToken }
+    );
+    expect(feed.body.data?.messages.some((m) => m.id === messageId)).toBe(false);
+
+    const after = await api.get<{ data?: { notifications: NotificationDto[] } }>(
+      "/api/notifications",
+      { token: workerToken }
+    );
+    expect(
+      after.body.data?.notifications.some(
+        (n) => n.id === inbound!.id && n.type === "message_received" && !n.hidden_at
+      )
+    ).toBe(true);
+  });
+
+  it("message_sent timeline metadata includes sender_name", async () => {
+    const { owner, jobId } = await setupCompanyWithWorkerAndJob();
+    const send = await api.post(`/api/jobs/${jobId}/messages`, {
+      token: owner.accessToken,
+      body: { content: "Who sent this?" },
+    });
+    expect(send.status).toBe(201);
+
+    const timeline = await api.get<{
+      data?: {
+        timeline: {
+          event_type: string;
+          metadata: Record<string, unknown> | null;
+        }[];
+      };
+    }>(`/api/jobs/${jobId}/timeline`, { token: owner.accessToken });
+    expect(timeline.status).toBe(200);
+    const sent = timeline.body.data?.timeline.find((e) => e.event_type === "message_sent");
+    expect(sent).toBeTruthy();
+    expect(typeof sent!.metadata?.sender_name).toBe("string");
+    expect(String(sent!.metadata?.sender_name).length).toBeGreaterThan(0);
+    expect(sent!.metadata?.content).toBe("Who sent this?");
   });
 
   it("assigning a worker to a job creates a job_assigned notification", async () => {

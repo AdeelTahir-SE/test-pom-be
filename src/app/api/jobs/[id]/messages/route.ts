@@ -5,7 +5,8 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { parseJsonBody } from "@/lib/validation/schemas";
 import { loadJobWithAccess } from "@/lib/services/jobAccess";
 import { createTimelineEvent } from "@/lib/timeline/events";
-import { notifyUser } from "@/lib/services/notifications";
+import { notifyMessageReceived } from "@/lib/services/notifications";
+import { requireOfficeContactUserId } from "@/lib/services/officeContact";
 import { LIMITS } from "@/config/constants";
 
 export const dynamic = "force-dynamic";
@@ -33,13 +34,13 @@ const sendMessageSchema = z.object({
     .min(1, "Message cannot be empty.")
     .max(LIMITS.MESSAGE_MAX_LENGTH, "Maximum message length is 400 characters."),
   is_urgent: z.boolean().optional(),
+  // Office may still pass this for older clients; workers must never send it.
   recipient_id: z.string().uuid().optional(),
 });
 
-// POST /api/jobs/[id]/messages — strictly vertical Employee<->Office
-// communication (Internal Messages §2, §13): a worker may only message the
-// office (any owner/manager); an owner/manager may only message this job's
-// assigned worker. Worker<->worker is always forbidden.
+// POST /api/jobs/[id]/messages — asymmetric office channel (a6):
+// worker → company office contact only (no recipient selection);
+// owner/manager → this job's assigned worker only.
 export const POST = withAuth<{ id: string }>(async (request, auth, { params }) => {
   const input = await parseJsonBody(request, sendMessageSchema);
   const db = getAdminClient();
@@ -48,23 +49,13 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
   let recipientId: string;
 
   if (auth.role === "worker") {
-    if (input.recipient_id) {
-      const { data: recipient, error: recipientError } = await db
-        .from("users")
-        .select("id, role")
-        .eq("id", input.recipient_id)
-        .eq("company_id", auth.companyId)
-        .maybeSingle();
-      if (recipientError) {
-        throw new ApiError("internal", "Failed to validate recipient.", recipientError.message);
-      }
-      if (!recipient || recipient.role === "worker") {
-        throw new ApiError("forbidden", "Workers can only message the office (owner or manager).");
-      }
-      recipientId = recipient.id;
-    } else {
-      recipientId = job.created_by as string;
+    if (input.recipient_id !== undefined) {
+      throw new ApiError(
+        "bad_request",
+        "Workers cannot select a recipient. Messages always go to the office channel."
+      );
     }
+    recipientId = await requireOfficeContactUserId(db, auth.companyId);
   } else {
     if (!workerId) {
       throw new ApiError("bad_request", "This job has no assigned worker to message.");
@@ -92,6 +83,12 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     throw new ApiError("internal", "Failed to send message.", messageError?.message);
   }
 
+  const { data: sender } = await db
+    .from("users")
+    .select("full_name")
+    .eq("id", auth.userId)
+    .maybeSingle();
+
   // User-created text messages generate message_sent; system/voice messages
   // never do (Appendix B §5 Critical Consistency Rule).
   await createTimelineEvent(db, {
@@ -103,13 +100,13 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
       is_urgent: message.is_urgent,
       content: message.content,
       job_seq: job.company_seq,
+      sender_name: sender?.full_name ?? null,
     },
   });
 
-  await notifyUser(db, {
+  await notifyMessageReceived(db, {
     companyId: auth.companyId,
-    userId: recipientId,
-    type: "message_received",
+    recipientId,
     title: "New message",
     body: input.content.slice(0, 100),
     jobId: params.id,

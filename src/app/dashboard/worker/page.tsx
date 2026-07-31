@@ -10,11 +10,14 @@ import { SearchModal } from "@/components/dashboard/SearchModal";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { WorkerDetailModal } from "@/components/dashboard/WorkerDetailModal";
 import { OfficeCard } from "@/components/dashboard/OfficeCard";
-import { ApiJob, ApiChecklistItem, jobToWorkerCard, jobNumber } from "@/lib/dashboardMappers";
+import { ApiJob, ApiChecklistItem, jobToWorkerCard, jobNumber, formatTime } from "@/lib/dashboardMappers";
+import type { ApiNotification } from "@/lib/dashboardMappers";
 import type { Message } from "@/lib/mockData";
+import type { OfficeCardThreadItem } from "@/components/dashboard/OfficeCard";
 import { LIMITS } from "@/config/constants";
 import { formatSiDateTimeCompact } from "@/lib/officeDate";
 import { toTelHref } from "@/lib/phone";
+import { playMessageBeep } from "@/lib/playMessageBeep";
 
 interface ApiJobMessage {
   id: string;
@@ -41,11 +44,13 @@ export default function WorkerDashboard() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [detailKey, setDetailKey] = useState(0);
-  const [showComm, setShowComm] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<ApiJobMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
+  const [inboundNotifs, setInboundNotifs] = useState<ApiNotification[]>([]);
+  const prevUnreadRef = useRef(0);
+  const unreadPrimedRef = useRef(false);
 
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -79,18 +84,33 @@ export default function WorkerDashboard() {
       setJob(activeJob);
 
       if (activeJob) {
-        const [checklistRes, messagesRes, unreadRes] = await Promise.all([
+        const [checklistRes, messagesRes, unreadRes, notifsRes] = await Promise.all([
           api.get<{ checklist: ApiChecklistItem[] }>(`/api/jobs/${activeJob.id}/checklist`),
           api.get<{ messages: ApiJobMessage[] }>(`/api/jobs/${activeJob.id}/messages`),
           api.get<{ unread_count: number }>("/api/messages/unread-count"),
+          api.get<{ notifications: ApiNotification[] }>("/api/notifications"),
         ]);
         setChecklist(checklistRes.data?.checklist ?? []);
         setMessages(messagesRes.data?.messages ?? []);
-        setUnreadCount(unreadRes.data?.unread_count ?? 0);
+        const nextUnread = unreadRes.data?.unread_count ?? 0;
+        setUnreadCount(nextUnread);
+        if (!unreadPrimedRef.current) {
+          prevUnreadRef.current = nextUnread;
+          unreadPrimedRef.current = true;
+        }
+        setInboundNotifs(
+          (notifsRes.data?.notifications ?? []).filter(
+            (n) =>
+              n.type === "message_received" &&
+              !n.hidden_at &&
+              n.job_id === activeJob.id
+          )
+        );
       } else {
         setChecklist([]);
         setMessages([]);
         setUnreadCount(0);
+        setInboundNotifs([]);
       }
     } catch (err) {
       console.error(err);
@@ -106,10 +126,19 @@ export default function WorkerDashboard() {
   useEffect(() => {
     const interval = setInterval(async () => {
       const res = await api.get<{ unread_count: number }>("/api/messages/unread-count");
-      if (res.status === 200 && res.data) setUnreadCount(res.data.unread_count);
-    }, 30000);
+      if (res.status !== 200 || !res.data) return;
+      const next = res.data.unread_count;
+      if (unreadPrimedRef.current && next > prevUnreadRef.current) {
+        playMessageBeep();
+        void loadAll();
+      } else {
+        setUnreadCount(next);
+      }
+      prevUnreadRef.current = next;
+      unreadPrimedRef.current = true;
+    }, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [loadAll]);
 
   useEffect(() => {
     if (chatBottomRef.current) {
@@ -185,7 +214,16 @@ export default function WorkerDashboard() {
     if (job) {
       await api.patch(`/api/jobs/${job.id}/messages/read`, {});
       setUnreadCount(0);
+      prevUnreadRef.current = 0;
     }
+  };
+
+  const handleDismissInboundBox = async () => {
+    const snapshot = inboundNotifs;
+    setInboundNotifs([]);
+    await Promise.all(
+      snapshot.map((n) => api.patch(`/api/notifications/${n.id}`, { hidden: true }))
+    );
   };
 
   const handleSendMessage = async () => {
@@ -241,6 +279,32 @@ export default function WorkerDashboard() {
   const completedChecklist = checklist.filter((c) => c.is_completed);
   const pendingChecklist = checklist.filter((c) => !c.is_completed);
   const displayChecklist = [...completedChecklist.slice(-1), ...pendingChecklist.slice(0, 2)];
+
+  const officeSenderLabel = officeContact?.full_name?.trim() || t("cardUnknownSender");
+  const showInboundBox = Boolean(job && inboundNotifs.length > 0 && messages.length > 0);
+  const inboundThread: OfficeCardThreadItem[] = messages.map((m) => {
+    const fromMe = m.sender_id === user?.id;
+    return {
+      id: m.id,
+      senderLabel: fromMe ? user?.full_name || "Jaz" : officeSenderLabel,
+      text: m.content,
+      time: formatTime(m.created_at),
+      type: m.message_type === "voice" ? "glasovno" : "tekst",
+    };
+  });
+  const latestInbound = [...messages].reverse().find((m) => m.sender_id !== user?.id) ?? messages[messages.length - 1];
+  const inboundCardMessage: Message | null =
+    job && latestInbound
+      ? {
+          id: latestInbound.id,
+          workerId: user?.id ?? "",
+          workerName: latestInbound.sender_id === user?.id ? user?.full_name || "Jaz" : officeSenderLabel,
+          text: latestInbound.content,
+          time: formatTime(latestInbound.created_at),
+          type: latestInbound.message_type === "voice" ? "glasovno" : "tekst",
+          targetTask: job.title,
+        }
+      : null;
 
   if (authLoading || dataLoading) {
     return (
@@ -536,20 +600,14 @@ export default function WorkerDashboard() {
                   </button>
                 </div>
 
-                {showComm && (
+                {showInboundBox && inboundCardMessage && (
                   <OfficeCard
-                    message={{
-                      id: "demo-1",
-                      workerId: "office-1",
-                      workerName: "ANA NOVAK",
-                      text: "Stranke ni bilo na naslovu. Začenjam pol ure kasneje.",
-                      time: "09:18",
-                      type: "glasovno",
-                      targetTask: "Čiščenje prostorov",
-                    } as Message}
+                    message={inboundCardMessage}
+                    thread={inboundThread}
                     iconType="mic"
                     onResolve={() => {}}
-                    onDismiss={() => setShowComm(false)}
+                    onDismiss={() => void handleDismissInboundBox()}
+                    onReply={() => void handleOpenChat()}
                   />
                 )}
 

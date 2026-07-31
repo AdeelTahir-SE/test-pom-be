@@ -7,9 +7,15 @@ import { useLanguage } from "@/lib/useLanguage";
 import Link from "next/link";
 
 interface OAuthLoginResponse {
+  needs_registration?: boolean;
   access_token: string;
   refresh_token: string;
-  user: { id: string; email: string; full_name?: string; role?: "owner" | "manager" | "worker" };
+  user: {
+    id: string;
+    email: string;
+    full_name?: string;
+    role?: "owner" | "manager" | "worker";
+  };
   company_id: string | null;
 }
 
@@ -35,25 +41,43 @@ export default function AuthCallbackPage() {
         return;
       }
 
-      const res = await api.post<OAuthLoginResponse>("/api/auth/oauth/callback", { code });
-      if (cancelled) return;
+ try {
+        const res = await api.post<OAuthLoginResponse>(
+          "/api/auth/oauth/callback",
+          { code }
+        );
 
-      if (res.status !== 200 || !res.data) {
-        setError(res.error?.message ?? t("authGoogleFailed"));
-        return;
-      }
+        if (cancelled) return;
 
-      setSession(res.data.access_token, res.data.refresh_token);
-      if (!res.data.user.role) {
-        router.replace("/admin");
-      } else if (res.data.user.role === "worker") {
-        router.replace("/dashboard/worker");
-      } else {
-        router.replace("/dashboard/office");
+        if (res.status !== 200 || !res.data) {
+          setError(res.error?.message ?? t("authGoogleFailed"));
+          return;
+        }
+
+        setSession(res.data.access_token, res.data.refresh_token);
+
+        if (res.data.needs_registration || !res.data.user.role) {
+          const q = new URLSearchParams({ google: "1" });
+          if (res.data.user.full_name) q.set("name", res.data.user.full_name);
+          if (res.data.user.email) q.set("email", res.data.user.email);
+          router.replace(`/register?${q.toString()}`);
+          return;
+        }
+
+        if (res.data.user.role === "worker") {
+          router.replace("/dashboard/worker");
+        } else {
+          router.replace("/dashboard/office");
+        }
+  } catch {
+        if (!cancelled) {
+          setError(t("authGoogleFailed"));
+        }
       }
     }
 
     void finish();
+
     return () => {
       cancelled = true;
     };

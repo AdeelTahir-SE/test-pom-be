@@ -241,27 +241,27 @@ export function CommunicationCard({
           zIndex: 1,
         }}
       >
-        {/* Left: Time display */}
-        {order.time && (
-          <span
-            style={{
-              fontFamily: "'Inter', sans-serif",
-              fontWeight: 300,
-              fontSize: "24px",
-              lineHeight: "32px",
-              letterSpacing: "-0.6px",
-              color: "#FFFFFF",
-            }}
-          >
-            {order.time}
-          </span>
-        )}
+        {/* Left: Time display (optional) */}
+        <span
+          style={{
+            fontFamily: "'Inter', sans-serif",
+            fontWeight: 300,
+            fontSize: "24px",
+            lineHeight: "32px",
+            letterSpacing: "-0.6px",
+            color: "#FFFFFF",
+            minWidth: 0,
+            flex: 1,
+          }}
+        >
+          {order.time || ""}
+        </span>
 
-        {/* Right: Three buttons group */}
+        {/* Right: action icons — always pinned right (Mark a8) */}
         {buttonsConfig !== "none" && (
-          <div className="flex items-center gap-2">
-            {/* Button 1: Call (only if call-tick-decline) */}
-            {buttonsConfig === "call-tick-decline" && (
+          <div className="flex items-center gap-2 ml-auto shrink-0">
+            {/* Button 1: Call removed — no phone calling (Mark a8) */}
+            {false && buttonsConfig === "call-tick-decline" && (
               <button
                 onClick={() => onCall()}
                 style={{
@@ -356,41 +356,6 @@ export function CommunicationCard({
                     title="Sent via Email"
                   >
                     <span className="text-xs font-bold text-slate-500">@</span>
-                  </button>
-                )}
-
-                {order.phoneNumber && (
-                  <button
-                    onClick={() => onCall(order.phoneNumber)}
-                    style={{
-                      boxSizing: "border-box",
-                      display: "flex",
-                      flexDirection: "row",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      padding: "0px",
-                      width: "32px",
-                      height: "32px",
-                      background: "rgba(255, 255, 255, 0.9)",
-                      border: "1px solid #FFFFFF",
-                      boxShadow: "inset 0px 1px 0px 1px #FFFFFF",
-                      borderRadius: "12px",
-                      cursor: "pointer",
-                    }}
-                    title={`Call Phone: ${order.phoneNumber}`}
-                  >
-                    <svg
-                      width="18"
-                      height="16"
-                      viewBox="0 0 20 18"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <path
-                        d="M7.22477 1.25722C6.8873 0.497902 6.0702 0 5.16154 0H2.10521C0.942534 0 0 0.848098 0 1.89453C0 10.7892 8.01177 18 17.8945 18C19.0572 18 19.9995 17.1516 19.9995 16.1052L20 13.354C20 12.5362 19.4469 11.8009 18.6033 11.4971L15.674 10.4429C14.9161 10.1701 14.0533 10.2929 13.4263 10.7632L12.6702 11.3307C11.7873 11.9929 10.4882 11.9402 9.67552 11.2088L7.54672 9.29106C6.73403 8.55963 6.67398 7.39134 7.40975 6.59669L8.04016 5.9163C8.56268 5.35196 8.70032 4.57516 8.39719 3.89309L7.22477 1.25722Z"
-                        fill="#6D778E"
-                      />
-                    </svg>
                   </button>
                 )}
 

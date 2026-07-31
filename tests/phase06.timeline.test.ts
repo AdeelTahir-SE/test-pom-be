@@ -141,6 +141,27 @@ describe("Phase 6 — Timeline (read API)", () => {
     expect(second.body.data?.timeline).toEqual(first.body.data?.timeline);
   });
 
+  it("display_order-only updates do not create job_updated timeline events", async () => {
+    const { owner, jobId } = await setupCompanyWithWorkerAndJob();
+    const before = await api.get<{ data?: { timeline: TimelineEventDto[] } }>(
+      `/api/jobs/${jobId}/timeline`,
+      { token: owner.accessToken }
+    );
+    const beforeTypes = (before.body.data?.timeline ?? []).map((e) => e.event_type);
+
+    const patch = await api.patch(`/api/jobs/${jobId}`, {
+      token: owner.accessToken,
+      body: { display_order: 3 },
+    });
+    expect(patch.status).toBe(200);
+
+    const after = await api.get<{ data?: { timeline: TimelineEventDto[] } }>(
+      `/api/jobs/${jobId}/timeline`,
+      { token: owner.accessToken }
+    );
+    expect((after.body.data?.timeline ?? []).map((e) => e.event_type)).toEqual(beforeTypes);
+  });
+
   it("the closed event-type set is enforced at the database level", async () => {
     const { jobId, owner } = await setupCompanyWithWorkerAndJob();
     const db = getAdminClient();

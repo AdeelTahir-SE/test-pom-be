@@ -3,7 +3,8 @@ import { created, ok, ApiError } from "@/lib/http/responses";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { loadJobWithAccess } from "@/lib/services/jobAccess";
 import { createTimelineEvent } from "@/lib/timeline/events";
-import { notifyUser } from "@/lib/services/notifications";
+import { notifyMessageReceived } from "@/lib/services/notifications";
+import { requireOfficeContactUserId } from "@/lib/services/officeContact";
 import { sha256Hex, buildStoragePath, uploadToStorage } from "@/lib/storage/upload";
 import { transcribeAudio } from "@/lib/integrations/deepgram";
 import { LIMITS } from "@/config/constants";
@@ -30,10 +31,11 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     throw new ApiError("payload_too_large", "Audio file exceeds the maximum allowed size.");
   }
 
-  // Same vertical Employee<->Office direction as text messages (§13).
+  // Same asymmetric office channel as text messages (a6): worker → office
+  // contact only; office → this job's assigned worker. No client recipient.
   let recipientId: string;
   if (auth.role === "worker") {
-    recipientId = job.created_by as string;
+    recipientId = await requireOfficeContactUserId(db, auth.companyId);
   } else {
     if (!workerId) {
       throw new ApiError("bad_request", "This job has no assigned worker to message.");
@@ -113,6 +115,12 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     throw new ApiError("internal", "Failed to create voice message.", messageError?.message);
   }
 
+  const { data: sender } = await db
+    .from("users")
+    .select("full_name")
+    .eq("id", auth.userId)
+    .maybeSingle();
+
   // voice_message_transcribed, NOT message_sent — system-generated voice
   // transcription never triggers message_sent (Appendix B §5).
   await createTimelineEvent(db, {
@@ -120,13 +128,17 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     jobId: params.id,
     eventType: "voice_message_transcribed",
     userId: auth.userId,
-    metadata: { transcribed: transcript !== null, content, job_seq: job.company_seq },
+    metadata: {
+      transcribed: transcript !== null,
+      content,
+      job_seq: job.company_seq,
+      sender_name: sender?.full_name ?? null,
+    },
   });
 
-  await notifyUser(db, {
+  await notifyMessageReceived(db, {
     companyId: auth.companyId,
-    userId: recipientId,
-    type: "message_received",
+    recipientId,
     title: "New voice message",
     body: content.slice(0, 100),
     jobId: params.id,

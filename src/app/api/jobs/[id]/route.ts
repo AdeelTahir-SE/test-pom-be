@@ -267,13 +267,16 @@ export const PATCH = withAuth<{ id: string }>(async (request, auth, { params }) 
       });
     }
 
+    // display_order is board drag-reorder only — logging it as job_updated
+    // spamms the Details timeline with empty duplicate-looking lines.
     const nonStatusFieldsChanged = Object.keys(updates).some(
       (k) =>
         k !== "status" &&
         k !== "started_at" &&
         k !== "completed_at" &&
         k !== "hidden_at" &&
-        k !== "hidden_by"
+        k !== "hidden_by" &&
+        k !== "display_order"
     );
     if (nonStatusFieldsChanged) {
       await createTimelineEvent(db, {

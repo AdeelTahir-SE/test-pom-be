@@ -12,11 +12,11 @@ import {
   ApiChecklistItem,
   ApiUser,
   ApiOfficeReminder,
-  ApiNotification,
   jobToWorkerCard,
   reminderToCard,
-  notificationToMessage,
+  communicationToMessage,
   jobNumber,
+  formatTime,
 } from "@/lib/dashboardMappers";
 import type { Worker, Order, Message } from "@/lib/mockData";
 import { LIMITS } from "@/config/constants";
@@ -62,14 +62,12 @@ import {
   jobBelongsToDay,
   localDayToScheduledAt,
   normalizeRemindTime,
-  notificationBelongsToDay,
   parseFlexibleDate,
   startOfLocalDay,
   toIsoDate,
 } from "@/lib/officeDate";
 import { useOfficeBoard } from "@/hooks/useOfficeBoard";
 import { isOptimisticId, newOptimisticId } from "@/lib/optimisticId";
-import { toTelHref } from "@/lib/phone";
 
 interface ApiJobMessage {
   id: string;
@@ -160,14 +158,14 @@ export default function OfficeDashboard() {
   const {
     jobs,
     reminders,
-    notifications,
+    communications,
     workers,
     summary,
     checklistsByJob,
     dataLoading,
     setJobs,
     setReminders,
-    setNotifications,
+    setCommunications,
     setChecklistsByJob,
     refreshBoard,
   } = useOfficeBoard(selectedDayKey, !authLoading && !!user);
@@ -196,6 +194,17 @@ export default function OfficeDashboard() {
   const [isRecordingReply, setIsRecordingReply] = useState(false);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeWorkerId, setComposeWorkerId] = useState('');
+  const [pendingDeleteJobId, setPendingDeleteJobId] = useState<string | null>(null);
+  const [pendingConfirmTask, setPendingConfirmTask] = useState<{
+    workerId: string;
+    taskId: string;
+    jobId: string;
+    label: string;
+    requiresAttachment: boolean;
+    hasAttachment: boolean;
+  } | null>(null);
+  const cardAttachInputRef = useRef<HTMLInputElement | null>(null);
+  const cardAttachTargetRef = useRef<{ jobId: string; taskId: string } | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const autoStopTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -321,12 +330,28 @@ export default function OfficeDashboard() {
   );
 
   const dayReminders = reminders;
-  const messageNotifications = notifications.filter(
-    (n) =>
-      n.type === 'message_received' &&
-      !n.hidden_at &&
-      notificationBelongsToDay(n, selectedDayKey),
-  );
+  // Shared office channel (a6) — one conversation box per job for all office roles.
+  const dayCommunications = communications;
+  const communicationThreads = (() => {
+    const byJob = new Map<string, typeof dayCommunications>();
+    for (const m of dayCommunications) {
+      const list = byJob.get(m.job_id) ?? [];
+      list.push(m);
+      byJob.set(m.job_id, list);
+    }
+    return [...byJob.entries()]
+      .map(([jobId, msgs]) => {
+        const ordered = [...msgs].sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+        const latest = ordered[ordered.length - 1]!;
+        return { jobId, messages: ordered, latest };
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.latest.created_at).getTime() - new Date(a.latest.created_at).getTime()
+      );
+  })();
 
   const dayFieldOverview = summary?.field_overview ?? [];
   const dayUrgent = dayReminders.find((r) => r.is_urgent) ?? null;
@@ -343,7 +368,7 @@ export default function OfficeDashboard() {
       )
     : null;
 
-  const handleToggleTask = async (_workerId: string, taskId: string) => {
+  const handleToggleTask = (_workerId: string, taskId: string) => {
     const item = Object.values(mergedChecklistsByJob).flat().find((i) => i.id === taskId);
     if (!item || isOptimisticId(item.id) || isOptimisticId(item.job_id)) return;
     // Completed steps stay permanently done (Mark a2).
@@ -354,11 +379,34 @@ export default function OfficeDashboard() {
     );
     const next = siblings.find((i) => !i.is_completed);
     if (!next || next.id !== item.id) return;
-    if (item.requires_attachment && !item.has_attachment) return;
+
+    setPendingConfirmTask({
+      workerId: _workerId,
+      taskId: item.id,
+      jobId: item.job_id,
+      label: item.label,
+      requiresAttachment: !!item.requires_attachment,
+      hasAttachment: !!item.has_attachment,
+    });
+  };
+
+  const completeConfirmedTask = async () => {
+    const pending = pendingConfirmTask;
+    if (!pending) return;
+    setPendingConfirmTask(null);
+
+    const item = Object.values(mergedChecklistsByJob)
+      .flat()
+      .find((i) => i.id === pending.taskId);
+    if (!item) return;
+    if (item.requires_attachment && !item.has_attachment) {
+      alert(t("modalConfirmStepMissingTitle"));
+      return;
+    }
 
     const patchLocal = (list: ApiChecklistItem[]) =>
       list.map((i) =>
-        i.id === taskId
+        i.id === pending.taskId
           ? {
               ...i,
               is_completed: true,
@@ -377,18 +425,42 @@ export default function OfficeDashboard() {
         : prev
     );
 
-    const res = await api.patch<ApiChecklistItem>(`/api/checklist-items/${taskId}`, {
-      is_completed: true,
-    });
-    if (res.status === 200 && res.data) {
+    const res = await api.patch<{ item: ApiChecklistItem }>(
+      `/api/checklist-items/${pending.taskId}`,
+      { is_completed: true }
+    );
+    if (res.status === 200 && res.data?.item) {
       setChecklistsByJob((prev) => ({
         ...prev,
         [item.job_id]: (prev[item.job_id] ?? []).map((i) =>
-          i.id === taskId ? res.data! : i,
+          i.id === pending.taskId ? res.data!.item : i
         ),
       }));
     } else {
       void refreshBoard();
+      alert(res.error?.message ?? "Koraka ni bilo mogoče potrditi.");
+    }
+  };
+
+  const handleCardAttachmentClick = (_workerId: string, taskId: string) => {
+    const item = Object.values(mergedChecklistsByJob).flat().find((i) => i.id === taskId);
+    if (!item || isOptimisticId(item.job_id)) return;
+    cardAttachTargetRef.current = { jobId: item.job_id, taskId: item.id };
+    cardAttachInputRef.current?.click();
+  };
+
+  const handleCardAttachmentFile = async (file: File | null) => {
+    const target = cardAttachTargetRef.current;
+    cardAttachTargetRef.current = null;
+    if (!file || !target) return;
+    const formData = new FormData();
+    formData.append("files", file);
+    formData.append("checklist_item_id", target.taskId);
+    const res = await api.post(`/api/jobs/${target.jobId}/files`, formData);
+    if (res.status === 201) {
+      void refreshBoard();
+    } else {
+      alert(res.error?.message ?? "Priponke ni bilo mogoče naložiti.");
     }
   };
 
@@ -654,11 +726,15 @@ export default function OfficeDashboard() {
         )
     );
   };
-  const handleDismissMessage = async (id: string) => {
-    const snapshot = notifications;
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-    const res = await api.patch(`/api/notifications/${id}`, { hidden: true });
-    if (res.status !== 200) setNotifications(snapshot);
+  const handleDismissConversation = async (messageIds: string[]) => {
+    if (messageIds.length === 0) return;
+    const idSet = new Set(messageIds);
+    const snapshot = communications;
+    setCommunications((prev) => prev.filter((m) => !idSet.has(m.id)));
+    const results = await Promise.all(
+      messageIds.map((id) => api.patch(`/api/office/communications/${id}`, { hidden: true }))
+    );
+    if (results.some((r) => r.status !== 200)) setCommunications(snapshot);
   };
   const handleDismissJob = async (id: string) => {
     if (isOptimisticId(id)) {
@@ -676,6 +752,10 @@ export default function OfficeDashboard() {
       setJobs(snapshot);
       alert(res.error?.message ?? "Kartice ni bilo mogoče skriti.");
     }
+  };
+
+  const requestDismissJob = (id: string) => {
+    setPendingDeleteJobId(id);
   };
   const handleJobDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -716,6 +796,7 @@ export default function OfficeDashboard() {
     if (res.status === 201 && res.data) {
       setReplyMessages((prev) => [...prev, res.data!.message]);
       setReplyInput('');
+      void refreshBoard();
     }
   };
 
@@ -742,6 +823,7 @@ export default function OfficeDashboard() {
           );
           if ((res.status === 200 || res.status === 201) && res.data) {
             setReplyMessages((prev) => [...prev, res.data!.message]);
+            void refreshBoard();
           } else {
             console.error(res.error);
             alert(res.error?.message ?? "Glasovnega sporočila ni bilo mogoče poslati.");
@@ -1015,6 +1097,7 @@ export default function OfficeDashboard() {
                         <WorkerCard
                           worker={workerCard}
                           onToggleTask={handleToggleTask}
+                          onTaskAttachmentClick={handleCardAttachmentClick}
                           date={
                             formatSiDateFromDayKey(
                               isoToLocalDayKey(job.scheduled_at) ??
@@ -1022,7 +1105,7 @@ export default function OfficeDashboard() {
                             ) || formatSiDate(new Date(job.created_at))
                           }
                           orderId={jobNumber(job)}
-                          onDismiss={() => void handleDismissJob(job.id)}
+                          onDismiss={() => requestDismissJob(job.id)}
                           onClick={() => {
                             setSelectedWorkerJobId(job.id);
                             setIsWorkerDetailOpen(true);
@@ -1099,10 +1182,6 @@ export default function OfficeDashboard() {
                         onResolve={() => handleConfirmReminder(r.id)}
                         onDismiss={() => handleDismissReminder(r.id)}
                         onArchive={() => handleDeclineReminder(r.id)}
-                        onCall={() => {
-                          const href = toTelHref(r.phone);
-                          if (href) window.location.href = href;
-                        }}
                       />
                     </SortableItem>
                   ))}
@@ -1134,7 +1213,7 @@ export default function OfficeDashboard() {
               }}
               className="group hover:-translate-y-1 transition-all duration-300"
             >
-              {messageNotifications.length === 0 &&
+              {communicationThreads.length === 0 &&
                 (!shouldShowDummy('komunikacija') ? (
                   <p className="text-sm text-slate-400 text-center py-4">
                     {t('officeEmptyComm')}
@@ -1155,18 +1234,31 @@ export default function OfficeDashboard() {
                     onDismiss={() => dismissDummy('komunikacija')}
                   />
                 ))}
-              {messageNotifications.map((n) => (
-                <OfficeCard
-                  key={n.id}
-                  message={notificationToMessage(n, jobById, workerById, t)}
-                  iconType="mic"
-                  onResolve={() => handleDismissMessage(n.id)}
-                  onDismiss={() => handleDismissMessage(n.id)}
-                  onReply={
-                    n.job_id ? () => handleOpenReply(n.job_id!) : undefined
-                  }
-                />
-              ))}
+              {communicationThreads.map((thread) => {
+                const latest = thread.latest;
+                const card = communicationToMessage(latest, t);
+                return (
+                  <OfficeCard
+                    key={thread.jobId}
+                    message={card}
+                    thread={thread.messages.map((m) => ({
+                      id: m.id,
+                      senderLabel: m.sender_name || m.worker_name || t("cardUnknownSender"),
+                      text: m.content,
+                      time: formatTime(m.created_at),
+                      type: m.message_type === "voice" ? "glasovno" : "tekst",
+                    }))}
+                    iconType="mic"
+                    onResolve={() =>
+                      void handleDismissConversation(thread.messages.map((m) => m.id))
+                    }
+                    onDismiss={() =>
+                      void handleDismissConversation(thread.messages.map((m) => m.id))
+                    }
+                    onReply={() => handleOpenReply(thread.jobId)}
+                  />
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1264,7 +1356,122 @@ export default function OfficeDashboard() {
         }
         canCancelJob
         canManageCustomerNotes
+        onDeleteCard={
+          selectedWorkerJobId
+            ? () => void handleDismissJob(selectedWorkerJobId)
+            : undefined
+        }
       />
+
+      <input
+        ref={cardAttachInputRef}
+        type="file"
+        className="hidden"
+        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+        onChange={(e) => {
+          const file = e.target.files?.[0] ?? null;
+          e.target.value = "";
+          void handleCardAttachmentFile(file);
+        }}
+      />
+
+      <Dialog
+        open={!!pendingDeleteJobId}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteJobId(null);
+        }}
+      >
+        <DialogContent className="max-w-sm w-[90vw]">
+          <h3 className="text-lg font-semibold text-slate-900 text-center">
+            {t("modalDeleteCardConfirmTitle")}
+          </h3>
+          <p className="text-sm text-slate-600 text-center mt-2">
+            {t("modalDeleteCardConfirmBody")}
+          </p>
+          <div className="flex gap-2 mt-4">
+            <button
+              type="button"
+              onClick={() => setPendingDeleteJobId(null)}
+              className="flex-1 h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500"
+            >
+              {t("modalCancel")}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const id = pendingDeleteJobId;
+                setPendingDeleteJobId(null);
+                if (id) void handleDismissJob(id);
+              }}
+              className="flex-1 h-10 rounded-xl bg-red-600 text-white text-xs font-semibold"
+            >
+              {t("modalDeleteCardSubmit")}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!pendingConfirmTask}
+        onOpenChange={(open) => {
+          if (!open) setPendingConfirmTask(null);
+        }}
+      >
+        <DialogContent className="max-w-sm w-[90vw]">
+          {pendingConfirmTask && (
+            <>
+              <h3 className="text-lg font-semibold text-slate-900 text-center">
+                {pendingConfirmTask.requiresAttachment && !pendingConfirmTask.hasAttachment
+                  ? t("modalConfirmStepMissingTitle")
+                  : t("modalConfirmStepTitle")}
+              </h3>
+              <p className="text-sm text-slate-600 text-center mt-2">
+                <strong>{pendingConfirmTask.label}</strong>
+              </p>
+              {pendingConfirmTask.requiresAttachment && !pendingConfirmTask.hasAttachment ? (
+                <div className="flex flex-col gap-2 mt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const p = pendingConfirmTask;
+                      setPendingConfirmTask(null);
+                      if (p) handleCardAttachmentClick(p.workerId, p.taskId);
+                    }}
+                    className="w-full h-10 rounded-xl bg-[#1B3A6B] text-white text-xs font-semibold"
+                  >
+                    Naloži priponko
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPendingConfirmTask(null)}
+                    className="w-full h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500"
+                  >
+                    {t("modalCancel")}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2 mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setPendingConfirmTask(null)}
+                    className="flex-1 h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500"
+                  >
+                    {t("modalCancel")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void completeConfirmedTask()}
+                    className="flex-1 h-10 rounded-xl bg-[#1B3A6B] text-white text-xs font-semibold"
+                  >
+                    {t("modalConfirmStepSubmit")}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <AddTaskModal
         isOpen={isAddTaskOpen}
         onOpenChange={setIsAddTaskOpen}

@@ -1,6 +1,7 @@
 import type { TranslationKey } from "@/lib/translations";
 import type { JobStatus } from "@/config/constants";
 import { isDocumentType, type DocumentType } from "@/lib/documents/classify";
+import { formatSiDateFromDayKey } from "@/lib/officeDate";
 
 export interface TimelineEventLike {
   event_type: string;
@@ -70,12 +71,24 @@ export function describeTimelineEvent(
   switch (e.event_type) {
     case "job_created": {
       const title = typeof meta.title === "string" ? meta.title : "";
+      const createdOn =
+        typeof meta.created_on === "string" ? formatSiDateFromDayKey(meta.created_on) : "";
       const worker =
         typeof meta.worker_name === "string" && meta.worker_name ? meta.worker_name : "";
-      const base = card
-        ? `${t("timelineJobCreated")}: ${card}${title ? ` · ${title}` : ""}`
-        : `${t("timelineJobCreated")}: ${title}`;
-      return worker ? `${base} · ${worker}` : base;
+      const createdBy =
+        typeof meta.created_by_name === "string" && meta.created_by_name.trim()
+          ? meta.created_by_name.trim()
+          : "";
+      const parts = [
+        card,
+        title || null,
+        createdOn || null,
+        worker || null,
+        createdBy ? `${t("timelineJobCreatedBy")} ${createdBy}` : null,
+      ].filter((p): p is string => Boolean(p));
+      return parts.length > 0
+        ? `${t("timelineJobCreated")}: ${parts.join(" · ")}`
+        : t("timelineJobCreated");
     }
     case "worker_assigned":
       // Later reassignment — always show who was assigned (not bare card #).
@@ -85,6 +98,16 @@ export function describeTimelineEvent(
           ? `${t("timelineWorkerAssigned")}: ${card}`
           : t("timelineWorkerAssigned");
     case "job_updated":
+      if (meta.kind === "customer_note") {
+        const sender =
+          typeof meta.sender_name === "string" && meta.sender_name.trim()
+            ? meta.sender_name.trim()
+            : "";
+        const s = snippet(meta.content, 400);
+        const base = t("timelineCustomerNote");
+        const withSender = sender ? `${base} · ${sender}` : base;
+        return s ? `${withSender} · ${s}` : withSender;
+      }
       if (meta.hidden === true) {
         return card
           ? `${t("timelineJobHidden")}: ${card}`
@@ -135,16 +158,27 @@ export function describeTimelineEvent(
     }
     case "voice_message_transcribed": {
       const base = meta.transcribed ? t("timelineVoiceTranscribed") : t("timelineVoiceReceived");
-      const s = snippet(meta.content);
+      const sender =
+        typeof meta.sender_name === "string" && meta.sender_name.trim()
+          ? meta.sender_name.trim()
+          : "";
+      // Full message body (Mark: time + who + full text) — only truncate huge blobs.
+      const s = snippet(meta.content, 400);
       const withCard = card ? `${base}: ${card}` : base;
-      return s ? `${withCard} · ${s}` : withCard;
+      const withSender = sender ? `${withCard} · ${sender}` : withCard;
+      return s ? `${withSender} · ${s}` : withSender;
     }
     case "message_sent": {
-      const s = snippet(meta.content);
+      const sender =
+        typeof meta.sender_name === "string" && meta.sender_name.trim()
+          ? meta.sender_name.trim()
+          : "";
+      const s = snippet(meta.content, 400);
       const base = card
         ? `${t("timelineMessageSent")}: ${card}`
         : t("timelineMessageSent");
-      return s ? `${base} · ${s}` : base;
+      const withSender = sender ? `${base} · ${sender}` : base;
+      return s ? `${withSender} · ${s}` : withSender;
     }
     case "notification_deleted":
       return card

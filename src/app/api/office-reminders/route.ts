@@ -5,22 +5,20 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { parseJsonBody } from "@/lib/validation/schemas";
 import { notifyUser } from "@/lib/services/notifications";
 import { LIMITS, REMINDER_ACTIONS } from "@/config/constants";
-import { normalizeRemindTime } from "@/lib/officeDate";
+import { getZonedDayAndHour, normalizeRemindTime } from "@/lib/officeDate";
 import { normalizePhone } from "@/lib/phone";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/office-reminders — owner/manager only; Workers never see this
 // column (Dashboard spec: "Workers never see this column"). Hidden reminders
-// are excluded. Default (no query): a future remind_on stays invisible until
-// that day (Card Creation: "becomes visible only on that day"). Optional
-// `?date=YYYY-MM-DD` returns the day-board view for the office navigator
-// (exact remind_on match for other days; today's board keeps due/overdue).
-// Ordered by order_index — cards are vertically reorderable within column.
+// are excluded. Exact `remind_on = forDate` match (like jobs by date). Legacy
+// null remind_on rows appear only on app-today. Optional `?date=YYYY-MM-DD`
+// for the office day navigator. Ordered by order_index.
 export const GET = withAuth(
   async (request, auth) => {
     const db = getAdminClient();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getZonedDayAndHour().calendarDay;
     const dateParam = new URL(request.url).searchParams.get("date");
     const forDate =
       dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : today;
@@ -33,9 +31,9 @@ export const GET = withAuth(
       .order("order_index", { ascending: true });
 
     if (forDate === today) {
-      query = query.or(`remind_on.is.null,remind_on.lte.${today}`);
+      // Exact day + legacy undated (null remind_on).
+      query = query.or(`remind_on.eq.${forDate},remind_on.is.null`);
     } else {
-      // Planning / historical day: only reminders scheduled for that date.
       query = query.eq("remind_on", forDate);
     }
 
@@ -83,6 +81,8 @@ export const POST = withAuth(
     const orderIndex = (last?.order_index ?? -1) + 1;
 
     const remindTime = normalizeRemindTime(input.remind_time);
+    // Always persist a calendar day so boards can exact-match by date.
+    const remindOn = input.remind_on ?? getZonedDayAndHour().calendarDay;
 
     const { data: reminder, error } = await db
       .from("office_reminders")
@@ -92,7 +92,7 @@ export const POST = withAuth(
         title: input.title,
         description: input.description ?? null,
         is_urgent: input.is_urgent ?? false,
-        remind_on: input.remind_on ?? null,
+        remind_on: remindOn,
         remind_time: remindTime,
         actions: input.actions ?? [],
         phone: normalizePhone(input.phone) ?? null,

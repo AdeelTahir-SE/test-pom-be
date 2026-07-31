@@ -3,6 +3,14 @@
 import React from "react";
 import { Message } from "@/lib/mockData";
 
+export interface OfficeCardThreadItem {
+  id: string;
+  senderLabel: string;
+  text: string;
+  time: string;
+  type: "glasovno" | "tekst";
+}
+
 interface OfficeCardProps {
   message: Message;
   onResolve: () => void;
@@ -12,6 +20,59 @@ interface OfficeCardProps {
   onReply?: () => void;
   iconType?: "mic" | "document";
   showRedButton?: boolean;
+  /** When set (and length > 0), render replies under the same box. */
+  thread?: OfficeCardThreadItem[];
+}
+
+function MessageTypeIcon({ type }: { type: "glasovno" | "tekst" | "document" }) {
+  if (type === "document") {
+    return (
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g clipPath="url(#clip0_131_8410)">
+          <path d="M16.5 7.875V9C16.5 12.5355 16.5 14.3032 15.4012 15.4012C14.304 16.5 12.5355 16.5 9 16.5C5.4645 16.5 3.69675 16.5 2.598 15.4012C1.5 14.304 1.5 12.5355 1.5 9C1.5 5.4645 1.5 3.69675 2.598 2.598C3.6975 1.5 5.4645 1.5 9 1.5H10.125" stroke="#3B82F6" strokeWidth="1.125" strokeLinecap="round"/>
+          <path d="M12.4885 2.59134L12.9753 2.10459C13.7818 1.29832 15.0892 1.29849 15.8954 2.10497C16.7017 2.91144 16.7015 4.21882 15.895 5.02509L15.4075 5.51184M12.4885 2.59209C11.5765 3.50484 12.5493 3.62634 13.462 4.53834C14.374 5.45109 15.4083 5.51184 15.4083 5.51184M12.4885 2.59209L8.01479 7.06509C7.71179 7.36809 7.56029 7.51959 7.42979 7.68684C7.27579 7.88434 7.14479 8.09634 7.03679 8.32284C6.94604 8.51409 6.87854 8.71734 6.74279 9.12384L6.30854 10.4251M15.4083 5.51109L10.9345 9.98484C10.6315 10.2878 10.48 10.4393 10.3128 10.5698C10.1157 10.7235 9.9024 10.8553 9.67679 10.9628C9.48554 11.0536 9.28229 11.1211 8.87579 11.2568L7.57454 11.6911M7.57454 11.6911L6.73229 11.9716C6.53204 12.0387 6.31108 11.9866 6.16182 11.8372C6.01257 11.6878 5.96075 11.4668 6.02804 11.2666L6.30854 10.4251M7.57454 11.6911L6.30854 10.4251" stroke="#3B82F6" strokeWidth="1.125"/>
+        </g>
+        <defs>
+          <clipPath id="clip0_131_8410">
+            <rect width="18" height="18" fill="white"/>
+          </clipPath>
+        </defs>
+      </svg>
+    );
+  }
+  if (type === "tekst") {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path
+          d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+          stroke="#3B82F6"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M12 2c1.66 0 3 1.34 3 3v6c0 1.66-1.34 3-3 3s-3-1.34-3-3V5c0-1.66 1.34-3 3-3z"
+        fill="#3B82F6"
+      />
+      <path
+        d="M19 10v1c0 3.87-3.13 7-7 7s-7-3.13-7-7v-1M12 18v4M8 22h8"
+        stroke="#3B82F6"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function typeLabel(type: "glasovno" | "tekst", iconType: "mic" | "document"): string {
+  if (iconType === "document") return "Sporočilo";
+  return type === "glasovno" ? "Glasovno sporočilo" : "Tekstovno sporočilo";
 }
 
 export function OfficeCard({
@@ -23,7 +84,25 @@ export function OfficeCard({
   onReply,
   iconType = "mic",
   showRedButton = false,
+  thread,
 }: OfficeCardProps) {
+  void onResolve;
+  void onArchive;
+  void onCall;
+
+  const threadItems =
+    thread && thread.length > 0
+      ? thread
+      : [
+          {
+            id: message.id,
+            senderLabel: message.workerName,
+            text: message.text,
+            time: message.time,
+            type: message.type,
+          } satisfies OfficeCardThreadItem,
+        ];
+
   return (
     <div
       style={{
@@ -46,7 +125,6 @@ export function OfficeCard({
         overflow: "hidden",
       }}
     >
-      {/* Blue depth glows */}
       <div
         style={{
           position: "absolute",
@@ -62,7 +140,6 @@ export function OfficeCard({
         }}
       />
 
-      {/* Top row: Meta + Close/Dismiss */}
       <div className="flex items-center justify-between w-full z-10 gap-2">
         <span
           style={{
@@ -78,7 +155,6 @@ export function OfficeCard({
           {message.workerName} • {message.time}
         </span>
 
-        {/* Top-Right Buttons */}
         <div className="flex items-center gap-2 shrink-0">
           {showRedButton && (
             <div
@@ -111,6 +187,7 @@ export function OfficeCard({
           {onReply && (
             <button
               onClick={onReply}
+              type="button"
               style={{
                 boxSizing: "border-box",
                 display: "flex",
@@ -135,9 +212,9 @@ export function OfficeCard({
             </button>
           )}
 
-          {/* Dismiss Button */}
           <button
             onClick={onDismiss}
+            type="button"
             style={{
               boxSizing: "border-box",
               display: "flex",
@@ -156,13 +233,7 @@ export function OfficeCard({
             }}
             title="Dismiss"
           >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path
                 d="M14.6066 14.6066L7.80336 7.80336M7.80336 7.80336L1 1M7.80336 7.80336L14.6067 1M7.80336 7.80336L1 14.6067"
                 stroke="#6D778E"
@@ -175,7 +246,6 @@ export function OfficeCard({
         </div>
       </div>
 
-      {/* Inner white card (Meeting Prep) */}
       <div
         style={{
           boxSizing: "border-box",
@@ -183,6 +253,7 @@ export function OfficeCard({
           flexDirection: "column",
           alignItems: "flex-start",
           padding: "16px 16px 24px 16px",
+          gap: "16px",
           width: "100%",
           height: "auto",
           minHeight: "126px",
@@ -201,97 +272,75 @@ export function OfficeCard({
             fontSize: "16px",
             lineHeight: "22px",
             color: "#1C1A1A",
-            marginBottom: "12px",
+            marginBottom: "0",
           }}
           className="font-semibold"
         >
           {message.targetTask || "Brez opravila"}
         </p>
 
-        {/* Icon + label row */}
-        <div className="flex items-start gap-[12px] w-full">
-          {/* Microphone Icon container */}
-          <div
-            style={{
-              boxSizing: "border-box",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: "32px",
-              height: "32px",
-              background: "#EFF6FF",
-              border: "0.5px solid rgba(29, 78, 216, 0.3)",
-              borderRadius: "12px",
-              flexShrink: 0,
-            }}
-          >
-            {iconType === "document" ? (
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <g clipPath="url(#clip0_131_8410)">
-                  <path d="M16.5 7.875V9C16.5 12.5355 16.5 14.3032 15.4012 15.4012C14.304 16.5 12.5355 16.5 9 16.5C5.4645 16.5 3.69675 16.5 2.598 15.4012C1.5 14.304 1.5 12.5355 1.5 9C1.5 5.4645 1.5 3.69675 2.598 2.598C3.6975 1.5 5.4645 1.5 9 1.5H10.125" stroke="#3B82F6" strokeWidth="1.125" strokeLinecap="round"/>
-                  <path d="M12.4885 2.59134L12.9753 2.10459C13.7818 1.29832 15.0892 1.29849 15.8954 2.10497C16.7017 2.91144 16.7015 4.21882 15.895 5.02509L15.4075 5.51184M12.4885 2.59209C11.5765 3.50484 12.5493 3.62634 13.462 4.53834C14.374 5.45109 15.4083 5.51184 15.4083 5.51184M12.4885 2.59209L8.01479 7.06509C7.71179 7.36809 7.56029 7.51959 7.42979 7.68684C7.27579 7.88434 7.14479 8.09634 7.03679 8.32284C6.94604 8.51409 6.87854 8.71734 6.74279 9.12384L6.30854 10.4251M15.4083 5.51109L10.9345 9.98484C10.6315 10.2878 10.48 10.4393 10.3128 10.5698C10.1157 10.7235 9.9024 10.8553 9.67679 10.9628C9.48554 11.0536 9.28229 11.1211 8.87579 11.2568L7.57454 11.6911M7.57454 11.6911L6.73229 11.9716C6.53204 12.0387 6.31108 11.9866 6.16182 11.8372C6.01257 11.6878 5.96075 11.4668 6.02804 11.2666L6.30854 10.4251M7.57454 11.6911L6.30854 10.4251" stroke="#3B82F6" strokeWidth="1.125"/>
-                </g>
-                <defs>
-                  <clipPath id="clip0_131_8410">
-                    <rect width="18" height="18" fill="white"/>
-                  </clipPath>
-                </defs>
-              </svg>
-            ) : (
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
+        {threadItems.map((item, index) => (
+          <div key={item.id} className="w-full" style={{ marginTop: index === 0 ? 0 : 4 }}>
+            {threadItems.length > 1 && (
+              <p
+                style={{
+                  fontFamily: "'PT Sans', sans-serif",
+                  fontSize: "11px",
+                  lineHeight: "14px",
+                  color: "rgba(70, 84, 103, 0.55)",
+                  textTransform: "uppercase",
+                  marginBottom: "6px",
+                }}
               >
-                <path
-                  d="M12 2c1.66 0 3 1.34 3 3v6c0 1.66-1.34 3-3 3s-3-1.34-3-3V5c0-1.66 1.34-3 3-3z"
-                  fill="#3B82F6"
-                />
-                <path
-                  d="M19 10v1c0 3.87-3.13 7-7 7s-7-3.13-7-7v-1M12 18v4M8 22h8"
-                  stroke="#3B82F6"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+                {item.senderLabel} • {item.time}
+              </p>
             )}
+            <div className="flex items-start gap-[12px] w-full">
+              <div
+                style={{
+                  boxSizing: "border-box",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "32px",
+                  height: "32px",
+                  background: "#EFF6FF",
+                  border: "0.5px solid rgba(29, 78, 216, 0.3)",
+                  borderRadius: "12px",
+                  flexShrink: 0,
+                }}
+              >
+                <MessageTypeIcon
+                  type={iconType === "document" ? "document" : item.type}
+                />
+              </div>
+              <span
+                style={{
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 300,
+                  lineHeight: "18px",
+                  color: "#465467",
+                }}
+                className="text-xs md:text-sm"
+              >
+                {typeLabel(item.type, iconType)}
+              </span>
+            </div>
+            <p
+              style={{
+                fontFamily: "'Inter', sans-serif",
+                fontWeight: 300,
+                lineHeight: "18px",
+                color: "#465467",
+                marginTop: "8px",
+                width: "100%",
+              }}
+              className="text-xs md:text-sm"
+            >
+              {item.text}
+            </p>
           </div>
-
-          {/* Label */}
-          <span
-            style={{
-              fontFamily: "'Inter', sans-serif",
-              fontWeight: 300,
-              lineHeight: "18px",
-              color: "#465467",
-            }}
-            className="text-xs md:text-sm"
-          >
-            {iconType === "document"
-              ? "Sporočilo"
-              : message.type === "glasovno"
-              ? "Glasovno sporočilo"
-              : "Tekstovno sporočilo"}
-          </span>
-        </div>
-
-        {/* Content text — full width under the icon row, never clamped */}
-        <p
-          style={{
-            fontFamily: "'Inter', sans-serif",
-            fontWeight: 300,
-            lineHeight: "18px",
-            color: "#465467",
-            marginTop: "8px",
-            width: "100%",
-          }}
-          className="text-xs md:text-sm"
-        >
-          {message.text}
-        </p>
+        ))}
       </div>
     </div>
   );

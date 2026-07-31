@@ -167,13 +167,10 @@ export function reminderBelongsToDay(
   dayKey: string,
   todayKey: string
 ): boolean {
-  if (dayKey === todayKey) {
-    // Default product rule: undated or due today/overdue stay on today's board.
-    if (!reminder.remind_on) return true;
-    return reminder.remind_on <= todayKey;
-  }
+  // Exact calendar-day match (same as column 1 / jobs by date).
   if (reminder.remind_on) return reminder.remind_on === dayKey;
-  return isoToLocalDayKey(reminder.created_at) === dayKey;
+  // Legacy null remind_on: only on app-today.
+  return dayKey === todayKey;
 }
 
 export function notificationBelongsToDay(

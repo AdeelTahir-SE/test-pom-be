@@ -194,3 +194,27 @@ export function notificationToMessage(
     targetTask: job?.title,
   };
 }
+
+/** Shared office KOMUNIKACIJA feed row → card model (a6). */
+export function communicationToMessage(
+  m: {
+    id: string;
+    content: string;
+    message_type: string;
+    created_at: string;
+    job_title: string | null;
+    worker_id: string | null;
+    worker_name: string | null;
+  },
+  t: Translate
+): Message {
+  return {
+    id: m.id,
+    workerId: m.worker_id ?? "",
+    workerName: m.worker_name ?? t("cardUnknownSender"),
+    text: m.content,
+    time: formatTime(m.created_at),
+    type: m.message_type === "voice" ? "glasovno" : "tekst",
+    targetTask: m.job_title ?? undefined,
+  };
+}

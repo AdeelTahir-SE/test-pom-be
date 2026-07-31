@@ -27,6 +27,39 @@ export interface CustomerNoteRow {
   updated_at: string;
 }
 
+export type CustomerNoteWithCreator = CustomerNoteRow & {
+  created_by_name: string | null;
+};
+
+/** Once-note may be plain text or JSON `{ text, jobId }`. */
+export function parseOnceNoteContent(raw: string): {
+  displayText: string;
+  jobId: string | null;
+} {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("{")) {
+    return { displayText: trimmed, jobId: null };
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      typeof (parsed as { text?: unknown }).text === "string"
+    ) {
+      const text = ((parsed as { text: string }).text ?? "").trim();
+      const jobIdRaw = (parsed as { jobId?: unknown }).jobId;
+      const jobId =
+        typeof jobIdRaw === "string" && jobIdRaw.trim() ? jobIdRaw.trim() : null;
+      return { displayText: text || trimmed, jobId };
+    }
+  } catch {
+    // Not JSON — treat as plain text.
+  }
+  return { displayText: trimmed, jobId: null };
+}
+
 /** Find or create a customer within the company by display name. */
 export async function findOrCreateCustomer(
   db: SupabaseClient,
@@ -81,7 +114,7 @@ export async function listNotesForCustomerName(
   db: SupabaseClient,
   companyId: string,
   rawName: string
-): Promise<{ customer: CustomerRow | null; notes: CustomerNoteRow[] }> {
+): Promise<{ customer: CustomerRow | null; notes: CustomerNoteWithCreator[] }> {
   const nameNormalized = normalizeCustomerName(rawName);
   if (!nameNormalized) return { customer: null, notes: [] };
 
@@ -105,7 +138,26 @@ export async function listNotesForCustomerName(
     throw new ApiError("internal", "Failed to load customer notes.", notesError.message);
   }
 
-  return { customer: customer as CustomerRow, notes: (notes ?? []) as CustomerNoteRow[] };
+  const rows = (notes ?? []) as CustomerNoteRow[];
+  const creatorIds = [...new Set(rows.map((n) => n.created_by).filter(Boolean))];
+  const nameById = new Map<string, string>();
+  if (creatorIds.length > 0) {
+    const { data: creators } = await db
+      .from("users")
+      .select("id, full_name")
+      .in("id", creatorIds);
+    for (const u of creators ?? []) {
+      if (u.full_name) nameById.set(u.id, u.full_name);
+    }
+  }
+
+  return {
+    customer: customer as CustomerRow,
+    notes: rows.map((n) => ({
+      ...n,
+      created_by_name: nameById.get(n.created_by) ?? null,
+    })),
+  };
 }
 
 export function findDuplicateNote(

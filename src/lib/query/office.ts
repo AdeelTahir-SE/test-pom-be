@@ -59,6 +59,30 @@ export async function fetchNotifications() {
   return data.notifications;
 }
 
+export interface OfficeCommunicationDto {
+  id: string;
+  job_id: string;
+  sender_id: string;
+  recipient_id: string | null;
+  content: string;
+  message_type: string;
+  is_urgent: boolean;
+  created_at: string;
+  job_title: string | null;
+  worker_id: string | null;
+  worker_name: string | null;
+  sender_name?: string | null;
+}
+
+export async function fetchOfficeCommunications(dayKey: string) {
+  const data = await unwrapApi(
+    api.get<{ messages: OfficeCommunicationDto[] }>(
+      `/api/office/communications?date=${encodeURIComponent(dayKey)}`
+    )
+  );
+  return data.messages;
+}
+
 export async function fetchWorkers() {
   const data = await unwrapApi(api.get<{ users: ApiUser[] }>("/api/users"));
   return data.users.filter((u) => u.role === "worker");

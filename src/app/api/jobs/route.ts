@@ -8,7 +8,7 @@ import { notifyUser } from "@/lib/services/notifications";
 import { findOrCreateCustomer } from "@/lib/services/customers";
 import { JOB_STATUSES } from "@/config/constants";
 import { assertValidWorker } from "@/lib/services/jobs";
-import { isScheduledAtInPast } from "@/lib/officeDate";
+import { isScheduledAtInPast, isoToAppDayKey } from "@/lib/officeDate";
 
 export const dynamic = "force-dynamic";
 
@@ -137,6 +137,15 @@ export const POST = withAuth(
       throw new ApiError("internal", "Failed to create job.", jobError?.message);
     }
 
+    const { data: creator } = await db
+      .from("users")
+      .select("full_name")
+      .eq("id", auth.userId)
+      .maybeSingle();
+
+    const createdOn =
+      isoToAppDayKey(job.created_at) ?? isoToAppDayKey(new Date().toISOString());
+
     // One create event (include worker when assigned at create) — avoids the
     // near-duplicate job_created + worker_assigned pair on the card timeline.
     await createTimelineEvent(db, {
@@ -147,6 +156,8 @@ export const POST = withAuth(
       metadata: {
         title: job.title,
         job_seq: job.company_seq,
+        created_on: createdOn,
+        ...(creator?.full_name ? { created_by_name: creator.full_name } : {}),
         ...(assignedWorkerName ? { worker_name: assignedWorkerName } : {}),
         ...(input.worker_id ? { worker_id: input.worker_id } : {}),
       },

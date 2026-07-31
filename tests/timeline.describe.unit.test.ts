@@ -60,4 +60,63 @@ describe("describeTimelineEvent", () => {
     );
     expect(line).toBe("Zaključen korak: #002 · Fotografiraj");
   });
+
+  it("includes sender_name and full message text for message_sent", () => {
+    const long =
+      "Prosim preveri material na lokaciji pred začetkom dela in sporoči če česa manjka.";
+    const line = describeTimelineEvent(
+      {
+        event_type: "message_sent",
+        metadata: {
+          content: long,
+          sender_name: "Ana Manager",
+          job_seq: 5,
+        },
+      },
+      tEn
+    );
+    expect(line).toContain("#005");
+    expect(line).toContain("Ana Manager");
+    expect(line).toContain(long);
+  });
+
+  it("formats job_created with date, worker, and created_by", () => {
+    const line = describeTimelineEvent(
+      {
+        event_type: "job_created",
+        metadata: {
+          title: "Fix pipe",
+          job_seq: 12,
+          created_on: "2026-07-30",
+          worker_name: "Janez",
+          created_by_name: "Ana Manager",
+        },
+      },
+      tSl
+    );
+    expect(line).toContain("Delovni nalog ustvarjen");
+    expect(line).toContain("#012");
+    expect(line).toContain("Fix pipe");
+    expect(line).toContain("30.07.2026");
+    expect(line).toContain("Janez");
+    expect(line).toContain("ustvaril Ana Manager");
+  });
+
+  it("formats customer_note job_updated with sender and content", () => {
+    const line = describeTimelineEvent(
+      {
+        event_type: "job_updated",
+        metadata: {
+          kind: "customer_note",
+          content: "Prefer morning visits",
+          sender_name: "Ana Manager",
+          job_seq: 3,
+        },
+      },
+      tEn
+    );
+    expect(line).toContain("Note");
+    expect(line).toContain("Ana Manager");
+    expect(line).toContain("Prefer morning visits");
+  });
 });

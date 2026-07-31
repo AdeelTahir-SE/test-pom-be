@@ -51,11 +51,20 @@ describe("Phase 4 — Jobs Engine", () => {
     expect(res.body.data?.job.status).toBe("pending");
     expect(res.body.data?.job.worker_id).toBe(worker.userId);
 
-    const events = await getTimelineEvents(res.body.data!.job.id);
+    const timeline = await api.get<{
+      data?: {
+        timeline: { event_type: string; metadata: Record<string, unknown> | null }[];
+      };
+    }>(`/api/jobs/${res.body.data!.job.id}/timeline`, { token: owner.accessToken });
+    expect(timeline.status).toBe(200);
+    const events = timeline.body.data?.timeline ?? [];
     expect(events.map((e) => e.event_type)).toContain("job_created");
     expect(events.map((e) => e.event_type)).not.toContain("worker_assigned");
     const created = events.find((e) => e.event_type === "job_created");
     expect(created?.metadata?.worker_id).toBe(worker.userId);
+    expect(typeof created?.metadata?.created_by_name).toBe("string");
+    expect(String(created?.metadata?.created_by_name).length).toBeGreaterThan(0);
+    expect(typeof created?.metadata?.created_on).toBe("string");
   });
 
   it("manager can also create a job", async () => {

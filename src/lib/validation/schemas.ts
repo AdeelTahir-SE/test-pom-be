@@ -12,6 +12,16 @@ export const registerSchema = z.object({
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 
+/** Step 2 of Google registration (no password — identity already from OAuth). */
+export const googleRegisterSchema = z.object({
+  company_name: z.string().trim().min(1, "Company name is required."),
+  full_name: z.string().trim().min(1).optional(),
+  business_module: z.enum(
+    ALLOWED_BUSINESS_MODULES as unknown as [string, ...string[]]
+  ),
+});
+export type GoogleRegisterInput = z.infer<typeof googleRegisterSchema>;
+
 export const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(1, "Password is required."),

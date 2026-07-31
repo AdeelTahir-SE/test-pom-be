@@ -10,6 +10,7 @@ const REFRESH_TOKEN_KEY = "saas_refresh_token";
 const AUTH_NO_REFRESH_PATHS = new Set([
   "/api/auth/login",
   "/api/auth/register",
+  "/api/auth/register/google",
   "/api/auth/logout",
   "/api/auth/refresh",
   "/api/auth/forgot-password",

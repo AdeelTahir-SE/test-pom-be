@@ -267,6 +267,41 @@ describe("Add-on 2 — Customer Knowledge (API)", () => {
     expect(huge.status).toBe(400);
   });
 
+  it("creating a note with job_id writes a customer_note timeline line", async () => {
+    const { owner, worker } = await setupOwnerAndWorker();
+    const jobRes = await api.post<{ data?: { job: { id: string } } }>("/api/jobs", {
+      token: owner.accessToken,
+      body: {
+        title: "Note timeline job",
+        customer: "Note Timeline Co",
+        worker_id: worker.userId,
+      },
+    });
+    expect(jobRes.status).toBe(201);
+    const jobId = jobRes.body.data!.job.id;
+
+    const noteRes = await api.post("/api/customers/notes", {
+      token: owner.accessToken,
+      body: {
+        customer_name: "Note Timeline Co",
+        note: "Full note text for timeline",
+        job_id: jobId,
+      },
+    });
+    expect(noteRes.status).toBe(201);
+
+    const timeline = await api.get<{
+      data?: { timeline: { event_type: string; metadata: Record<string, unknown> | null }[] };
+    }>(`/api/jobs/${jobId}/timeline`, { token: owner.accessToken });
+    expect(timeline.status).toBe(200);
+    const noteEvent = timeline.body.data?.timeline.find(
+      (e) => e.event_type === "job_updated" && e.metadata?.kind === "customer_note"
+    );
+    expect(noteEvent).toBeTruthy();
+    expect(noteEvent!.metadata?.content).toBe("Full note text for timeline");
+    expect(typeof noteEvent!.metadata?.sender_name).toBe("string");
+  });
+
   it("job create with customer still works; notes lookup key matches job.customer", async () => {
     // End-to-end of the product path: save note → create job with same customer string → GET notes.
     const { owner, worker } = await setupOwnerAndWorker();

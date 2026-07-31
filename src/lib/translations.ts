@@ -452,8 +452,8 @@ export const translations = {
     officeChatTitle: "Klepet z delavcem",
 
     // Job status lifecycle (live)
-    modalSectionStatus: "Status",
-    jobStatusPending: "Izbriši kartico",
+    modalSectionStatus: "",
+    jobStatusPending: "V čakanju",
     jobStatusInProgress: "V teku",
     jobStatusWaiting: "Čaka na nadaljevanje",
     jobStatusCompleted: "Zaključeno",
@@ -463,6 +463,16 @@ export const translations = {
     jobActionResume: "Nadaljuj",
     jobActionComplete: "Zaključi nalog",
     jobActionCancel: "Prekliči nalog",
+    modalDeleteCard: "Izbriši kartico",
+    modalDeleteCardConfirmTitle: "Izbriši kartico?",
+    modalDeleteCardConfirmBody: "Kartica bo skrita s table. Podatki ostanejo v ozadju.",
+    modalDeleteCardSubmit: "Izbriši",
+    timelineCustomerNote: "Opomba",
+    timelineJobCreatedBy: "ustvaril",
+    authGoogleFinishTitle: "Dokončaj registracijo",
+    authGoogleFinishSubtitle: "Dodajte podjetje, da začnete uporabljati pomoćnik.net",
+    authGoogleContinue: "Nadaljuj z Googlom",
+    authGoogleFinishSubmit: "Ustvari podjetje",
 
     // Team management (live)
     teamTitle: "Ekipa",
@@ -957,6 +967,16 @@ export const translations = {
     jobActionResume: "Resume",
     jobActionComplete: "Complete Job",
     jobActionCancel: "Cancel Job",
+    modalDeleteCard: "Delete card",
+    modalDeleteCardConfirmTitle: "Delete card?",
+    modalDeleteCardConfirmBody: "The card will be hidden from the board. Data stays in the background.",
+    modalDeleteCardSubmit: "Delete",
+    timelineCustomerNote: "Note",
+    timelineJobCreatedBy: "created by",
+    authGoogleFinishTitle: "Finish registration",
+    authGoogleFinishSubtitle: "Add your company to start using pomocnik.net",
+    authGoogleContinue: "Continue with Google",
+    authGoogleFinishSubmit: "Create company",
 
     // Team management (live)
     teamTitle: "Team",

@@ -32,3 +32,29 @@ export async function notifyUser(db: SupabaseClient, input: NotifyInput): Promis
     console.error("[notification_insert_threw]", input.type, err);
   }
 }
+
+/**
+ * Notify only the message's direct recipient (worker when office sends,
+ * office contact when worker sends). The shared office KOMUNIKACIJA column
+ * reads job_messages via /api/office/communications — do not fan out copies
+ * to every manager (a6 office-channel model).
+ */
+export async function notifyMessageReceived(
+  db: SupabaseClient,
+  input: {
+    companyId: string;
+    recipientId: string;
+    title: string;
+    body?: string;
+    jobId: string;
+  }
+): Promise<void> {
+  await notifyUser(db, {
+    companyId: input.companyId,
+    userId: input.recipientId,
+    type: "message_received",
+    title: input.title,
+    body: input.body,
+    jobId: input.jobId,
+  });
+}

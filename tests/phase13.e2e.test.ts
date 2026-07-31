@@ -153,13 +153,17 @@ describe("Phase 13 — End-to-End Scenario", () => {
         workerNotifs.body.data?.notifications.some((n) => n.type === "message_received")
       ).toBe(true);
 
-      const managerNotifs = await api.get<{ data?: { notifications: { type: string }[] } }>(
-        "/api/notifications",
+      // Office channel is a shared feed — managers see messages there, not as
+      // personal message_received copies of every office-bound send.
+      const dayKey = new Date().toISOString().slice(0, 10);
+      const officeFeed = await api.get<{ data?: { messages: { content: string }[] } }>(
+        `/api/office/communications?date=${dayKey}`,
         { token: managerToken }
       );
-      expect(
-        managerNotifs.body.data?.notifications.some((n) => n.type === "message_received")
-      ).toBe(true);
+      expect(officeFeed.status).toBe(200);
+      const feedTexts = officeFeed.body.data?.messages.map((m) => m.content) ?? [];
+      expect(feedTexts.some((c) => c.includes("Scaffolding"))).toBe(true);
+      expect(feedTexts.some((c) => c.includes("Thanks"))).toBe(true);
 
       // 11. A now-completed job can no longer be modified (immutability holds
       // even at the end of a real multi-role workflow, not just in isolation).

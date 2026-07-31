@@ -7,7 +7,9 @@ import {
   findDuplicateNote,
   findOrCreateCustomer,
   listNotesForCustomerName,
+  parseOnceNoteContent,
 } from "@/lib/services/customers";
+import { createTimelineEvent } from "@/lib/timeline/events";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +37,8 @@ export const GET = withAuth(
 const createNoteSchema = z.object({
   customer_name: z.string().trim().min(1, "Customer name is required.").max(80),
   note: z.string().trim().min(1, "Note is required.").max(NOTE_MAX),
+  /** Optional job to attach a customer_note timeline event. */
+  job_id: z.string().uuid().optional(),
   /** When true, skip duplicate soft-block and create anyway. */
   force: z.boolean().optional(),
 });
@@ -75,6 +79,35 @@ export const POST = withAuth(
       .single();
     if (error || !note) {
       throw new ApiError("internal", "Failed to create customer note.", error?.message);
+    }
+
+    const parsed = parseOnceNoteContent(note.note);
+    const jobId = input.job_id ?? parsed.jobId;
+    if (jobId) {
+      const [{ data: job }, { data: sender }] = await Promise.all([
+        db
+          .from("jobs")
+          .select("id, company_seq")
+          .eq("id", jobId)
+          .eq("company_id", auth.companyId)
+          .maybeSingle(),
+        db.from("users").select("full_name").eq("id", auth.userId).maybeSingle(),
+      ]);
+
+      if (job) {
+        await createTimelineEvent(db, {
+          companyId: auth.companyId,
+          jobId: job.id,
+          eventType: "job_updated",
+          userId: auth.userId,
+          metadata: {
+            kind: "customer_note",
+            content: parsed.displayText,
+            sender_name: sender?.full_name ?? null,
+            job_seq: job.company_seq,
+          },
+        });
+      }
     }
 
     return created({

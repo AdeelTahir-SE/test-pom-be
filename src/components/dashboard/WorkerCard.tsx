@@ -2,7 +2,6 @@
 
 import React from "react";
 import { Worker, TaskItem } from "@/lib/mockData";
-import { toTelHref } from "@/lib/phone";
 import { useLanguage } from "@/lib/useLanguage";
 
 // ── Attachment icon — COMPLETED tasks (lighter, 13×15) ───────────────────────
@@ -48,14 +47,39 @@ function showsAttachmentIcon(task: TaskItem): boolean {
   return !!(task.hasAttachment || task.requiresAttachment);
 }
 
-function TaskRowTrailing({ task }: { task: TaskItem }) {
+function TaskRowTrailing({
+  task,
+  onAttachmentClick,
+}: {
+  task: TaskItem;
+  onAttachmentClick?: () => void;
+}) {
   const showClip = showsAttachmentIcon(task);
   const clip = task.completed ? <AttachmentIconCompleted /> : <AttachmentIconIncomplete />;
+
+  const clipNode = showClip ? (
+    onAttachmentClick ? (
+      <button
+        type="button"
+        className="shrink-0 inline-flex bg-transparent border-none p-0 outline-none cursor-pointer"
+        onClick={(e) => {
+          e.stopPropagation();
+          onAttachmentClick();
+        }}
+        title="Priponka"
+        aria-label="Priponka"
+      >
+        {clip}
+      </button>
+    ) : (
+      <span className="shrink-0">{clip}</span>
+    )
+  ) : null;
 
   if (task.completed && task.completedAt) {
     return (
       <div className="flex items-center gap-[6px] shrink-0 ml-auto">
-        {showClip && <span className="shrink-0">{clip}</span>}
+        {clipNode}
         <span
           className="shrink-0"
           style={{
@@ -75,13 +99,18 @@ function TaskRowTrailing({ task }: { task: TaskItem }) {
   }
 
   if (!task.completed && showClip) {
-    return <span className="shrink-0 ml-auto">{clip}</span>;
+    return <span className="shrink-0 ml-auto inline-flex">{clipNode}</span>;
   }
 
   return null;
 }
 
-function TaskRow({ task, onToggle, disabled }: TaskRowProps) {
+function TaskRow({
+  task,
+  onToggle,
+  disabled,
+  onAttachmentClick,
+}: TaskRowProps & { onAttachmentClick?: () => void }) {
   const checkbox = (
     <div
       className="shrink-0 flex items-center justify-center"
@@ -115,9 +144,6 @@ function TaskRow({ task, onToggle, disabled }: TaskRowProps) {
       }}
     >
       {task.text}
-      {task.requiresAttachment && !task.hasAttachment && (
-        <span className="ml-1.5 text-[10px] text-red-500 font-semibold">*</span>
-      )}
     </span>
   );
 
@@ -126,7 +152,7 @@ function TaskRow({ task, onToggle, disabled }: TaskRowProps) {
       <div className="flex items-center gap-[6px] w-full text-left">
         {checkbox}
         {text}
-        <TaskRowTrailing task={task} />
+        <TaskRowTrailing task={task} onAttachmentClick={onAttachmentClick} />
       </div>
     );
   }
@@ -142,7 +168,7 @@ function TaskRow({ task, onToggle, disabled }: TaskRowProps) {
     >
       {checkbox}
       {text}
-      <TaskRowTrailing task={task} />
+      <TaskRowTrailing task={task} onAttachmentClick={onAttachmentClick} />
     </button>
   );
 }
@@ -156,13 +182,22 @@ interface WorkerCardProps {
   onClick?: () => void;
   disableActions?: boolean;
   onDismiss?: () => void;
+  onTaskAttachmentClick?: (workerId: string, taskId: string) => void;
 }
 
-export function WorkerCard({ worker, onToggleTask, date = "23/05/26", orderId = "#484", onClick, disableActions, onDismiss }: WorkerCardProps) {
+export function WorkerCard({
+  worker,
+  onToggleTask,
+  date = "23/05/26",
+  orderId = "#484",
+  onClick,
+  disableActions,
+  onDismiss,
+  onTaskAttachmentClick,
+}: WorkerCardProps) {
   const { t } = useLanguage();
-  const done = worker.tasks.filter(t => t.completed).length;
+  const done = worker.tasks.filter((task) => task.completed).length;
   const total = worker.tasks.length;
-  const workerTel = toTelHref(worker.phone);
 
   return (
     <div
@@ -212,7 +247,7 @@ export function WorkerCard({ worker, onToggleTask, date = "23/05/26", orderId = 
           {worker.name.toUpperCase()} • {date} • {orderId}
         </span>
 
-        {/* Dismiss button (placeholder/deletable cards) */}
+        {/* Soft-delete (no phone calling on cards — Mark a8) */}
         {onDismiss ? (
           <button
             onClick={(e) => {
@@ -235,7 +270,8 @@ export function WorkerCard({ worker, onToggleTask, date = "23/05/26", orderId = 
               cursor: "pointer",
             }}
             className="shrink-0"
-            title="Dismiss"
+            title={t("modalDeleteCard")}
+            aria-label={t("modalDeleteCard")}
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path
@@ -248,71 +284,43 @@ export function WorkerCard({ worker, onToggleTask, date = "23/05/26", orderId = 
             </svg>
           </button>
         ) : (
-        <div className="flex items-center gap-2 shrink-0">
-          {workerTel && (
-            <a
-              href={workerTel}
-              onClick={(e) => e.stopPropagation()}
-              title={`${t("workerCallWorker")}: ${worker.phone}`}
+          <div
+            style={{
+              width: "36px",
+              height: "36px",
+              background: "#EFF6FF",
+              border: "1px solid rgba(29, 78, 216, 0.5)",
+              boxShadow: "0px 8px 18px -12px rgba(15, 23, 42, 0.35), inset 0px 1px 0px 1px #FFFFFF",
+              borderRadius: "12px",
+              display: "flex",
+              alignItems: "baseline",
+              justifyContent: "center",
+              paddingTop: "3px",
+              flexShrink: 0,
+            }}
+          >
+            <span
               style={{
-                boxSizing: "border-box",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: "36px",
-                height: "36px",
-                background: "#1B3A6B",
-                border: "1px solid #0d1e3a",
-                borderRadius: "12px",
-                boxShadow:
-                  "0px 8px 18px -12px rgba(15, 23, 42, 0.35), inset 0px 1px 0px 1px rgba(255,255,255,0.25)",
-                color: "#fff",
+                fontFamily: "'PT Sans', sans-serif",
+                color: "#EB1D1D",
+                lineHeight: "27.25px",
               }}
-              aria-label={t("workerCallWorker")}
+              className="text-sm font-normal md:text-xl md:font-bold"
             >
-              <svg width="16" height="16" viewBox="0 0 20 18" fill="currentColor" aria-hidden>
-                <path d="M7.22477 1.25722C6.8873 0.497902 6.0702 0 5.16154 0H2.10521C0.942534 0 0 0.848098 0 1.89453C0 10.7892 8.01177 18 17.8945 18C19.0572 18 19.9995 17.1516 19.9995 16.1052L20 13.354C20 12.5362 19.4469 11.8009 18.6033 11.4971L15.674 10.4429C14.9161 10.1701 14.0533 10.2929 13.4263 10.7632L12.6702 11.3307C11.7873 11.9929 10.4882 11.9402 9.67552 11.2088L7.54672 9.29106C6.73403 8.55963 6.67398 7.39134 7.40975 6.59669L8.04016 5.9163C8.56268 5.35196 8.70032 4.57516 8.39719 3.89309L7.22477 1.25722Z" />
-              </svg>
-            </a>
-          )}
-        <div
-          style={{
-            width: "36px",
-            height: "36px",
-            background: "#EFF6FF",
-            border: "1px solid rgba(29, 78, 216, 0.5)",
-            boxShadow: "0px 8px 18px -12px rgba(15, 23, 42, 0.35), inset 0px 1px 0px 1px #FFFFFF",
-            borderRadius: "12px",
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "center",
-            paddingTop: "3px",
-            flexShrink: 0,
-          }}
-        >
-          <span
-            style={{
-              fontFamily: "'PT Sans', sans-serif",
-              color: "#EB1D1D",
-              lineHeight: "27.25px"
-            }}
-            className="text-sm font-normal md:text-xl md:font-bold"
-          >
-            {done}
-          </span>
-          <span
-            style={{
-              fontFamily: "'PT Sans', sans-serif",
-              fontWeight: 700,
-              fontSize: "14px",
-              color: "#5A5A65",
-              lineHeight: "27.25px"
-            }}
-          >
-            /{total}
-          </span>
-        </div>
-        </div>
+              {done}
+            </span>
+            <span
+              style={{
+                fontFamily: "'PT Sans', sans-serif",
+                fontWeight: 700,
+                fontSize: "14px",
+                color: "#5A5A65",
+                lineHeight: "27.25px",
+              }}
+            >
+              /{total}
+            </span>
+          </div>
         )}
       </div>
 
@@ -390,6 +398,11 @@ export function WorkerCard({ worker, onToggleTask, date = "23/05/26", orderId = 
                         task={task}
                         onToggle={() => onToggleTask(worker.id, task.id)}
                         disabled={disableActions}
+                        onAttachmentClick={
+                          onTaskAttachmentClick
+                            ? () => onTaskAttachmentClick(worker.id, task.id)
+                            : undefined
+                        }
                       />
                     ))}
                   </div>
@@ -411,6 +424,11 @@ export function WorkerCard({ worker, onToggleTask, date = "23/05/26", orderId = 
                         task={task}
                         onToggle={() => onToggleTask(worker.id, task.id)}
                         disabled={disableActions}
+                        onAttachmentClick={
+                          onTaskAttachmentClick
+                            ? () => onTaskAttachmentClick(worker.id, task.id)
+                            : undefined
+                        }
                       />
                     ))}
                   </div>

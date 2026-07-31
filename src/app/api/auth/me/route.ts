@@ -1,6 +1,7 @@
 import { withAuth } from "@/lib/http/handler";
 import { ok, ApiError } from "@/lib/http/responses";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { resolveOfficeContact } from "@/lib/services/officeContact";
 
 export const dynamic = "force-dynamic";
 
@@ -37,36 +38,10 @@ export const GET = withAuth(async (_request, auth) => {
     throw new ApiError("not_found", "Company not found.");
   }
 
-  const { data: owner } = await db
-    .from("users")
-    .select("full_name, email, phone")
-    .eq("company_id", auth.companyId)
-    .eq("role", "owner")
-    .eq("is_active", true)
-    .maybeSingle();
-
-  let office_contact: OfficeContact | null = owner
-    ? { full_name: owner.full_name, email: owner.email, phone: owner.phone }
+  const contact = await resolveOfficeContact(db, auth.companyId);
+  const office_contact: OfficeContact | null = contact
+    ? { full_name: contact.full_name, email: contact.email, phone: contact.phone }
     : null;
-
-  if (!office_contact) {
-    const { data: manager } = await db
-      .from("users")
-      .select("full_name, email, phone")
-      .eq("company_id", auth.companyId)
-      .eq("role", "manager")
-      .eq("is_active", true)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (manager) {
-      office_contact = {
-        full_name: manager.full_name,
-        email: manager.email,
-        phone: manager.phone,
-      };
-    }
-  }
 
   return ok({ user: userRow, company, office_contact });
 });

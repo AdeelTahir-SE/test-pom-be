@@ -78,6 +78,8 @@ interface WorkerDetailModalProps {
   jobStatus?: JobStatus;
   onChangeJobStatus?: (status: JobStatus) => void;
   canCancelJob?: boolean;
+  /** Soft-hide the card from the board (Mark a8). */
+  onDeleteCard?: () => void;
   /** Owners/managers can remove notes for future visits. */
   canManageCustomerNotes?: boolean;
 }
@@ -199,9 +201,6 @@ function SortableTaskItem({ task, onClick, onDelete, onOpenAttachment, deleteLab
           className="flex-1 truncate"
         >
           {task.text}
-          {task.requiresAttachment && !task.attachment && (
-            <span className="ml-1.5 text-[10px] text-red-500 font-semibold">*</span>
-          )}
         </span>
 
         {/* Completion time / clip icon — show clip when required OR already attached */}
@@ -264,6 +263,7 @@ export function WorkerDetailModal({
   jobStatus,
   onChangeJobStatus,
   canCancelJob = false,
+  onDeleteCard,
   canManageCustomerNotes = false,
 }: WorkerDetailModalProps) {
   const { t } = useLanguage();
@@ -322,6 +322,7 @@ export function WorkerDetailModal({
       customer_name: resolvedCustomerName,
       note: finalNoteContent,
       force,
+      job_id: jobId ?? undefined,
     });
     setNewNoteSaving(false);
 
@@ -337,6 +338,7 @@ export function WorkerDetailModal({
       setNewNoteText("");
       setIsAddNoteOpen(false);
       void loadCustomerNotes(resolvedCustomerName);
+      void refreshFilesAndTimeline();
       return;
     }
 
@@ -357,10 +359,14 @@ export function WorkerDetailModal({
   // checklist data by the parent dashboard's mapper), then mutated directly
   // against the backend from here.
   const [tasks, setTasks] = React.useState<TaskItem[]>(() => fromWorkerTasks(worker?.tasks || []));
+  const tasksDirtyRef = React.useRef(false);
   React.useEffect(() => {
+    if (tasksDirtyRef.current) return;
     setTasks(fromWorkerTasks(worker?.tasks || []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [worker]);
+
+  const [deleteCardOpen, setDeleteCardOpen] = React.useState(false);
 
   // Position where the next new step will be inserted (1-based)
   const [stepPosition, setStepPosition] = React.useState(tasks.length + 1);
@@ -504,6 +510,7 @@ export function WorkerDetailModal({
       customer_name: customer,
       note,
       force,
+      job_id: jobId ?? undefined,
     });
     setSaveNoteSaving(false);
 
@@ -533,24 +540,30 @@ export function WorkerDetailModal({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // Drag-reordering is visual-only within this session — it is not persisted
-  // to order_index on the backend (no reorder endpoint exists for checklist
-  // items in the current API surface).
-  const handleTaskDragEnd = (event: DragEndEvent) => {
+  // Persist checklist order via PATCH order_index (managers/owners).
+  const handleTaskDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
-    if (over && active.id !== over.id) {
-      const oldIndex = tasks.findIndex((t) => t.id === active.id);
-      const newIndex = tasks.findIndex((t) => t.id === over.id);
-      const reordered = arrayMove(tasks, oldIndex, newIndex);
-      setTasks(reordered);
-      // Best-effort persistence — silently ignored if the caller isn't
-      // allowed to reorder (e.g. a worker viewing their own checklist).
-      Promise.all(
-        reordered.map((task, index) =>
-          api.patch(`/api/checklist-items/${task.id}`, { order_index: index }).catch(() => {})
-        )
-      );
+    if (!over || active.id === over.id) return;
+    const oldIndex = tasks.findIndex((t) => t.id === active.id);
+    const newIndex = tasks.findIndex((t) => t.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const previous = tasks;
+    const reordered = arrayMove(tasks, oldIndex, newIndex);
+    tasksDirtyRef.current = true;
+    setTasks(reordered);
+    const results = await Promise.all(
+      reordered.map((task, index) =>
+        api.patch(`/api/checklist-items/${task.id}`, { order_index: index })
+      )
+    );
+    if (results.some((r) => r.status !== 200)) {
+      setTasks(previous);
+      tasksDirtyRef.current = false;
+      alert("Vrstnega reda ni bilo mogoče shraniti.");
+      return;
     }
+    onRefresh?.();
+    tasksDirtyRef.current = false;
   };
 
   const resetAddStep = () => {
@@ -853,6 +866,19 @@ export function WorkerDetailModal({
           >
             {t("modalSectionTasks")}
           </span>
+          <div className="flex items-center gap-2">
+            {onDeleteCard && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeleteCardOpen(true);
+                }}
+                className="text-[11px] font-semibold uppercase tracking-wide text-red-600 hover:text-red-700 bg-transparent border-none p-0 outline-none cursor-pointer"
+              >
+                {t("modalDeleteCard")}
+              </button>
+            )}
           {/* Plus action icon to add a new step */}
           <button
             onClick={(e) => {
@@ -865,6 +891,7 @@ export function WorkerDetailModal({
               <path d="M17.9705 9.48535H9.48528M9.48528 9.48535H1M9.48528 9.48535V1.00007M9.48528 9.48535V17.9706" stroke="#6D778E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
+          </div>
         </div>
 
         {/* Task lists with checkboxes */}
@@ -1386,6 +1413,54 @@ export function WorkerDetailModal({
               </div>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Sub-Dialog: Confirm card soft-delete ── */}
+      <Dialog open={deleteCardOpen} onOpenChange={setDeleteCardOpen}>
+        <DialogContent
+          style={{
+            background: "transparent",
+            border: "none",
+            boxShadow: "none",
+            padding: 0,
+            maxWidth: "380px",
+            width: "90%",
+          }}
+          className="outline-none"
+        >
+          <div className={auraCard}>
+            <div className="flex flex-col gap-4 text-slate-800">
+              <div className="text-center">
+                <h3 className="text-xl font-semibold tracking-tight text-slate-900">
+                  {t("modalDeleteCardConfirmTitle")}
+                </h3>
+              </div>
+              <p className="text-sm text-slate-600 text-center">
+                {t("modalDeleteCardConfirmBody")}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteCardOpen(false)}
+                  className="flex-1 h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors"
+                >
+                  {t("modalCancel")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteCardOpen(false);
+                    onOpenChange(false);
+                    onDeleteCard?.();
+                  }}
+                  className="flex-1 h-10 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition-colors"
+                >
+                  {t("modalDeleteCardSubmit")}
+                </button>
+              </div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

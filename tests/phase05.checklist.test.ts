@@ -410,6 +410,88 @@ describe("Phase 5 — Checklist System", () => {
     expect(res.status).toBe(403);
   });
 
+  it("reordering three steps via order_index persists on GET", async () => {
+    const { owner, jobId } = await setupCompanyWithWorkerAndJob();
+    const a = await api.post<{ data?: { item: ChecklistItemDto } }>(
+      `/api/jobs/${jobId}/checklist`,
+      { token: owner.accessToken, body: { label: "Step A" } }
+    );
+    const b = await api.post<{ data?: { item: ChecklistItemDto } }>(
+      `/api/jobs/${jobId}/checklist`,
+      { token: owner.accessToken, body: { label: "Step B" } }
+    );
+    const c = await api.post<{ data?: { item: ChecklistItemDto } }>(
+      `/api/jobs/${jobId}/checklist`,
+      { token: owner.accessToken, body: { label: "Step C" } }
+    );
+    const idA = a.body.data!.item.id;
+    const idB = b.body.data!.item.id;
+    const idC = c.body.data!.item.id;
+
+    // Move B to first place: B, A, C
+    expect(
+      (
+        await api.patch(`/api/checklist-items/${idB}`, {
+          token: owner.accessToken,
+          body: { order_index: 0 },
+        })
+      ).status
+    ).toBe(200);
+    expect(
+      (
+        await api.patch(`/api/checklist-items/${idA}`, {
+          token: owner.accessToken,
+          body: { order_index: 1 },
+        })
+      ).status
+    ).toBe(200);
+    expect(
+      (
+        await api.patch(`/api/checklist-items/${idC}`, {
+          token: owner.accessToken,
+          body: { order_index: 2 },
+        })
+      ).status
+    ).toBe(200);
+
+    const list = await api.get<{ data?: { checklist: ChecklistItemDto[] } }>(
+      `/api/jobs/${jobId}/checklist`,
+      { token: owner.accessToken }
+    );
+    expect(list.body.data?.checklist.map((i) => i.label)).toEqual([
+      "Step B",
+      "Step A",
+      "Step C",
+    ]);
+  });
+
+  it("completing step 1 then step 2 works when response wraps { item }", async () => {
+    const { owner, jobId, workerToken } = await setupCompanyWithWorkerAndJob();
+    const s1 = await api.post<{ data?: { item: ChecklistItemDto } }>(
+      `/api/jobs/${jobId}/checklist`,
+      { token: owner.accessToken, body: { label: "One" } }
+    );
+    const s2 = await api.post<{ data?: { item: ChecklistItemDto } }>(
+      `/api/jobs/${jobId}/checklist`,
+      { token: owner.accessToken, body: { label: "Two" } }
+    );
+
+    const first = await api.patch<{ data?: { item: ChecklistItemDto } }>(
+      `/api/checklist-items/${s1.body.data!.item.id}`,
+      { token: workerToken, body: { is_completed: true } }
+    );
+    expect(first.status).toBe(200);
+    expect(first.body.data?.item.is_completed).toBe(true);
+    expect(first.body.data?.item.id).toBe(s1.body.data!.item.id);
+
+    const second = await api.patch<{ data?: { item: ChecklistItemDto } }>(
+      `/api/checklist-items/${s2.body.data!.item.id}`,
+      { token: workerToken, body: { is_completed: true } }
+    );
+    expect(second.status).toBe(200);
+    expect(second.body.data?.item.is_completed).toBe(true);
+  });
+
   it("cross-company delete is rejected as 404", async () => {
     const companyA = await registerCompany();
     createdCompanies.push(companyA);

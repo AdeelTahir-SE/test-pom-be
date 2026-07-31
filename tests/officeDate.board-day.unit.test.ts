@@ -3,6 +3,7 @@ import {
   boardTodayKey,
   jobBelongsToDay,
   parseOfficeBoardDayParam,
+  reminderBelongsToDay,
   toIsoDate,
   startOfLocalDay,
 } from "../src/lib/officeDate";
@@ -39,5 +40,28 @@ describe("office board day helpers", () => {
     const undated = { scheduled_at: null, created_at: new Date().toISOString() };
     expect(jobBelongsToDay(undated, today, today)).toBe(true);
     expect(jobBelongsToDay(undated, tomorrowKey, today)).toBe(false);
+  });
+
+  it("reminderBelongsToDay exact-matches remind_on; null only on today", () => {
+    const today = "2026-07-30";
+    const yesterday = "2026-07-29";
+    const tomorrow = "2026-07-31";
+    const created_at = "2026-07-30T10:00:00.000Z";
+
+    expect(
+      reminderBelongsToDay({ remind_on: today, created_at }, today, today)
+    ).toBe(true);
+    expect(
+      reminderBelongsToDay({ remind_on: yesterday, created_at }, today, today)
+    ).toBe(false);
+    expect(
+      reminderBelongsToDay({ remind_on: tomorrow, created_at }, tomorrow, today)
+    ).toBe(true);
+    expect(
+      reminderBelongsToDay({ remind_on: null, created_at }, today, today)
+    ).toBe(true);
+    expect(
+      reminderBelongsToDay({ remind_on: null, created_at }, tomorrow, today)
+    ).toBe(false);
   });
 });
