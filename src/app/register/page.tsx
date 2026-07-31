@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/lib/useLanguage";
-import { api, getToken, setSession } from "@/lib/api-client";
+import { api, setSession } from "@/lib/api-client";
 import type { BusinessModule } from "@/config/business-modules";
 import Link from "next/link";
 
@@ -38,11 +38,6 @@ interface RegisterResponse {
   access_token: string;
   refresh_token: string;
   user: { id: string; role: "owner" };
-  company: { id: string };
-}
-
-interface GoogleRegisterResponse {
-  user: { id: string; role: string };
   company: { id: string };
 }
 

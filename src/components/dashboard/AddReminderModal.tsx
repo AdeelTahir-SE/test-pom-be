@@ -28,7 +28,7 @@ interface AddReminderModalProps {
     date: string;
     isUrgent: boolean;
     hasAttachment: boolean;
-    attachmentName: string;
+    attachmentFile: File | null;
     hasEmail: boolean;
     phoneNumber: string;
     hasConfirm: boolean;
@@ -45,25 +45,32 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
   const [isUrgent, setIsUrgent] = useState(false);
 
   React.useEffect(() => {
-    if (isOpen) setDate(defaultDate);
-  }, [isOpen, defaultDate]);
+  if (isOpen) {
+    setDate(defaultDate);
+    setDateError(null);
+  }
+}, [isOpen, defaultDate]);
 
   // Dynamic icon selections
   const [hasAttachment, setHasAttachment] = useState(false);
-  const [attachmentName, setAttachmentName] = useState("");
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [hasEmail, setHasEmail] = useState(false);
+  const [countryCode, setCountryCode] = useState("+386");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [dateError, setDateError] = useState<string | null>(null);
   const [hasConfirm, setHasConfirm] = useState(false);
   const [hasDecline, setHasDecline] = useState(false);
 
-  // Only digits, spaces, + and common phone punctuation allowed
-  const sanitizePhone = (raw: string) => raw.replace(/[^0-9+\s./()-]/g, "");
+  // Only digits and spaces allowed for the number part
+  const sanitizePhone = (raw: string) => raw.replace(/[^0-9\s]/g, "");
 
   const handlePhoneChange = (raw: string) => {
     const sanitized = sanitizePhone(raw);
     setPhoneNumber(sanitized);
-    if (sanitized && !isValidPhone(sanitized)) {
+    const fullPhone = `${countryCode}${sanitized}`;
+
+    if (sanitized && !isValidPhone(fullPhone)) {
       setPhoneError(t("modalPhoneInvalid"));
     } else {
       setPhoneError(null);
@@ -71,25 +78,56 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
   };
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title) return;
+  e.preventDefault();
+  if (!title) return;
 
-    const finalPhone = normalizePhone(phoneNumber) ?? "";
-    const normalizedTime = normalizeRemindTime(time) ?? "";
+  if (date) {
+    const match = date.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
 
-    onAddReminder({
-      title,
-      description,
-      time: normalizedTime,
-      date: date || new Date().toLocaleDateString("sl-SI"),
-      isUrgent,
-      hasAttachment,
-      attachmentName: hasAttachment ? (attachmentName || "priponka.pdf") : "",
-      hasEmail,
-      phoneNumber: finalPhone,
-      hasConfirm,
-      hasDecline,
-    });
+    if (!match) {
+  setDateError("Datum mora biti v obliki DD.MM.YYYY.");
+  return;
+}
+
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    const year = Number(match[3]);
+
+    const parsedDate = new Date(year, month - 1, day);
+
+    if (
+  parsedDate.getFullYear() !== year ||
+  parsedDate.getMonth() !== month - 1 ||
+  parsedDate.getDate() !== day
+) {
+  setDateError("Vnesite veljaven datum.");
+  return;
+}
+  }
+
+    const fullPhone = phoneNumber ? `${countryCode}${phoneNumber}` : "";
+
+  if (phoneNumber && !isValidPhone(fullPhone)) {
+    setPhoneError(t("modalPhoneInvalid"));
+    return;
+  }
+
+  const finalPhone = normalizePhone(fullPhone) ?? "";
+  const normalizedTime = normalizeRemindTime(time) ?? "";
+
+  onAddReminder({
+    title,
+    description,
+    time: normalizedTime,
+    date: date || new Date().toLocaleDateString("sl-SI"),
+    isUrgent,
+    hasAttachment,
+    attachmentFile: hasAttachment ? attachmentFile : null,
+    hasEmail,
+    phoneNumber: finalPhone,
+    hasConfirm,
+    hasDecline,
+  });
 
     // Reset fields
     setTitle("");
@@ -97,11 +135,13 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
     setTime("");
     setDate(defaultDate);
     setIsUrgent(false);
-    setHasAttachment(false);
-    setAttachmentName("");
-    setHasEmail(false);
+    setCountryCode("+386");
     setPhoneNumber("");
+    setHasAttachment(false);
+    setAttachmentFile(null);
+    setHasEmail(false);
     setPhoneError(null);
+    setDateError(null);
     setHasConfirm(false);
     setHasDecline(false);
     onOpenChange(false);
@@ -185,32 +225,41 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
               <hr className="border-[#1B3A6B]/10 my-1" />
 
               {/* Čas, datum — same line, lighter placeholder */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <AuraLabel>{t("modalReminderTime")}</AuraLabel>
-                  <AuraInput
-                    type="text"
-                    placeholder="16:48"
-                    value={time}
-                    onChange={(e) => setTime(e.target.value)}
-                    maxLength={5}
-                    className="text-center placeholder:text-slate-300"
-                  />
-                </div>
-                <div>
-                  <AuraLabel>{t("modalTaskDate")}</AuraLabel>
-                  <AuraInput
-                    type="text"
-                    placeholder="02.02.2026"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    maxLength={10}
-                    className="text-center placeholder:text-slate-300"
-                  />
-                </div>
-              </div>
+<div className="grid grid-cols-2 gap-3">
+  <div>
+    <AuraLabel>{t("modalReminderTime")}</AuraLabel>
+    <AuraInput
+      type="text"
+      placeholder="16:48"
+      value={time}
+      onChange={(e) => setTime(e.target.value)}
+      maxLength={5}
+      className="text-center placeholder:text-slate-300"
+    />
+  </div>
 
-              {/* Nujno */}
+  <div>
+    <AuraLabel>{t("modalTaskDate")}</AuraLabel>
+    <AuraInput
+      type="text"
+      placeholder="02.02.2026"
+      value={date}
+      onChange={(e) => {
+        setDate(e.target.value);
+        setDateError(null);
+      }}
+      maxLength={10}
+      className="text-center placeholder:text-slate-300"
+    />
+    {dateError && (
+      <span className="text-[11px] text-red-500 mt-1 block">
+        {dateError}
+      </span>
+    )}
+  </div>
+</div>
+
+{/* Nujno */}
               <div className="pt-1">
                 <AuraCheckbox
                   checked={isUrgent}
@@ -228,15 +277,15 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
                 {/* Row 1: Priponka & E-posta */}
                 <div className="flex gap-4">
                   <AuraIconButton
-                    active={hasAttachment}
-                    onClick={() => {
-                      setHasAttachment(!hasAttachment);
-                      if (hasAttachment) setAttachmentName("");
-                    }}
-                    icon={attachmentIcon}
-                    label={t("modalReminderAttachment")}
-                    title={t("modalReminderAttachmentTitle")}
-                  />
+  active={hasAttachment}
+  onClick={() => {
+    setHasAttachment(!hasAttachment);
+    if (hasAttachment) setAttachmentFile(null);
+  }}
+  icon={attachmentIcon}
+  label={t("modalReminderAttachment")}
+  title={t("modalReminderAttachmentTitle")}
+/>
                   <AuraIconButton
                     active={hasEmail}
                     onClick={() => setHasEmail(!hasEmail)}
@@ -248,36 +297,36 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
 
                 {/* Attachment file input */}
                 {hasAttachment && (
-                  <div className="flex flex-col gap-1">
-                    <AuraFileInput
-                      id="reminder-attachment"
-                      onFileSelect={setAttachmentName}
-                    />
-                    {attachmentName && (
-                      <span className="text-[11px] text-slate-500 truncate">
-                        {attachmentName}
-                      </span>
-                    )}
-                  </div>
-                )}
+  <div className="flex flex-col gap-1">
+    <AuraFileInput
+      id="reminder-attachment"
+      onFile={(file) => setAttachmentFile(file)}
+    />
+    {attachmentFile && (
+      <span className="text-[11px] text-slate-500 truncate">
+        {attachmentFile.name}
+      </span>
+    )}
+  </div>
+)}
 
                 {/* Row 2: Telefon */}
                 <div className="flex flex-col gap-1">
                   <AuraLabel>{t("modalPhoneLabel")}</AuraLabel>
                   <div className="flex items-center gap-2">
                     <a
-                      href={toTelHref(phoneNumber) ?? "#"}
+                      href={toTelHref(`${countryCode}${phoneNumber}`) ?? undefined}
                       onClick={(e) => {
-                        if (!toTelHref(phoneNumber)) {
+                        if (!toTelHref(`${countryCode}${phoneNumber}`)) {
                           e.preventDefault();
                         }
                       }}
                       className="shrink-0"
-                      title={phoneNumber ? `${t("workerCall")} ${phoneNumber}` : t("modalPhoneEmptyTitle")}
+                      title={phoneNumber ? `${t("workerCall")} ${countryCode}${phoneNumber}` : t("modalPhoneEmptyTitle")}
                     >
                       <div
                         className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-all ${
-                          toTelHref(phoneNumber)
+                          phoneNumber && toTelHref(`${countryCode}${phoneNumber}`)
                             ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-[0_4px_10px_-2px_rgba(27,58,107,0.3)]"
                             : "bg-white border-[#1B3A6B]/25 text-slate-500"
                         }`}
@@ -285,10 +334,33 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
                         {phoneIcon}
                       </div>
                     </a>
+                    <select
+  value={countryCode}
+  onChange={(e) => {
+    const newCountryCode = e.target.value;
+    setCountryCode(newCountryCode);
+
+    const fullPhone = `${newCountryCode}${phoneNumber}`;
+
+    if (phoneNumber && !isValidPhone(fullPhone)) {
+      setPhoneError(t("modalPhoneInvalid"));
+    } else {
+      setPhoneError(null);
+    }
+  }}
+                      className="w-20 h-10 px-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:border-blue-400"
+                    >
+                      <option value="+386">+386</option>
+                      <option value="+49">+49</option>
+                      <option value="+43">+43</option>
+                      <option value="+39">+39</option>
+                      <option value="+385">+385</option>
+                      <option value="+381">+381</option>
+                    </select>
                     <AuraInput
                       type="tel"
                       inputMode="tel"
-                      placeholder={t("modalPhonePlaceholder")}
+                      placeholder="30 123 456"
                       value={phoneNumber}
                       onChange={(e) => handlePhoneChange(e.target.value)}
                       className="flex-1"
@@ -303,14 +375,20 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
                 <div className="flex gap-4">
                   <AuraIconButton
                     active={hasConfirm}
-                    onClick={() => setHasConfirm(!hasConfirm)}
+                    onClick={() => {
+  setHasConfirm(!hasConfirm);
+  setHasDecline(false);
+}}
                     icon={confirmIcon}
                     label={t("modalReminderConfirm")}
                     title={t("modalReminderConfirmTitle")}
                   />
                   <AuraIconButton
                     active={hasDecline}
-                    onClick={() => setHasDecline(!hasDecline)}
+                    onClick={() => {
+  setHasDecline(!hasDecline);
+  setHasConfirm(false);
+}}
                     icon={declineIcon}
                     label={t("modalReminderDecline")}
                     title={t("modalReminderDeclineTitle")}

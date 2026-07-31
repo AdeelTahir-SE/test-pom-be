@@ -86,7 +86,7 @@ export function OfficeDayHeader({
       className="relative mb-6 flex flex-wrap items-center gap-x-4 gap-y-3"
       style={{ fontFamily: "'PT Sans', sans-serif" }}
     >
-      <h1 className="text-2xl font-semibold tracking-tight text-slate-800 shrink-0">
+      <h1 className="text-[32px] font-semibold tracking-tight text-slate-800 shrink-0">
         {title}
       </h1>
 
@@ -103,7 +103,7 @@ export function OfficeDayHeader({
 
         <time
           dateTime={day.toISOString()}
-          className="min-w-[7.5rem] text-center text-lg font-medium tabular-nums text-slate-700 sm:text-xl"
+          className="min-w-[7.5rem] text-center text-[32px] font-medium tabular-nums text-slate-700"
         >
           {formatSiDate(day)}
         </time>

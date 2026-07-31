@@ -63,7 +63,6 @@ export default function CompleteProfilePage() {
       setError("Manjka overitveni žeton. Prosimo, prijavite se znova.");
       return;
     }
-
     try {
   const res = await api.post<GoogleRegisterResponse>("/api/auth/register/google", {
     company_name: company,

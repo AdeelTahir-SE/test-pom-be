@@ -52,7 +52,7 @@ export default function DatabaseDashboard() {
   const [isAddWorkerOpen, setIsAddWorkerOpen] = useState(false);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
 
-  // Attachment Sub-Tabs: 0 = Računi, 1 = Dokumenti, 2 = Slike
+  // Attachment Sub-Tabs: 0 = Vse, 1 = Računi, 2 = Dokumenti, 3 = Slike
   const [attachmentSubTab, setAttachmentSubTab] = useState(0);
 
   // Search Queries state (for Zaposleni = 0, Stranke = 2, Pisarna = 4)
@@ -497,7 +497,7 @@ export default function DatabaseDashboard() {
 
   return (
     <div
-      className="min-h-screen bg-[#F8FAFC] flex text-slate-800 font-sans selection:bg-blue-500/10 selection:text-blue-600"
+      className="min-h-screen bg-[#f3f5f8] flex text-slate-800 font-sans selection:bg-blue-500/10 selection:text-blue-600"
     >
       {/* LEFT SIDEBAR */}
       <aside className="w-64 bg-white border-r border-slate-200 shrink-0 flex flex-col justify-between py-6 px-4">
@@ -718,12 +718,31 @@ export default function DatabaseDashboard() {
               {/* Telefon row */}
               <div className="flex gap-12 py-2 border-b border-slate-100">
                 <span className="w-32 text-[#8A94A6] text-sm">Telefon</span>
-                <input
-                  type="text"
-                  defaultValue={officeContact?.phone || user?.phone || ''}
-                  placeholder="Vnesite telefonsko številko"
-                  className="text-[#242731] text-sm font-medium bg-transparent border-none outline-none focus:ring-0 p-0 w-48"
-                />
+                <div className="flex items-center gap-2">
+                  <select
+  value="+386"
+                    className="w-20 h-8 px-2 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 focus:outline-none focus:border-blue-400"
+                  >
+                      <option value="+386">+386</option>
+  <option value="+385">+385</option>
+  <option value="+387">+387</option>
+  <option value="+381">+381</option>
+  <option value="+382">+382</option>
+  <option value="+383">+383</option>
+  <option value="+389">+389</option>
+  <option value="+43">+43</option>
+  <option value="+49">+49</option>
+  <option value="+39">+39</option>
+  <option value="+40">+40</option>
+  <option value="+359">+359</option>
+                  </select>
+                  <input
+                    type="text"
+                    defaultValue={officeContact?.phone || user?.phone || ''}
+                    placeholder="30 123 456"
+                    className="text-[#242731] text-sm font-medium bg-transparent border-none outline-none focus:ring-0 p-0 w-32"
+                  />
+                </div>
               </div>
 
               {/* E-pošta row */}
@@ -990,7 +1009,7 @@ export default function DatabaseDashboard() {
                       </table>
                     </div>
                   </div>
-                )}
+          )}
 
                 {/* TAB 4: OFFICE NOTES (PISARNA) */}
                 {activeTab === 4 && (

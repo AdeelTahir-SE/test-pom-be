@@ -31,6 +31,9 @@ export function DailySummaryPanel({ dayKey, onJumpToDay }: DailySummaryPanelProp
   const [historyOpen, setHistoryOpen] = useState(false);
   /** When user picks from history for the current day, prefer that row until day changes. */
   const [historyOverride, setHistoryOverride] = useState<DailySummaryDto | null>(null);
+  React.useEffect(() => {
+  setHistoryOverride(null);
+}, [dayKey]);
 
   const summaryQuery = useQuery({
     queryKey: queryKeys.office.dailySummary(dayKey),
@@ -63,9 +66,9 @@ export function DailySummaryPanel({ dayKey, onJumpToDay }: DailySummaryPanelProp
   return (
     <>
       <div
-        className="rounded-[24px] border border-slate-200/80 bg-white px-4 py-3.5 mb-6"
+        className="fixed right-6 top-24 z-30 w-80 rounded-[24px] border border-slate-200/80 bg-white px-4 py-3.5 shadow-xl"
         style={{
-          boxShadow: "0px 12px 40px -28px rgba(15, 23, 42, 0.35)",
+          boxShadow: "0px 20px 50px -20px rgba(15, 23, 42, 0.4)",
           fontFamily: "'PT Sans', sans-serif",
         }}
       >
@@ -84,10 +87,16 @@ export function DailySummaryPanel({ dayKey, onJumpToDay }: DailySummaryPanelProp
             {t("dailySummaryHistory")}
           </button>
         </div>
-
-        {loading && !summary && (
-          <p className="text-[13px] text-slate-400">{t("officeLoading")}</p>
-        )}
+{loading && !summary && (
+  <p className="text-[13px] text-slate-400">
+    {t("officeLoading")}
+  </p>
+)}
+        {summaryQuery.isError && (
+  <p className="text-[13px] text-red-500">
+    {t("dailySummaryHistoryEmpty")}
+  </p>
+)}
 
         {!loading && summary && (
           <div className="flex flex-col gap-2">
@@ -137,7 +146,11 @@ export function DailySummaryPanel({ dayKey, onJumpToDay }: DailySummaryPanelProp
                 <p className="mt-1 text-xs text-slate-500">{t("dailySummaryHistoryHint")}</p>
               </div>
 
-              {historyQuery.isLoading ? (
+              {historyQuery.isError ? (
+  <p className="text-sm text-red-500 text-center">
+    {t("dailySummaryHistoryEmpty")}
+  </p>
+) : historyQuery.isLoading ? (
                 <p className="text-sm text-slate-400 text-center">{t("officeLoading")}</p>
               ) : (historyQuery.data ?? []).length === 0 ? (
                 <p className="text-sm text-slate-500 text-center">{t("dailySummaryHistoryEmpty")}</p>
