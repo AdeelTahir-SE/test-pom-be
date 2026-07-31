@@ -117,7 +117,11 @@ export function AddWorkerCard({ isOpen, onOpenChange, onAddWorker }: AddWorkerCa
                   <AuraLabel>{t("modalWorkerPhoneOnlyLabel")}</AuraLabel>
                   <div className="flex items-center gap-2">
                     <a
-                      href={phone ? toTelHref(`${countryCode}${phone}`) ?? undefined : undefined}
+  href={
+    phone
+      ? (toTelHref(`${countryCode}${phone}`) || undefined)
+      : undefined
+  }
                       className={`flex items-center justify-center w-10 h-10 rounded-xl border transition-all ${
                         phone && toTelHref(`${countryCode}${phone}`)
                           ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-[0_4px_10px_-2px_rgba(27,58,107,0.3)]"
