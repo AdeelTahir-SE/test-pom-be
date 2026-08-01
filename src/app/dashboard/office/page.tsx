@@ -861,19 +861,7 @@ export default function OfficeDashboard() {
   }
 
   return (
-    <div className="min-h-screen text-slate-800 dark:text-slate-100 overflow-x-hidden selection:bg-[#1B3A6B]/10 selection:text-[#1B3A6B] relative bg-transparent">
-      <div className="fixed inset-0 -z-20 bg-[#f3f5f8] dark:bg-[#0b0f19] pointer-events-none" />
-      <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
-        <div className="aura-bg-blob-one absolute top-[-12%] left-[-12%] w-[52vw] h-[52vw] rounded-full bg-blue-200/35 blur-[7.5rem] will-change-transform" />
-        <div className="aura-bg-blob-two absolute bottom-[-18%] right-[-10%] w-[62vw] h-[62vw] rounded-full bg-sky-200/22 blur-[8.75rem] will-change-transform" />
-        <div className="aura-bg-blob-three absolute top-[36%] left-[36%] w-[30vw] h-[30vw] rounded-full bg-white/55 blur-[5rem] will-change-transform" />
-        <div
-          className="aura-bg-dots absolute inset-0 opacity-[0.22] bg-repeat"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-          }}
-        />
-      </div>
+    <div className="min-h-screen text-slate-800 dark:text-slate-100 overflow-x-hidden selection:bg-[#1B3A6B]/10 selection:text-[#1B3A6B] relative bg-[#f8fafc] dark:bg-[#0b0f19]">
       <style>{`
         @media (max-width: 1023px) {
           .office-grid {
@@ -936,7 +924,7 @@ export default function OfficeDashboard() {
               <div className="flex items-center gap-3">
                 <Link
                   href="/dashboard/office"
-                  className="hidden sm:flex items-center justify-center rounded-full hover:-translate-y-0.5 transition-all duration-300"
+                  className="flex items-center justify-center rounded-full hover:-translate-y-0.5 transition-all duration-300"
                   style={{
                     boxSizing: "border-box",
                     padding: "8px 16px",
@@ -973,6 +961,19 @@ export default function OfficeDashboard() {
               </div>
 
               <div className="flex items-center gap-2">
+                <div className="hidden sm:flex items-center gap-2 mr-2 pr-2 border-r border-slate-200">
+                  <div className="flex flex-col text-right">
+                    <span className="text-xs font-bold text-slate-700">
+                      {user?.full_name?.split(' ')[0] || 'Uporabnik'}
+                    </span>
+                    <span className="text-xs font-normal text-slate-500 capitalize">
+                      {user?.role || ''}
+                    </span>
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-semibold">
+                    {user?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
+                  </div>
+                </div>
                 <button
                   onClick={() => setIsSearchOpen(true)}
                   title="Išči"
@@ -983,37 +984,17 @@ export default function OfficeDashboard() {
                 <button
                   onClick={() => setIsTeamOpen(true)}
                   title={t('teamTitle')}
-                  className="hidden sm:block p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
                 >
                   <img src="/adduser.png" alt="Add user" className="h-5 w-5" />
                 </button>
                 <Link
                   href="/dashboard/office/db"
                   title="Podatkovni center"
-                  className="p-2 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer flex items-center justify-center"
-                >
-                  <Database className="h-5 w-5" />
-                </Link>
-                <button
-                  onClick={() => setIsCompanySettingsOpen(true)}
-                  title="Nastavitve"
-                  className="hidden sm:block p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
                 >
                   <Settings className="h-5 w-5" />
-                </button>
-                <div className="hidden sm:flex items-center gap-2 ml-2 pl-2 border-l border-slate-200">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-semibold">
-                    {user?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-xs font-bold text-slate-700">
-                      {user?.full_name?.split(' ')[0] || 'Uporabnik'}
-                    </span>
-                    <span className="text-xs font-normal text-slate-500 capitalize">
-                      {user?.role || ''}
-                    </span>
-                  </div>
-                </div>
+                </Link>
                 <button
                   onClick={logout}
                   className="p-2 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
@@ -1038,7 +1019,7 @@ export default function OfficeDashboard() {
         />
 
         <div
-          className="flex items-center gap-3 px-4 py-2 rounded-full mb-12 ml-auto"
+          className="flex items-center gap-3 px-4 py-2 rounded-full mb-12 mx-auto sm:mx-0 sm:ml-auto"
           style={{
             width: "351px",
             background: "rgba(255, 255, 255, 0.002)",
@@ -1142,12 +1123,12 @@ export default function OfficeDashboard() {
         </div>
 
         <div
-          className="absolute flex items-center gap-3 px-5 py-3 z-10 pointer-events-none"
+          className="hidden sm:flex items-center gap-3 px-5 py-3 z-10 pointer-events-none absolute"
           style={{
             width: "180.42px",
             height: "58px",
-            top: "250px",
-            right: "20px",
+            top: "261px",
+            left: "1152px",
             transform: "rotate(3deg)",
             opacity: 1,
             borderRadius: "16px",

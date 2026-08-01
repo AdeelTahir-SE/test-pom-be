@@ -10,7 +10,8 @@ import {
   auraCard,
   auraButton,
 } from "./AuraForm";
-import { isValidPhone, normalizePhone, toTelHref } from "@/lib/phone";
+import { isValidPhone, normalizePhone } from "@/lib/phone";
+import { AuraPhoneInput } from "./PhoneInput";
 
 interface AddWorkerCardProps {
   isOpen: boolean;
@@ -27,46 +28,40 @@ interface AddWorkerCardProps {
 export function AddWorkerCard({ isOpen, onOpenChange, onAddWorker }: AddWorkerCardProps) {
   const { t } = useLanguage();
   const [name, setName] = useState("");
-  const [countryCode, setCountryCode] = useState("+386");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"worker" | "manager">("worker");
   const [password, setPassword] = useState("");
   const [phoneError, setPhoneError] = useState<string | null>(null);
 
-  const sanitizePhone = (raw: string) => raw.replace(/[^0-9\s]/g, "");
+  const handlePhoneChange = (value: string) => {
+  setPhone(value);
 
-  const handlePhoneChange = (raw: string) => {
-    const sanitized = sanitizePhone(raw);
-    setPhone(sanitized);
-    const fullPhone = `${countryCode}${sanitized}`;
-    if (sanitized && !isValidPhone(fullPhone)) {
-      setPhoneError(t("modalPhoneInvalid"));
-    } else {
-      setPhoneError(null);
-    }
-  };
+  if (value && !isValidPhone(value)) {
+    setPhoneError(t("modalPhoneInvalid"));
+  } else {
+    setPhoneError(null);
+  }
+};
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !email) return;
     if (role === "manager" && password.length < 8) return;
-    const fullPhone = phone ? `${countryCode}${phone}` : "";
-    if (phone && !isValidPhone(fullPhone)) {
-      setPhoneError(t("modalPhoneInvalid"));
-      return;
-    }
+    
+    if (phone && !isValidPhone(phone)) {
+  setPhoneError(t("modalPhoneInvalid"));
+  return;
+}
 
-    onAddWorker({
-      name,
-      phone: normalizePhone(fullPhone) ?? "",
-      email,
-      role,
-      password: role === "manager" ? password : "",
-    });
-
+onAddWorker({
+  name,
+  phone: normalizePhone(phone) ?? "",
+  email,
+  role,
+  password,
+});
     setName("");
-    setCountryCode("+386");
     setPhone("");
     setEmail("");
     setRole("worker");
@@ -113,61 +108,12 @@ export function AddWorkerCard({ isOpen, onOpenChange, onAddWorker }: AddWorkerCa
                 </div>
 
                 {/* Telefon */}
-                <div>
-                  <AuraLabel>{t("modalWorkerPhoneOnlyLabel")}</AuraLabel>
-                  <div className="flex items-center gap-2">
-                    <a
-  href={
-    phone
-      ? (toTelHref(`${countryCode}${phone}`) || undefined)
-      : undefined
-  }
-                      className={`flex items-center justify-center w-10 h-10 rounded-xl border transition-all ${
-                        phone && toTelHref(`${countryCode}${phone}`)
-                          ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-[0_4px_10px_-2px_rgba(27,58,107,0.3)]"
-                          : "bg-white border-[#1B3A6B]/25 text-slate-500"
-                      }`}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 20 18" fill="currentColor">
-                        <path d="M7.22477 1.25722C6.8873 0.497902 6.0702 0 5.16154 0H2.10521C0.942534 0 0 0.848098 0 1.89453C0 10.7892 8.01177 18 17.8945 18C19.0572 18 19.9995 17.1516 19.9995 16.1052L20 13.354C20 12.5362 19.4469 11.8009 18.6033 11.4971L15.674 10.4429C14.9161 10.1701 14.0533 10.2929 13.4263 10.7632L12.6702 11.3307C11.7873 11.9929 10.4882 11.9402 9.67552 11.2088L7.54672 9.29106C6.73403 8.55963 6.67398 7.39134 7.40975 6.59669L8.04016 5.9163C8.56268 5.35196 8.70032 4.57516 8.39719 3.89309L7.22477 1.25722Z" />
-                      </svg>
-                    </a>
-                    <select
-                      value={countryCode}
-                      onChange={(e) => {
-  const newCountryCode = e.target.value;
-  setCountryCode(newCountryCode);
-
-  const fullPhone = `${newCountryCode}${phone}`;
-
-  if (phone && !isValidPhone(fullPhone)) {
-    setPhoneError(t("modalPhoneInvalid"));
-  } else {
-    setPhoneError(null);
-  }
-}}
-                      className="w-20 h-10 px-2 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:border-blue-400"
-                    >
-                      <option value="+386">+386</option>
-                      <option value="+49">+49</option>
-                      <option value="+43">+43</option>
-                      <option value="+39">+39</option>
-                      <option value="+385">+385</option>
-                      <option value="+381">+381</option>
-                    </select>
-                    <AuraInput
-                      type="tel"
-                      inputMode="tel"
-                      placeholder="30 123 456"
-                      value={phone}
-                      onChange={(e) => handlePhoneChange(e.target.value)}
-                      className="flex-1"
-                    />
-                  </div>
-                  {phoneError && (
-                    <span className="text-[11px] text-red-500">{phoneError}</span>
-                  )}
-                </div>
+                <AuraPhoneInput
+  value={phone}
+  onChange={handlePhoneChange}
+  label={t("modalWorkerPhoneOnlyLabel")}
+  error={phoneError}
+/>
 
                 {/* E-pošta — required. Visually separated: this becomes their login. */}
                 <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-100">

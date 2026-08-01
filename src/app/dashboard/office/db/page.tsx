@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { AddTaskModal } from '@/components/dashboard/AddTaskModal';
 import { TeamManagementModal } from '@/components/dashboard/TeamManagementModal';
 import { AddWorkerCard } from '@/components/dashboard/AddWorkerCard';
+import { AuraPhoneInput } from '@/components/dashboard/PhoneInput';
 
 interface TeamUser {
   id: string;
@@ -71,6 +72,9 @@ export default function DatabaseDashboard() {
   // User Deactivation State
   const [userToDelete, setUserToDelete] = useState<TeamUser | null>(null);
   const [deletingUser, setDeletingUser] = useState(false);
+
+  // Phone state for company profile
+  const [companyPhone, setCompanyPhone] = useState(officeContact?.phone || user?.phone || '');
 
   // Format Date helper to match DD.MM.YY (e.g. 24.07.26)
   const formatDate = (dateStr: string) => {
@@ -718,29 +722,11 @@ export default function DatabaseDashboard() {
               {/* Telefon row */}
               <div className="flex gap-12 py-2 border-b border-slate-100">
                 <span className="w-32 text-[#8A94A6] text-sm">Telefon</span>
-                <div className="flex items-center gap-2">
-                  <select
-  value="+386"
-                    className="w-20 h-8 px-2 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 focus:outline-none focus:border-blue-400"
-                  >
-                      <option value="+386">+386</option>
-  <option value="+385">+385</option>
-  <option value="+387">+387</option>
-  <option value="+381">+381</option>
-  <option value="+382">+382</option>
-  <option value="+383">+383</option>
-  <option value="+389">+389</option>
-  <option value="+43">+43</option>
-  <option value="+49">+49</option>
-  <option value="+39">+39</option>
-  <option value="+40">+40</option>
-  <option value="+359">+359</option>
-                  </select>
-                  <input
-                    type="text"
-                    defaultValue={officeContact?.phone || user?.phone || ''}
+                <div className="flex-1">
+                  <AuraPhoneInput
+                    value={companyPhone}
+                    onChange={setCompanyPhone}
                     placeholder="30 123 456"
-                    className="text-[#242731] text-sm font-medium bg-transparent border-none outline-none focus:ring-0 p-0 w-32"
                   />
                 </div>
               </div>

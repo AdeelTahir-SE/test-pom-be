@@ -5,6 +5,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useLanguage } from "@/lib/useLanguage";
 import { api } from "@/lib/api-client";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
+import { AuraPhoneInput } from "./PhoneInput";
 import {
   AuraLabel,
   AuraInput,
@@ -39,7 +40,6 @@ export function TeamManagementModal({ isOpen, onOpenChange, currentUserId, onCha
   const [loading, setLoading] = useState(false);
   const [editingUser, setEditingUser] = useState<TeamUser | null>(null);
   const [editName, setEditName] = useState("");
-  const [editCountryCode, setEditCountryCode] = useState("+386");
   const [editPhone, setEditPhone] = useState("");
   const [editRole, setEditRole] = useState<"worker" | "manager">("worker");
   const [editActive, setEditActive] = useState(true);
@@ -67,20 +67,7 @@ export function TeamManagementModal({ isOpen, onOpenChange, currentUserId, onCha
     setEditingUser(u);
     setEditName(u.full_name);
     const phone = u.phone ?? "";
-
-const countryCodes = ["+386", "+385", "+387", "+381", "+40", "+43", "+49", "+39"];
-
-const matchedCountryCode = countryCodes.find((code) =>
-  phone.startsWith(code)
-);
-
-if (matchedCountryCode) {
-  setEditCountryCode(matchedCountryCode);
-  setEditPhone(phone.slice(matchedCountryCode.length).trim());
-} else {
-  setEditCountryCode("+386");
-  setEditPhone(phone.replace(/^\+/, "").trim());
-}
+setEditPhone(phone);
     setEditRole(u.role === "manager" ? "manager" : "worker");
     setEditActive(u.is_active);
   };
@@ -88,24 +75,23 @@ if (matchedCountryCode) {
   const handleSaveEdit = async () => {
     if (!editingUser) return;
     setSaving(true);
-    const fullPhone = editPhone ? `${editCountryCode}${editPhone}` : "";
 
-if (editPhone && !isValidPhone(fullPhone)) {
-  alert(t("modalPhoneInvalid"));
-  setSaving(false);
-  return;
-}
+    if (editPhone && !isValidPhone(editPhone)) {
+      alert(t("modalPhoneInvalid"));
+      setSaving(false);
+      return;
+    }
 
 // Owner self-edit: name + phone only (role/active stay immutable).
 const payload =
       editingUser.role === "owner"
         ? {
             full_name: editName,
-            phone: normalizePhone(fullPhone) ?? undefined,
+            phone: normalizePhone(editPhone) ?? undefined,
           }
         : {
             full_name: editName,
-            phone: normalizePhone(fullPhone) ?? undefined,
+            phone: normalizePhone(editPhone) ?? undefined,
             role: editRole,
             is_active: editActive,
           };
@@ -199,33 +185,11 @@ const payload =
                 />
               </div>
 
-              <div>
-                <AuraLabel>{t("modalPhoneLabel")}</AuraLabel>
-                <div className="flex items-center gap-2">
-                  <select
-                    value={editCountryCode}
-                    onChange={(e) => setEditCountryCode(e.target.value)}
-                    className="w-20 h-10 px-2 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:border-blue-400"
-                  >
-                    <option value="+386">+386</option>
-<option value="+385">+385</option>
-<option value="+387">+387</option>
-<option value="+381">+381</option>
-<option value="+40">+40</option>
-<option value="+43">+43</option>
-<option value="+49">+49</option>
-<option value="+39">+39</option>
-                  </select>
-                  <AuraInput
-  type="tel"
-  inputMode="tel"
-  placeholder="30 123 456"
-  value={editPhone}
-  onChange={(e) => setEditPhone(e.target.value.replace(/[^0-9\s]/g, ""))}
-  className="flex-1"
-/>
-                </div>
-              </div>
+              <AuraPhoneInput
+                value={editPhone}
+                onChange={(value) => setEditPhone(value)}
+                label={t("modalPhoneLabel")}
+              />
 
               {editingUser.role !== "owner" && (
                 <>

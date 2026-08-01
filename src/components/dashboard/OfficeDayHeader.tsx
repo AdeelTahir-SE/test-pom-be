@@ -86,11 +86,11 @@ export function OfficeDayHeader({
       className="relative mb-6 flex flex-wrap items-center gap-x-4 gap-y-3"
       style={{ fontFamily: "'PT Sans', sans-serif" }}
     >
-      <h1 className="text-[32px] font-semibold tracking-tight text-slate-800 shrink-0">
+      <h1 className="text-[32px] font-semibold tracking-tight text-slate-800 shrink-0 text-center sm:text-left w-full sm:w-auto">
         {title}
       </h1>
 
-      <div className="flex items-center gap-1 sm:gap-2">
+      <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto justify-center sm:justify-start">
         <button
           type="button"
           onClick={() => onDateChange(addDays(day, -1))}
@@ -119,7 +119,7 @@ export function OfficeDayHeader({
         </button>
       </div>
 
-      <div className="ml-auto relative" ref={popoverRef}>
+      <div className="mx-auto sm:mx-0 sm:ml-auto relative" ref={popoverRef}>
         <button
           type="button"
           onClick={() => setCalendarOpen((open) => !open)}
@@ -133,7 +133,7 @@ export function OfficeDayHeader({
 
         {calendarOpen && (
           <div
-            className="absolute right-0 top-[calc(100%+8px)] z-40 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-xl"
+            className="absolute left-1/2 -translate-x-1/2 sm:left-auto sm:translate-x-0 sm:right-0 top-[calc(100%+8px)] z-40 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-xl"
             style={{ boxShadow: "0 24px 60px -30px rgba(59, 130, 246, 0.45)" }}
           >
             <DayPicker

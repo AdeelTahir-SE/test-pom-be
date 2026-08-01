@@ -62,20 +62,20 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
   const [hasConfirm, setHasConfirm] = useState(false);
   const [hasDecline, setHasDecline] = useState(false);
 
-  // Only digits and spaces allowed for the number part
   const sanitizePhone = (raw: string) => raw.replace(/[^0-9\s]/g, "");
 
-  const handlePhoneChange = (raw: string) => {
-    const sanitized = sanitizePhone(raw);
-    setPhoneNumber(sanitized);
-    const fullPhone = `${countryCode}${sanitized}`;
+const handlePhoneChange = (raw: string) => {
+  const sanitized = sanitizePhone(raw);
+  setPhoneNumber(sanitized);
 
-    if (sanitized && !isValidPhone(fullPhone)) {
-      setPhoneError(t("modalPhoneInvalid"));
-    } else {
-      setPhoneError(null);
-    }
-  };
+  const fullPhone = `${countryCode}${sanitized}`;
+
+  if (sanitized && !isValidPhone(fullPhone)) {
+    setPhoneError(t("modalPhoneInvalid"));
+  } else {
+    setPhoneError(null);
+  }
+};
 
   const handleSubmit = (e: React.FormEvent) => {
   e.preventDefault();
@@ -105,14 +105,16 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
 }
   }
 
-    const fullPhone = phoneNumber ? `${countryCode}${phoneNumber}` : "";
+  const fullPhone = phoneNumber
+  ? `${countryCode}${phoneNumber}`
+  : "";
 
-  if (phoneNumber && !isValidPhone(fullPhone)) {
-    setPhoneError(t("modalPhoneInvalid"));
-    return;
-  }
+if (phoneNumber && !isValidPhone(fullPhone)) {
+  setPhoneError(t("modalPhoneInvalid"));
+  return;
+}
 
-  const finalPhone = normalizePhone(fullPhone) ?? "";
+const finalPhone = normalizePhone(fullPhone) ?? "";
   const normalizedTime = normalizeRemindTime(time) ?? "";
 
   onAddReminder({
@@ -135,8 +137,8 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
     setTime("");
     setDate(defaultDate);
     setIsUrgent(false);
-    setCountryCode("+386");
     setPhoneNumber("");
+    setCountryCode("+386");
     setHasAttachment(false);
     setAttachmentFile(null);
     setHasEmail(false);
@@ -155,12 +157,6 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
 
   const emailIcon = <span className="text-sm font-semibold">@</span>;
 
-  const phoneIcon = (
-    <svg width="16" height="16" viewBox="0 0 20 18" fill="currentColor">
-      <path d="M7.22477 1.25722C6.8873 0.497902 6.0702 0 5.16154 0H2.10521C0.942534 0 0 0.848098 0 1.89453C0 10.7892 8.01177 18 17.8945 18C19.0572 18 19.9995 17.1516 19.9995 16.1052L20 13.354C20 12.5362 19.4469 11.8009 18.6033 11.4971L15.674 10.4429C14.9161 10.1701 14.0533 10.2929 13.4263 10.7632L12.6702 11.3307C11.7873 11.9929 10.4882 11.9402 9.67552 11.2088L7.54672 9.29106C6.73403 8.55963 6.67398 7.39134 7.40975 6.59669L8.04016 5.9163C8.56268 5.35196 8.70032 4.57516 8.39719 3.89309L7.22477 1.25722Z" />
-    </svg>
-  );
-
   const confirmIcon = (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5">
       <path d="M13.3333 4L6 11.3333L2.66667 8" strokeLinecap="round" strokeLinejoin="round" />
@@ -173,6 +169,12 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
     </svg>
   );
 
+  const phoneIcon = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92z" />
+  </svg>
+);
+  
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent
@@ -311,30 +313,37 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
 )}
 
                 {/* Row 2: Telefon */}
-                <div className="flex flex-col gap-1">
-                  <AuraLabel>{t("modalPhoneLabel")}</AuraLabel>
-                  <div className="flex items-center gap-2">
-                    <a
-                      href={toTelHref(`${countryCode}${phoneNumber}`) ?? undefined}
-                      onClick={(e) => {
-                        if (!toTelHref(`${countryCode}${phoneNumber}`)) {
-                          e.preventDefault();
-                        }
-                      }}
-                      className="shrink-0"
-                      title={phoneNumber ? `${t("workerCall")} ${countryCode}${phoneNumber}` : t("modalPhoneEmptyTitle")}
-                    >
-                      <div
-                        className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-all ${
-                          phoneNumber && toTelHref(`${countryCode}${phoneNumber}`)
-                            ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-[0_4px_10px_-2px_rgba(27,58,107,0.3)]"
-                            : "bg-white border-[#1B3A6B]/25 text-slate-500"
-                        }`}
-                      >
-                        {phoneIcon}
-                      </div>
-                    </a>
-                    <select
+                {/* Row 2: Telefon */}
+<div className="flex flex-col gap-1">
+  <AuraLabel>{t("modalPhoneLabel")}</AuraLabel>
+
+  <div className="flex items-center gap-2">
+    <a
+      href={toTelHref(`${countryCode}${phoneNumber}`) ?? undefined}
+      onClick={(e) => {
+        if (!toTelHref(`${countryCode}${phoneNumber}`)) {
+          e.preventDefault();
+        }
+      }}
+      className="shrink-0"
+      title={
+        phoneNumber
+          ? `${t("workerCall")} ${countryCode}${phoneNumber}`
+          : t("modalPhoneEmptyTitle")
+      }
+    >
+      <div
+        className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-all ${
+          phoneNumber && toTelHref(`${countryCode}${phoneNumber}`)
+            ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-[0_4px_10px_-2px_rgba(27,58,107,0.3)]"
+            : "bg-white border-[#1B3A6B]/25 text-slate-500"
+        }`}
+      >
+        {phoneIcon}
+      </div>
+    </a>
+
+    <select
   value={countryCode}
   onChange={(e) => {
     const newCountryCode = e.target.value;
@@ -348,28 +357,37 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
       setPhoneError(null);
     }
   }}
-                      className="w-20 h-10 px-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:border-blue-400"
-                    >
-                      <option value="+386">+386</option>
-                      <option value="+49">+49</option>
-                      <option value="+43">+43</option>
-                      <option value="+39">+39</option>
-                      <option value="+385">+385</option>
-                      <option value="+381">+381</option>
-                    </select>
-                    <AuraInput
-                      type="tel"
-                      inputMode="tel"
-                      placeholder="30 123 456"
-                      value={phoneNumber}
-                      onChange={(e) => handlePhoneChange(e.target.value)}
-                      className="flex-1"
-                    />
-                  </div>
-                  {phoneError && (
-                    <span className="text-[11px] text-red-500">{phoneError}</span>
-                  )}
-                </div>
+  className="w-20 h-10 px-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:border-blue-400"
+>
+  <option value="+386">SLO +386</option>
+<option value="+385">HR +385</option>
+<option value="+387">BIH +387</option>
+<option value="+381">SRB +381</option>
+<option value="+382">MNE +382</option>
+<option value="+40">RO +40</option>
+<option value="+359">BG +359</option>
+<option value="+43">A +43</option>
+<option value="+49">DE +49</option>
+<option value="+39">IT +39</option>
+<option value="+48">PL +48</option>
+</select>
+
+    <AuraInput
+      type="tel"
+      inputMode="tel"
+      placeholder="30 123 456"
+      value={phoneNumber}
+      onChange={(e) => handlePhoneChange(e.target.value)}
+      className="flex-1"
+    />
+  </div>
+
+  {phoneError && (
+    <span className="text-[11px] text-red-500">
+      {phoneError}
+    </span>
+  )}
+</div>
 
                 {/* Row 3: Potrdi & Zavrni */}
                 <div className="flex gap-4">
