@@ -28,6 +28,7 @@ import {
   Search as SearchIcon,
   Settings,
   Database,
+  Paperclip,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -202,7 +203,18 @@ export default function OfficeDashboard() {
     label: string;
     requiresAttachment: boolean;
     hasAttachment: boolean;
+    attachmentName?: string | null;
+    attachmentUrl?: string | null;
   } | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToastMessage(null), 2500);
+  }, []);
+
   const cardAttachInputRef = useRef<HTMLInputElement | null>(null);
   const cardAttachTargetRef = useRef<{ jobId: string; taskId: string } | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -368,7 +380,7 @@ export default function OfficeDashboard() {
       )
     : null;
 
-  const handleToggleTask = (_workerId: string, taskId: string) => {
+  const handleToggleTask = async (_workerId: string, taskId: string) => {
     const item = Object.values(mergedChecklistsByJob).flat().find((i) => i.id === taskId);
     if (!item || isOptimisticId(item.id) || isOptimisticId(item.job_id)) return;
     // Completed steps stay permanently done (Mark a2).
@@ -380,13 +392,39 @@ export default function OfficeDashboard() {
     const next = siblings.find((i) => !i.is_completed);
     if (!next || next.id !== item.id) return;
 
+    let attachmentName: string | null = null;
+    let attachmentUrl: string | null = null;
+    let hasAttachment = !!item.has_attachment;
+
+    if (item.requires_attachment || item.has_attachment) {
+      const filesRes = await api.get<{
+        files: Array<{
+          file_name: string;
+          signed_url: string | null;
+          checklist_item_id?: string | null;
+        }>;
+      }>(`/api/jobs/${item.job_id}/files`);
+      if (filesRes.status === 200 && filesRes.data?.files?.length) {
+        const linked = filesRes.data.files.find((f) => f.checklist_item_id === item.id);
+        const orphan = filesRes.data.files.find((f) => !f.checklist_item_id);
+        const file = linked ?? orphan ?? null;
+        if (file) {
+          attachmentName = file.file_name;
+          attachmentUrl = file.signed_url;
+          hasAttachment = true;
+        }
+      }
+    }
+
     setPendingConfirmTask({
       workerId: _workerId,
       taskId: item.id,
       jobId: item.job_id,
       label: item.label,
       requiresAttachment: !!item.requires_attachment,
-      hasAttachment: !!item.has_attachment,
+      hasAttachment,
+      attachmentName,
+      attachmentUrl,
     });
   };
 
@@ -399,10 +437,7 @@ export default function OfficeDashboard() {
       .flat()
       .find((i) => i.id === pending.taskId);
     if (!item) return;
-    if (item.requires_attachment && !item.has_attachment) {
-      alert(t("modalConfirmStepMissingTitle"));
-      return;
-    }
+    // Attachment presence is enforced server-side (linked file, or auto-claim orphan).
 
     const patchLocal = (list: ApiChecklistItem[]) =>
       list.map((i) =>
@@ -411,6 +446,7 @@ export default function OfficeDashboard() {
               ...i,
               is_completed: true,
               completed_at: new Date().toISOString(),
+              has_attachment: true,
             }
           : i
       );
@@ -433,13 +469,25 @@ export default function OfficeDashboard() {
       setChecklistsByJob((prev) => ({
         ...prev,
         [item.job_id]: (prev[item.job_id] ?? []).map((i) =>
-          i.id === pending.taskId ? res.data!.item : i
+          i.id === pending.taskId ? { ...res.data!.item, has_attachment: true } : i
         ),
       }));
     } else {
       void refreshBoard();
-      alert(res.error?.message ?? "Koraka ni bilo mogoče potrditi.");
+      showToast(res.error?.message ?? "Koraka ni bilo mogoče potrditi.");
     }
+  };
+
+  const markChecklistHasAttachment = (jobId: string, taskId: string) => {
+    const patch = (list: ApiChecklistItem[]) =>
+      list.map((i) => (i.id === taskId ? { ...i, has_attachment: true } : i));
+    setChecklistsByJob((prev) => ({
+      ...prev,
+      [jobId]: patch(prev[jobId] ?? []),
+    }));
+    setChecklistOverrides((prev) =>
+      prev[jobId] ? { ...prev, [jobId]: patch(prev[jobId] ?? []) } : prev
+    );
   };
 
   const handleCardAttachmentClick = (_workerId: string, taskId: string) => {
@@ -458,9 +506,21 @@ export default function OfficeDashboard() {
     formData.append("checklist_item_id", target.taskId);
     const res = await api.post(`/api/jobs/${target.jobId}/files`, formData);
     if (res.status === 201) {
+      markChecklistHasAttachment(target.jobId, target.taskId);
+      setPendingConfirmTask((prev) =>
+        prev && prev.taskId === target.taskId
+          ? {
+              ...prev,
+              hasAttachment: true,
+              attachmentName: file.name,
+              attachmentUrl: null,
+            }
+          : prev
+      );
+      showToast(t("modalAttachSuccess"));
       void refreshBoard();
     } else {
-      alert(res.error?.message ?? "Priponke ni bilo mogoče naložiti.");
+      showToast(res.error?.message ?? t("modalAttachFailed"));
     }
   };
 
@@ -473,7 +533,7 @@ export default function OfficeDashboard() {
       void refreshBoard();
     } else {
       void refreshBoard();
-      alert(res.error?.message ?? "Posodobitev se ni izvedla.");
+      showToast(res.error?.message ?? "Posodobitev se ni izvedla.");
     }
   };
 
@@ -487,7 +547,7 @@ export default function OfficeDashboard() {
   }) => {
     const parsed = parseFlexibleDate(taskData.datum) ?? selectedDate;
     if (parsed.getTime() < startOfLocalDay().getTime()) {
-      alert("Datum ne sme biti v preteklosti.");
+      showToast("Datum ne sme biti v preteklosti.");
       return;
     }
     const scheduledAt = localDayToScheduledAt(parsed);
@@ -542,7 +602,7 @@ export default function OfficeDashboard() {
           delete next[tempId];
           return next;
         });
-        alert(res.error?.message ?? "Prišlo je do napake. Ni bilo dodano.");
+        showToast(res.error?.message ?? "Prišlo je do napake. Ni bilo dodano.");
         return;
       }
 
@@ -561,7 +621,8 @@ export default function OfficeDashboard() {
       setChecklistOverrides((prev) => {
         const next = { ...prev };
         delete next[tempId];
-        if (createdSteps.length > 0) next[realJob.id] = createdSteps;
+        // Do NOT keep an override for the real job id — it freezes create-time
+        // order and undoes checklist reorder after drag (Mark a9 B3).
         return next;
       });
       setChecklistsByJob((prev) => ({
@@ -572,7 +633,9 @@ export default function OfficeDashboard() {
             : optimisticChecklist.map((s) => ({ ...s, job_id: realJob.id })),
       }));
 
-      if (selectedWorkerJobId === tempId) setSelectedWorkerJobId(realJob.id);
+      // Functional update — don't use the stale selectedWorkerJobId from create start
+      // (user may have opened Details on the optimistic card while POST was in flight).
+      setSelectedWorkerJobId((current) => (current === tempId ? realJob.id : current));
       void refreshBoard();
     })();
   };
@@ -633,7 +696,7 @@ export default function OfficeDashboard() {
         void refreshBoard();
       } else {
         setReminders((prev) => prev.filter((r) => r.id !== tempId));
-        alert(res.error?.message ?? "Opomnika ni bilo mogoče ustvariti.");
+        showToast(res.error?.message ?? "Opomnika ni bilo mogoče ustvariti.");
       }
     })();
   };
@@ -666,7 +729,7 @@ export default function OfficeDashboard() {
       }
       void refreshBoard();
     } else {
-      alert(res.error?.message ?? 'Prišlo je do napake. Račun ni bil ustvarjen.');
+      showToast(res.error?.message ?? 'Prišlo je do napake. Račun ni bil ustvarjen.');
     }
   };
 
@@ -708,7 +771,7 @@ export default function OfficeDashboard() {
     const res = await api.patch(`/api/office-reminders/${id}`, { hidden: true });
     if (res.status !== 200) {
       setReminders(snapshot);
-      alert(res.error?.message ?? "Napaka. Opomnika ni bilo mogoče izbrisati.");
+      showToast(res.error?.message ?? "Napaka. Opomnika ni bilo mogoče izbrisati.");
     }
   };
   const handleReminderDragEnd = (event: DragEndEvent) => {
@@ -750,7 +813,7 @@ export default function OfficeDashboard() {
     const res = await api.patch(`/api/jobs/${id}`, { hidden: true });
     if (res.status !== 200) {
       setJobs(snapshot);
-      alert(res.error?.message ?? "Kartice ni bilo mogoče skriti.");
+      showToast(res.error?.message ?? "Kartice ni bilo mogoče skriti.");
     }
   };
 
@@ -826,11 +889,11 @@ export default function OfficeDashboard() {
             void refreshBoard();
           } else {
             console.error(res.error);
-            alert(res.error?.message ?? "Glasovnega sporočila ni bilo mogoče poslati.");
+            showToast(res.error?.message ?? "Glasovnega sporočila ni bilo mogoče poslati.");
           }
         } catch (err) {
           console.error(err);
-          alert("Glasovnega sporočila ni bilo mogoče poslati.");
+          showToast("Glasovnega sporočila ni bilo mogoče poslati.");
         }
       };
       recorder.start();
@@ -842,7 +905,7 @@ export default function OfficeDashboard() {
         setIsRecordingReply(false);
       }, LIMITS.VOICE_MAX_SECONDS * 1000);
     } catch {
-      alert(t('workerMicUnavailable'));
+      showToast(t('workerMicUnavailable'));
     }
   };
 
@@ -861,6 +924,7 @@ export default function OfficeDashboard() {
   }
 
   return (
+
     <div className="min-h-screen text-slate-800 dark:text-slate-100 overflow-x-hidden selection:bg-[#1B3A6B]/10 selection:text-[#1B3A6B] relative bg-[#f8fafc] dark:bg-[#0b0f19]">
       <style>{`
         @media (max-width: 1023px) {
@@ -986,7 +1050,7 @@ export default function OfficeDashboard() {
                   title={t('teamTitle')}
                   className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
                 >
-                  <img src="/adduser.png" alt="Add user" className="h-5 w-5" />
+                  <img src="/adduser.png" alt="Dodaj uporabnika" className="h-5 w-5" />
                 </button>
                 <Link
                   href="/dashboard/office/db"
@@ -1492,6 +1556,29 @@ export default function OfficeDashboard() {
         cardNumber={selectedJob ? jobNumber(selectedJob) : null}
         customerName={selectedJob?.customer ?? null}
         onRefresh={() => void refreshBoard()}
+        onChecklistReorder={(orderedIds) => {
+          if (!selectedWorkerJobId || isOptimisticId(selectedWorkerJobId)) return;
+          const jobId = selectedWorkerJobId;
+          const reorder = (list: ApiChecklistItem[]) => {
+            const byId = new Map(list.map((i) => [i.id, i]));
+            return orderedIds
+              .map((id, index) => {
+                const item = byId.get(id);
+                return item ? { ...item, order_index: index } : null;
+              })
+              .filter((i): i is ApiChecklistItem => !!i);
+          };
+          setChecklistsByJob((prev) => ({
+            ...prev,
+            [jobId]: reorder(prev[jobId] ?? []),
+          }));
+          setChecklistOverrides((prev) => {
+            if (!prev[jobId]) return prev;
+            const next = { ...prev };
+            delete next[jobId];
+            return next;
+          });
+        }}
         jobStatus={selectedJob?.status}
         onChangeJobStatus={
           selectedWorkerJobId
@@ -1572,18 +1659,49 @@ export default function OfficeDashboard() {
               <p className="text-sm text-slate-600 text-center mt-2">
                 <strong>{pendingConfirmTask.label}</strong>
               </p>
+              {pendingConfirmTask.attachmentName && (
+                <div className="mt-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                  <Paperclip className="w-4 h-4 text-slate-400 shrink-0" />
+                  {pendingConfirmTask.attachmentUrl ? (
+                    <a
+                      href={pendingConfirmTask.attachmentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-[#1B3A6B] font-medium truncate hover:underline"
+                    >
+                      {pendingConfirmTask.attachmentName}
+                    </a>
+                  ) : (
+                    <span className="text-xs text-slate-700 font-medium truncate">
+                      {pendingConfirmTask.attachmentName}
+                    </span>
+                  )}
+                </div>
+              )}
               {pendingConfirmTask.requiresAttachment && !pendingConfirmTask.hasAttachment ? (
                 <div className="flex flex-col gap-2 mt-4">
+                  <p className="text-xs text-slate-500 text-center">
+                    {t("modalConfirmStepMissingDesc")}
+                  </p>
                   <button
                     type="button"
                     onClick={() => {
                       const p = pendingConfirmTask;
-                      setPendingConfirmTask(null);
-                      if (p) handleCardAttachmentClick(p.workerId, p.taskId);
+                      if (!p) return;
+                      // Keep dialog open; upload updates hasAttachment then shows Confirm.
+                      cardAttachTargetRef.current = { jobId: p.jobId, taskId: p.taskId };
+                      cardAttachInputRef.current?.click();
                     }}
                     className="w-full h-10 rounded-xl bg-[#1B3A6B] text-white text-xs font-semibold"
                   >
                     Naloži priponko
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void completeConfirmedTask()}
+                    className="w-full h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700"
+                  >
+                    {t("modalConfirmStepSubmit")}
                   </button>
                   <button
                     type="button"

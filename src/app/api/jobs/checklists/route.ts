@@ -87,18 +87,18 @@ export const GET = withAuth(async (request, auth) => {
     .from("job_files")
     .select("job_id, checklist_item_id")
     .in("job_id", allowedJobIds)
-    .is("hidden_at", null)
-    .not("checklist_item_id", "is", null);
+    .is("hidden_at", null);
   if (filesError) {
     throw new ApiError("internal", "Failed to load checklist attachments.", filesError.message);
   }
 
   const attachmentByJobItem = new Set<string>();
-  for (const f of fileRows ?? []) {
-    if (f.checklist_item_id) {
-      attachmentByJobItem.add(`${f.job_id}:${f.checklist_item_id}`);
-    }
+
+for (const f of fileRows ?? []) {
+  if (f.checklist_item_id) {
+    attachmentByJobItem.add(`${f.job_id}:${f.checklist_item_id}`);
   }
+}
 
   const checklistsByJob: Record<string, Array<Record<string, unknown>>> = {};
   for (const jobId of allowedJobIds) {
@@ -108,9 +108,10 @@ export const GET = withAuth(async (request, auth) => {
   for (const item of items ?? []) {
     const jobId = item.job_id as string;
     if (!checklistsByJob[jobId]) checklistsByJob[jobId] = [];
-    checklistsByJob[jobId].push({
+    const hasAttachment = attachmentByJobItem.has(`${jobId}:${item.id}`);
+       checklistsByJob[jobId].push({
       ...item,
-      has_attachment: attachmentByJobItem.has(`${jobId}:${item.id}`),
+      has_attachment: hasAttachment,
     });
   }
 

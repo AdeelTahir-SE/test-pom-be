@@ -35,34 +35,18 @@ import {
   auraCard,
   auraButton,
 } from "./AuraForm";
-import { describeTimelineEvent, documentTypeLabel } from "@/lib/timeline/describe";
+import { describeTimelineEvent, attachmentDisplayTitle, shouldShowTimelineEvent } from "@/lib/timeline/describe";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
 import { fetchJobFiles, fetchJobTimeline } from "@/lib/query/office";
 import { parseNoteText } from "./CustomerNotesBanner";
-import { formatSiDateFromIso, formatSiDateTimeFromIso, formatSiTimeFromIso } from "@/lib/officeDate";
-import { toTelHref } from "@/lib/phone";
+import { formatSiDateFromIso, formatSiTimeFromIso } from "@/lib/officeDate";
+import { isOptimisticId } from "@/lib/optimisticId";
 interface CustomerNoteDto {
   id: string;
   note: string;
   created_at?: string;
 }
-
-const STATUS_BADGE_CLASSES: Record<JobStatus, string> = {
-  pending: "bg-slate-100 text-slate-500",
-  in_progress: "bg-blue-50 text-blue-600",
-  waiting: "bg-amber-50 text-amber-600",
-  completed: "bg-green-50 text-green-700",
-  cancelled: "bg-red-50 text-red-600",
-};
-
-const STATUS_LABEL_KEY: Record<JobStatus, any> = {
-  pending: "jobStatusPending",
-  in_progress: "jobStatusInProgress",
-  waiting: "jobStatusWaiting",
-  completed: "jobStatusCompleted",
-  cancelled: "jobStatusCancelled",
-};
 
 interface WorkerDetailModalProps {
   isOpen: boolean;
@@ -82,6 +66,8 @@ interface WorkerDetailModalProps {
   onDeleteCard?: () => void;
   /** Owners/managers can remove notes for future visits. */
   canManageCustomerNotes?: boolean;
+  /** Sync reordered step ids into the parent board (avoids stale override snap-back). */
+  onChecklistReorder?: (orderedIds: string[]) => void;
 }
 
 interface TaskItem {
@@ -103,6 +89,7 @@ interface AttachmentItem {
   documentType: string | null;
   documentPreview: string | null;
   checklistItemId: string | null;
+  attachmentType: string | null;
 }
 
 interface TimelineItem {
@@ -135,7 +122,6 @@ interface SortableTaskItemProps {
   onDelete: () => void;
   onOpenAttachment?: () => void;
   deleteLabel: string;
-  onAttachmentClick?: () => void;
 }
 
 function SortableTaskItem({ task, onClick, onDelete, onOpenAttachment, deleteLabel }: SortableTaskItemProps) {
@@ -267,6 +253,7 @@ export function WorkerDetailModal({
   canCancelJob = false,
   onDeleteCard,
   canManageCustomerNotes = false,
+  onChecklistReorder,
 }: WorkerDetailModalProps) {
   const { t } = useLanguage();
   const [addStepOpen, setAddStepOpen] = React.useState(false);
@@ -286,10 +273,17 @@ export function WorkerDetailModal({
   // Attachment preview
   const [previewAttachment, setPreviewAttachment] = React.useState<AttachmentItem | null>(null);
 
-  // Attach-only dialog
+  // Attach-only dialog (optionally linked to a checklist step)
   const [attachOnlyOpen, setAttachOnlyOpen] = React.useState(false);
   const [attachOnlyFile, setAttachOnlyFile] = React.useState<File | null>(null);
   const [attachOnlyUploading, setAttachOnlyUploading] = React.useState(false);
+  const [attachForStepId, setAttachForStepId] = React.useState<string | null>(null);
+  const [toastMessage, setToastMessage] = React.useState<string | null>(null);
+
+  const showToast = React.useCallback((msg: string) => {
+    setToastMessage(msg);
+    window.setTimeout(() => setToastMessage(null), 2500);
+  }, []);
 
   // Customer knowledge (Add-on 2)
   const resolvedCustomerName = (customerName ?? worker?.role ?? "").trim();
@@ -311,7 +305,7 @@ export function WorkerDetailModal({
     const noteText = newNoteText.trim();
     if (!noteText) return;
     if (!resolvedCustomerName) {
-      alert("Naročnik je obvezen za dodajanje opombe.");
+      showToast("Naročnik je obvezen za dodajanje opombe.");
       return;
     }
 
@@ -344,7 +338,7 @@ export function WorkerDetailModal({
       return;
     }
 
-    alert(res.error?.message ?? "Opombe ni bilo mogoče shraniti.");
+    showToast(res.error?.message ?? "Opombe ni bilo mogoče shraniti.");
   };
 
   const fromWorkerTasks = (workerTasks: Worker["tasks"]): TaskItem[] =>
@@ -374,16 +368,17 @@ export function WorkerDetailModal({
   const [stepPosition, setStepPosition] = React.useState(tasks.length + 1);
 
   const queryClient = useQueryClient();
+  const jobReady = !!jobId && !isOptimisticId(jobId);
   const filesQuery = useQuery({
     queryKey: queryKeys.job.files(jobId ?? "none"),
     queryFn: () => fetchJobFiles(jobId!),
-    enabled: isOpen && !!jobId,
+    enabled: isOpen && jobReady,
     staleTime: 30_000,
   });
   const timelineQuery = useQuery({
     queryKey: queryKeys.job.timeline(jobId ?? "none"),
     queryFn: () => fetchJobTimeline(jobId!),
-    enabled: isOpen && !!jobId,
+    enabled: isOpen && jobReady,
     staleTime: 30_000,
   });
 
@@ -399,6 +394,7 @@ export function WorkerDetailModal({
         documentType: f.document_type,
         documentPreview: f.document_preview,
         checklistItemId: f.checklist_item_id ?? null,
+        attachmentType: f.attachment_type ?? null,
       })),
     [filesQuery.data]
   );
@@ -408,15 +404,32 @@ export function WorkerDetailModal({
       (timelineQuery.data ?? [])
         .slice()
         .reverse()
+        .filter((e) => shouldShowTimelineEvent(e))
         .map((e) => ({
           id: e.id,
-          time: formatSiDateTimeFromIso(e.created_at),
+          // Mark a8/a9: left stamp is time-only; job_created date lives in the text.
+          time: formatSiTimeFromIso(e.created_at),
           text: describeTimelineEvent(e, t, cardNumber),
           type: TIMELINE_TYPE_BY_EVENT[e.event_type] ?? "other",
           fileId: e.metadata?.file_id as string | undefined,
         })),
     [timelineQuery.data, t, cardNumber]
   );
+
+  // Keep step clip state in sync with linked files (and orphans for requires_attachment).
+  React.useEffect(() => {
+    if (!filesQuery.data) return;
+    setTasks((prev) => {
+      let changed = false;
+      const next = prev.map((task) => {
+        const linked = (filesQuery.data ?? []).some((f) => f.checklist_item_id === task.id);
+        if (linked === task.attachment) return task;
+        changed = true;
+        return { ...task, attachment: linked || task.attachment };
+      });
+      return changed ? next : prev;
+    });
+  }, [filesQuery.data]);
 
   const filesLoading = filesQuery.isFetching && !filesQuery.data;
   const timelineLoading = timelineQuery.isFetching && !timelineQuery.data;
@@ -470,7 +483,7 @@ export function WorkerDetailModal({
     if (res.status === 200) {
       setCustomerNotes((prev) => prev.filter((n) => n.id !== id));
     } else {
-      alert(res.error?.message ?? "Opombe ni bilo mogoče odstraniti.");
+      showToast(res.error?.message ?? "Opombe ni bilo mogoče odstraniti.");
     }
   };
 
@@ -504,7 +517,7 @@ export function WorkerDetailModal({
       return;
     }
     if (!customer) {
-      alert(t("customerNotesSaveCustomerRequired"));
+      showToast(t("customerNotesSaveCustomerRequired"));
       return;
     }
 
@@ -535,7 +548,7 @@ export function WorkerDetailModal({
       return;
     }
 
-    alert(res.error?.message ?? "Opombe ni bilo mogoče shraniti.");
+    showToast(res.error?.message ?? "Opombe ni bilo mogoče shraniti.");
   };
 
   const sensors = useSensors(
@@ -547,6 +560,10 @@ export function WorkerDetailModal({
   const handleTaskDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
+    if (!jobReady || tasks.some((t) => isOptimisticId(t.id))) {
+      showToast("Počakajte, kartica se še shranjuje…");
+      return;
+    }
     const oldIndex = tasks.findIndex((t) => t.id === active.id);
     const newIndex = tasks.findIndex((t) => t.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
@@ -562,11 +579,13 @@ export function WorkerDetailModal({
     if (results.some((r) => r.status !== 200)) {
       setTasks(previous);
       tasksDirtyRef.current = false;
-      alert("Vrstnega reda ni bilo mogoče shraniti.");
+      showToast("Vrstnega reda ni bilo mogoče shraniti.");
       return;
     }
-    onRefresh?.();
+    // Sync parent board order first so refresh cannot snap back to create-time order.
+    onChecklistReorder?.(reordered.map((t) => t.id));
     tasksDirtyRef.current = false;
+    void onRefresh?.();
   };
 
   const resetAddStep = () => {
@@ -584,11 +603,13 @@ export function WorkerDetailModal({
       setTasks((prev) =>
         prev.map((t) =>
           t.id === task.id
-            ? { ...t, completed: true, time: nowTime() }
+            ? { ...t, completed: true, time: nowTime(), attachment: t.attachment || !!t.requiresAttachment }
             : t
         )
       );
       onRefresh?.();
+    } else {
+      showToast(res.error?.message ?? t("modalConfirmStepMissingTitle"));
     }
   };
 
@@ -631,11 +652,25 @@ export function WorkerDetailModal({
     if (checklistItemId) formData.append("checklist_item_id", checklistItemId);
     const res = await api.post<{ files: unknown[] }>(`/api/jobs/${jobId}/files`, formData);
     if (res.status === 201) {
+      if (checklistItemId) {
+        setTasks((prev) =>
+          prev.map((t) => (t.id === checklistItemId ? { ...t, attachment: true } : t))
+        );
+      }
       await refreshFilesAndTimeline();
       scheduleOcrRefresh();
+      onRefresh?.();
+      showToast(t("modalAttachSuccess"));
       return true;
     }
+    showToast(res.error?.message ?? t("modalAttachFailed"));
     return false;
+  };
+
+  const openAttachDialog = (stepId?: string | null) => {
+    setAttachForStepId(stepId ?? null);
+    setAttachOnlyFile(null);
+    setAttachOnlyOpen(true);
   };
 
   const handleHideAttachment = async (fileId: string) => {
@@ -650,136 +685,66 @@ export function WorkerDetailModal({
       setPreviewAttachment(null);
       void queryClient.invalidateQueries({ queryKey: queryKeys.job.timeline(jobId ?? "none") });
     } else {
-      alert(res.error?.message ?? "Priponke ni bilo mogoče skriti.");
+      showToast(res.error?.message ?? "Priponke ni bilo mogoče skriti.");
     }
   };
 
-  if (!worker) return null;
-
-  const workerTelHref = toTelHref(worker.phone);
-
-  const renderStatusSection = () => {
-    if (!jobStatus || !onChangeJobStatus) return null;
-    const isTerminal = jobStatus === "completed" || jobStatus === "cancelled";
+  if (!worker) {
+    // Keep the Dialog mounted while open so a brief job-id swap (optimistic → real)
+    // cannot unmount it and fire onOpenChange(false).
+    if (!isOpen) return null;
     return (
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <span
-            style={{
-              fontFamily: "'PT Sans', sans-serif",
-              fontWeight: 700,
-              fontSize: "12px",
-              color: "#5A5A65",
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-            }}
-          >
-            STATUS:
-          </span>
-          <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${STATUS_BADGE_CLASSES[jobStatus]}`}>
-            {t(STATUS_LABEL_KEY[jobStatus])}
-          </span>
-        </div>
-        {/* {!isTerminal && (
-          <div className="flex flex-wrap gap-2">
-            {jobStatus === "pending" && (
-              <button
-                onClick={() => onChangeJobStatus("in_progress")}
-                className="text-xs font-semibold px-3 py-2 rounded-xl bg-[#1B3A6B] text-white hover:bg-[#142c52] transition-colors cursor-pointer"
-              >
-                {t("jobActionStart")}
-              </button>
-            )}
-            {jobStatus === "in_progress" && (
-              <>
-                <button
-                  onClick={() => onChangeJobStatus("waiting")}
-                  className="text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
-                >
-                  {t("jobActionWait")}
-                </button>
-                <button
-                  onClick={requestComplete}
-                  className="text-xs font-semibold px-3 py-2 rounded-xl bg-[#1B3A6B] text-white hover:bg-[#142c52] transition-colors cursor-pointer"
-                >
-                  {t("jobActionComplete")}
-                </button>
-              </>
-            )}
-            {jobStatus === "waiting" && (
-              <>
-                <button
-                  onClick={() => onChangeJobStatus("in_progress")}
-                  className="text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
-                >
-                  {t("jobActionResume")}
-                </button>
-                <button
-                  onClick={requestComplete}
-                  className="text-xs font-semibold px-3 py-2 rounded-xl bg-[#1B3A6B] text-white hover:bg-[#142c52] transition-colors cursor-pointer"
-                >
-                  {t("jobActionComplete")}
-                </button>
-              </>
-            )}
-            {canCancelJob && (
-              <button
-                onClick={() => onChangeJobStatus("cancelled")}
-                className="text-xs font-semibold px-3 py-2 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
-              >
-                {t("jobActionCancel")}
-              </button>
-            )}
-          </div>
-        )} */}
-        {jobStatus === "completed" && (
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => openSaveNoteDialog(false)}
-              className="text-xs font-semibold px-3 py-2 rounded-xl border border-amber-200 text-amber-800 bg-amber-50 hover:bg-amber-100 transition-colors cursor-pointer"
-            >
-              {t("customerNotesSaveBtn")}
-            </button>
-          </div>
-        )}
-      </div>
+      <Dialog open={isOpen} onOpenChange={onOpenChange}>
+        <DialogContent
+          showCloseButton={false}
+          style={{
+            background: "rgba(241, 245, 249, 1)",
+            border: "2px solid rgba(243, 242, 241, 0.2)",
+            boxShadow: "0px 6px 15px rgba(0, 0, 0, 0.15)",
+            borderRadius: "32px",
+            padding: "24px",
+            maxWidth: "375px",
+            width: "90%",
+          }}
+          className="outline-none"
+        >
+          <p className="text-sm text-slate-400 text-center py-8">{t("officeLoading")}</p>
+        </DialogContent>
+      </Dialog>
     );
-  };
+  }
 
   const firstIncompleteId = tasks.find((t) => !t.completed)?.id ?? null;
 
   const renderContentBody = () => (
     <div className="flex flex-col gap-[48px] text-[#1E293B]">
-      {/* One-tap call to the worker (phone from Dodaj zaposlenega / team profile). */}
-      <div className="flex flex-col gap-2">
-        <span
-          style={{
-            fontFamily: "'PT Sans', sans-serif",
-            fontWeight: 700,
-            fontSize: "12px",
-            color: "#5A5A65",
-            textTransform: "uppercase",
-            letterSpacing: "0.5px",
-          }}
-        >
-          {t("workerCallWorker")}
-        </span>
-        {workerTelHref ? (
-          <a
-            href={workerTelHref}
-            className="inline-flex items-center justify-center gap-2 h-11 rounded-xl bg-[#1B3A6B] text-white text-xs font-semibold no-underline hover:bg-[#142c52] transition-colors"
-          >
-            <svg width="16" height="16" viewBox="0 0 20 18" fill="currentColor" aria-hidden>
-              <path d="M7.22477 1.25722C6.8873 0.497902 6.0702 0 5.16154 0H2.10521C0.942534 0 0 0.848098 0 1.89453C0 10.7892 8.01177 18 17.8945 18C19.0572 18 19.9995 17.1516 19.9995 16.1052L20 13.354C20 12.5362 19.4469 11.8009 18.6033 11.4971L15.674 10.4429C14.9161 10.1701 14.0533 10.2929 13.4263 10.7632L12.6702 11.3307C11.7873 11.9929 10.4882 11.9402 9.67552 11.2088L7.54672 9.29106C6.73403 8.55963 6.67398 7.39134 7.40975 6.59669L8.04016 5.9163C8.56268 5.35196 8.70032 4.57516 8.39719 3.89309L7.22477 1.25722Z" />
-            </svg>
-            {worker.phone}
-          </a>
-        ) : (
-          <p className="text-xs text-slate-400">{t("workerNoWorkerPhone")}</p>
-        )}
-      </div>
+      {/* Soft-delete only — no call/status in Details (Mark a8/a9). */}
+      {(onDeleteCard || jobStatus === "completed") && (
+        <div className="flex items-center justify-end gap-3">
+          {jobStatus === "completed" && (
+            <button
+              type="button"
+              onClick={() => openSaveNoteDialog(false)}
+              className="text-xs text-amber-700/80 hover:text-amber-800 bg-transparent border-none p-0 outline-none cursor-pointer"
+            >
+              {t("customerNotesSaveBtn")}
+            </button>
+          )}
+          {onDeleteCard && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeleteCardOpen(true);
+              }}
+              className="text-xs text-slate-400 hover:text-slate-500 bg-transparent border-none p-0 outline-none cursor-pointer"
+            >
+              {t("modalDeleteCard")}
+            </button>
+          )}
+        </div>
+      )}
 
-      {renderStatusSection()}
       {/* Section: OPOMBE */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
@@ -870,18 +835,6 @@ export function WorkerDetailModal({
             {t("modalSectionTasks")}
           </span>
           <div className="flex items-center gap-2">
-            {onDeleteCard && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDeleteCardOpen(true);
-                }}
-                className="text-[11px] font-semibold uppercase tracking-wide text-red-600 hover:text-red-700 bg-transparent border-none p-0 outline-none cursor-pointer"
-              >
-                {t("modalDeleteCard")}
-              </button>
-            )}
           {/* Plus action icon to add a new step */}
           <button
             onClick={(e) => {
@@ -917,11 +870,14 @@ export function WorkerDetailModal({
                   }}
                   onOpenAttachment={() => {
                     const att = attachments.find((a) => a.checklistItemId === task.id);
-                    if (att) setPreviewAttachment(att);
+                    if (att) {
+                      setPreviewAttachment(att);
+                      return;
+                    }
+                    openAttachDialog(task.id);
                   }}
                   onDelete={() => setDeleteStepId(task.id)}
                   deleteLabel={t("modalDeleteStep")}
-                  onAttachmentClick={() => setAttachOnlyOpen(true)}
                 />
               ))}
             </div>
@@ -946,7 +902,12 @@ export function WorkerDetailModal({
           </span>
           {/* Plus action icon to add attachment only */}
           <button
-            onClick={() => setAttachOnlyOpen(true)}
+            onClick={() => {
+              const needy = tasks.find(
+                (t) => !t.completed && t.requiresAttachment && !t.attachment
+              );
+              openAttachDialog(needy?.id ?? null);
+            }}
             className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
           >
             <svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -962,7 +923,18 @@ export function WorkerDetailModal({
             </span>
           )}
           {attachments.map((att) => {
-            const typeLabel = documentTypeLabel(att.documentType, t);
+            const { title, showFileNameSub } = attachmentDisplayTitle(
+              {
+                fileName: att.name,
+                attachmentType: att.attachmentType,
+                documentType: att.documentType,
+              },
+              t
+            );
+            const showPreview =
+              !!att.documentPreview &&
+              !!att.documentType &&
+              att.documentType !== "other";
             return (
               <button
                 key={att.id}
@@ -979,12 +951,12 @@ export function WorkerDetailModal({
                     }}
                     className="group-hover:text-[#1B3A6B] transition-colors"
                   >
-                    {typeLabel ? `📄 ${typeLabel}` : att.name}
+                    {title}
                   </span>
-                  {typeLabel && (
+                  {showFileNameSub && (
                     <span className="text-[11px] text-slate-400 truncate">{att.name}</span>
                   )}
-                  {att.documentPreview && (
+                  {showPreview && (
                     <span className="text-[11px] text-slate-500 line-clamp-2 whitespace-pre-line">
                       {att.documentPreview}
                     </span>
@@ -1065,6 +1037,11 @@ export function WorkerDetailModal({
 
   return (
     <>
+      {toastMessage && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] bg-slate-900/90 text-white text-[11px] font-semibold py-2 px-4 rounded-full shadow-lg animate-in fade-in duration-200">
+          {toastMessage}
+        </div>
+      )}
       <style>{`
         .custom-ios-scrollbar::-webkit-scrollbar {
           width: 5px;
@@ -1220,7 +1197,10 @@ export function WorkerDetailModal({
       {/* ── Sub-Dialog: Attach only (Priponke) ── */}
       <Dialog open={attachOnlyOpen} onOpenChange={(open) => {
         setAttachOnlyOpen(open);
-        if (!open) setAttachOnlyFile(null);
+        if (!open) {
+          setAttachOnlyFile(null);
+          setAttachForStepId(null);
+        }
       }}>
         <DialogContent
           style={{
@@ -1238,11 +1218,15 @@ export function WorkerDetailModal({
               e.preventDefault();
               if (!attachOnlyFile) return;
               setAttachOnlyUploading(true);
-              const success = await uploadJobFile(attachOnlyFile);
+              const success = await uploadJobFile(
+                attachOnlyFile,
+                attachForStepId ?? undefined
+              );
               setAttachOnlyUploading(false);
               if (success) {
                 setAttachOnlyOpen(false);
                 setAttachOnlyFile(null);
+                setAttachForStepId(null);
               }
             }}
             className={auraCard}
@@ -1301,7 +1285,16 @@ export function WorkerDetailModal({
           {(() => {
             const task = tasks.find(t => t.id === confirmStepId);
             if (!task) return null;
-            const missingAttachment = task.requiresAttachment && !task.attachment;
+            const hasLinked =
+              !!task.attachment ||
+              attachments.some((a) => a.checklistItemId === task.id);
+            const orphan = attachments.find((a) => !a.checklistItemId);
+            const hasOrphan = !!orphan;
+            const missingAttachment =
+              !!task.requiresAttachment && !hasLinked && !hasOrphan;
+            const stepAttachment =
+              attachments.find((a) => a.checklistItemId === task.id) ??
+              (hasOrphan && task.requiresAttachment ? orphan : undefined);
             return (
               <div className={auraCard}>
                 <div className="flex flex-col gap-4 text-slate-800">
@@ -1312,10 +1305,27 @@ export function WorkerDetailModal({
                       </h3>
                     ) : (
                       <h3 className="text-xl font-semibold tracking-tight text-slate-900">
-                        {t("modalConfirmStepPrefix")} {t("modalConfirmStepSuffix")}
+                        {t("modalConfirmStepTitle")}
                       </h3>
                     )}
                   </div>
+
+                  <p className="text-sm text-slate-600 text-center">
+                    <strong>{task.text}</strong>
+                  </p>
+
+                  {!missingAttachment && stepAttachment && (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewAttachment(stepAttachment)}
+                      className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left hover:bg-slate-100 transition-colors cursor-pointer"
+                    >
+                      <Paperclip className="w-4 h-4 text-slate-400 shrink-0" />
+                      <span className="text-xs text-[#1B3A6B] font-medium truncate">
+                        {stepAttachment.name}
+                      </span>
+                    </button>
+                  )}
 
                   {missingAttachment && (
                     <div className="flex flex-col gap-3">
@@ -1334,7 +1344,7 @@ export function WorkerDetailModal({
                     </div>
                   )}
 
-                  <div className="flex justify-center">
+                  <div className="flex justify-center gap-2">
                     {missingAttachment ? (
                       <button
                         type="button"
@@ -1345,7 +1355,6 @@ export function WorkerDetailModal({
                           const success = await uploadJobFile(confirmStepFile, task.id);
                           setConfirmUploading(false);
                           if (success) {
-                            setTasks(prev => prev.map(t => t.id === task.id ? { ...t, attachment: true } : t));
                             setConfirmStepFile(null);
                           }
                         }}
@@ -1354,16 +1363,25 @@ export function WorkerDetailModal({
                         {confirmUploading ? t("modalUploading") : t("modalAdd")}
                       </button>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          await handleToggleComplete(task);
-                          setConfirmStepId(null);
-                        }}
-                        className="w-[160px] h-10 rounded-xl bg-[#1B3A6B] hover:bg-[#142c52] text-white text-xs font-semibold uppercase transition-colors"
-                      >
-                        {t("modalConfirmStepSubmit")}
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmStepId(null)}
+                          className="flex-1 h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500"
+                        >
+                          {t("modalCancel")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await handleToggleComplete(task);
+                            setConfirmStepId(null);
+                          }}
+                          className="flex-1 h-10 rounded-xl bg-[#1B3A6B] hover:bg-[#142c52] text-white text-xs font-semibold uppercase transition-colors"
+                        >
+                          {t("modalConfirmStepSubmit")}
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -1518,13 +1536,18 @@ export function WorkerDetailModal({
                     </div>
                   )}
                   {(() => {
-                    const typeLabel = documentTypeLabel(previewAttachment.documentType, t);
+                    const { title, showFileNameSub } = attachmentDisplayTitle(
+                      {
+                        fileName: previewAttachment.name,
+                        attachmentType: previewAttachment.attachmentType,
+                        documentType: previewAttachment.documentType,
+                      },
+                      t
+                    );
                     return (
                       <>
-                        <p className="text-sm font-medium text-slate-800">
-                          {typeLabel ? `📄 ${typeLabel}` : previewAttachment.name}
-                        </p>
-                        {typeLabel && (
+                        <p className="text-sm font-medium text-slate-800">{title}</p>
+                        {showFileNameSub && (
                           <p className="text-xs text-slate-500">{previewAttachment.name}</p>
                         )}
                       </>
@@ -1533,7 +1556,9 @@ export function WorkerDetailModal({
                   <p className="text-xs text-slate-500">{t("modalPreviewAddedAtPrefix")} {previewAttachment.time} · {previewAttachment.date}</p>
                 </div>
 
-                {previewAttachment.documentPreview && (
+                {previewAttachment.documentPreview &&
+                  previewAttachment.documentType &&
+                  previewAttachment.documentType !== "other" && (
                   <div className="flex flex-col gap-1.5">
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                       {t("modalDocumentPreviewLabel")}
@@ -1546,6 +1571,9 @@ export function WorkerDetailModal({
                   </div>
                 )}
 
+                {/* Only show OCR dump for real classified documents — not photo noise. */}
+                {previewAttachment.documentType &&
+                  previewAttachment.documentType !== "other" && (
                 <div className="flex flex-col gap-1.5">
                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                     {t("modalOcrTextLabel")}
@@ -1556,6 +1584,7 @@ export function WorkerDetailModal({
                     </p>
                   </div>
                 </div>
+                )}
 
                 <div className="flex gap-2">
                   <button

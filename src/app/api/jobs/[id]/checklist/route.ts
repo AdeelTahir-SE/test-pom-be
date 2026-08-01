@@ -1,91 +1,119 @@
-import { z } from "zod";
 import { withAuth } from "@/lib/http/handler";
-import { created, ok, ApiError } from "@/lib/http/responses";
+import { ok, ApiError } from "@/lib/http/responses";
 import { getAdminClient } from "@/lib/supabase/admin";
-import { parseJsonBody } from "@/lib/validation/schemas";
-import { loadJobWithAccess } from "@/lib/services/jobAccess";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/jobs/[id]/checklist — default order order_index ASC (Appendix A §7).
-export const GET = withAuth<{ id: string }>(async (_request, auth, { params }) => {
-  const db = getAdminClient();
-  await loadJobWithAccess(db, auth, params.id);
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-  const { data, error } = await db
+const MAX_JOB_IDS = 100;
+
+function parseJobIds(raw: string | null): string[] {
+  if (!raw?.trim()) return [];
+  const unique = new Set<string>();
+  for (const part of raw.split(",")) {
+    const id = part.trim();
+    if (UUID_RE.test(id)) unique.add(id);
+  }
+  return [...unique];
+}
+
+// GET /api/jobs/checklists?ids=uuid,uuid,... — bulk checklist fetch for the
+// office board (one round-trip instead of N × /api/jobs/[id]/checklist).
+export const GET = withAuth(async (request, auth) => {
+  const db = getAdminClient();
+  const requestedIds = parseJobIds(new URL(request.url).searchParams.get("ids"));
+
+  if (requestedIds.length === 0) {
+    return ok({ checklistsByJob: {} as Record<string, unknown[]> });
+  }
+  if (requestedIds.length > MAX_JOB_IDS) {
+    throw new ApiError("bad_request", `At most ${MAX_JOB_IDS} job ids per request.`);
+  }
+
+  let allowedJobIds: string[];
+
+  if (auth.role === "worker") {
+    const { data: companyJobs, error: companyJobsError } = await db
+      .from("jobs")
+      .select("id")
+      .eq("company_id", auth.companyId)
+      .in("id", requestedIds);
+    if (companyJobsError) {
+      throw new ApiError("internal", "Failed to load jobs.", companyJobsError.message);
+    }
+    const companyJobIds = (companyJobs ?? []).map((j) => j.id);
+    if (companyJobIds.length === 0) {
+      return ok({ checklistsByJob: {} });
+    }
+
+    const { data: assignments, error: assignError } = await db
+      .from("job_assignments")
+      .select("job_id")
+      .eq("worker_id", auth.userId)
+      .in("job_id", companyJobIds);
+    if (assignError) {
+      throw new ApiError("internal", "Failed to load assignments.", assignError.message);
+    }
+    allowedJobIds = (assignments ?? []).map((a) => a.job_id);
+  } else {
+    const { data: jobs, error: jobsError } = await db
+      .from("jobs")
+      .select("id")
+      .eq("company_id", auth.companyId)
+      .in("id", requestedIds);
+    if (jobsError) {
+      throw new ApiError("internal", "Failed to load jobs.", jobsError.message);
+    }
+    allowedJobIds = (jobs ?? []).map((j) => j.id);
+  }
+
+  if (allowedJobIds.length === 0) {
+    return ok({ checklistsByJob: {} });
+  }
+
+  const { data: items, error: itemsError } = await db
     .from("job_checklist_items")
     .select("*")
-    .eq("job_id", params.id)
+    .in("job_id", allowedJobIds)
+    .order("job_id", { ascending: true })
     .order("order_index", { ascending: true });
-  if (error) throw new ApiError("internal", "Failed to load checklist.", error.message);
+  if (itemsError) {
+    throw new ApiError("internal", "Failed to load checklists.", itemsError.message);
+  }
 
-  const { data: files, error: filesError } = await db
+  const { data: fileRows, error: filesError } = await db
     .from("job_files")
-    .select("checklist_item_id")
-    .eq("job_id", params.id)
-    .is("hidden_at", null)
-    .not("checklist_item_id", "is", null);
-  if (filesError) throw new ApiError("internal", "Failed to load checklist attachments.", filesError.message);
+    .select("job_id, checklist_item_id")
+    .in("job_id", allowedJobIds)
+    .is("hidden_at", null);
+  if (filesError) {
+    throw new ApiError("internal", "Failed to load checklist attachments.", filesError.message);
+  }
 
-  const itemsWithAttachment = new Set((files ?? []).map((f) => f.checklist_item_id));
-  const checklist = (data ?? []).map((item) => ({
-    ...item,
-    has_attachment: itemsWithAttachment.has(item.id),
-  }));
+  const attachmentByJobItem = new Set<string>();
 
-  return ok({ checklist });
+  for (const f of fileRows ?? []) {
+    if (f.checklist_item_id) {
+      attachmentByJobItem.add(`${f.job_id}:${f.checklist_item_id}`);
+    }
+  }
+
+  const checklistsByJob: Record<string, Array<Record<string, unknown>>> = {};
+  for (const jobId of allowedJobIds) {
+    checklistsByJob[jobId] = [];
+  }
+
+  for (const item of items ?? []) {
+    const jobId = item.job_id as string;
+    if (!checklistsByJob[jobId]) checklistsByJob[jobId] = [];
+    const hasAttachment = attachmentByJobItem.has(`${jobId}:${item.id}`);
+    checklistsByJob[jobId].push({
+      ...item,
+      has_attachment: hasAttachment,
+    });
+  }
+
+  return ok({ checklistsByJob });
 });
-
-const createChecklistItemSchema = z.object({
-  label: z.string().trim().min(1, "Label is required."),
-  order_index: z.number().int().min(0).optional(),
-  requires_attachment: z.boolean().optional(),
-});
-
-// POST /api/jobs/[id]/checklist — owner/manager add today's checklist items
-// (Jobs Engine §13; Dashboard Card Creation "office may add checklist items").
-// Checklist is static data — no workflow engine, no item dependencies (§13).
-export const POST = withAuth<{ id: string }>(
-  async (request, auth, { params }) => {
-    const input = await parseJsonBody(request, createChecklistItemSchema);
-    const db = getAdminClient();
-    const { job } = await loadJobWithAccess(db, auth, params.id);
-
-    if (job.status === "completed") {
-      throw new ApiError(
-        "conflict",
-        "This job is completed and its checklist cannot be modified."
-      );
-    }
-
-    let orderIndex = input.order_index;
-    if (orderIndex === undefined) {
-      const { data: last } = await db
-        .from("job_checklist_items")
-        .select("order_index")
-        .eq("job_id", params.id)
-        .order("order_index", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      orderIndex = (last?.order_index ?? -1) + 1;
-    }
-
-    const { data: item, error } = await db
-      .from("job_checklist_items")
-      .insert({
-        company_id: auth.companyId,
-        job_id: params.id,
-        label: input.label,
-        order_index: orderIndex,
-        requires_attachment: input.requires_attachment ?? false,
-      })
-      .select()
-      .single();
-    if (error || !item) {
-      throw new ApiError("internal", "Failed to add checklist item.", error?.message);
-    }
-
-    return created({ item });
-  },
-  { roles: ["owner", "manager"] }
-);

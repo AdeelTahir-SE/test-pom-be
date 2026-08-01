@@ -255,12 +255,22 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
         if (!text) return;
 
         const enrichment = enrichDocumentFromOcr(text, record.file_name);
+        const isImage = record.attachment_type === "image";
+        // Photos often OCR into noise → "Dokument". Only publish typed docs
+        // (invoice/contract/…) or any PDF enrichment. Images with type "other"
+        // keep ocr_text only — no fake label, no second timeline row (Mark a9).
+        const publishClassification = !isImage || enrichment.document_type !== "other";
+
         const { data: updated, error: updateError } = await db
           .from("job_files")
           .update({
             ocr_text: text,
-            document_type: enrichment.document_type,
-            document_preview: enrichment.document_preview,
+            ...(publishClassification
+              ? {
+                  document_type: enrichment.document_type,
+                  document_preview: enrichment.document_preview,
+                }
+              : {}),
           })
           .eq("id", record.id)
           .select()
@@ -269,6 +279,8 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
           console.error("[ocr_update_failed]", record.id, updateError?.message);
           return;
         }
+
+        if (!publishClassification) return;
 
         await createTimelineEvent(db, {
           companyId,

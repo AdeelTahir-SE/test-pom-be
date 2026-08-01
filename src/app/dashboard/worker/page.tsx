@@ -194,21 +194,19 @@ export default function WorkerDashboard() {
     if (!item || item.is_completed) return;
     const ordered = [...checklist].sort((a, b) => a.order_index - b.order_index);
     const next = ordered.find((c) => !c.is_completed);
-    if (!next || next.id !== item.id) {
-      showToast(t("modalConfirmStepMissingTitle"));
-      return;
-    }
-    if (item.requires_attachment && !item.has_attachment) {
-      showToast(t("modalConfirmStepMissingTitle"));
-      return;
-    }
+    if (!next || next.id !== item.id) return;
+    // Attachment presence is enforced server-side (linked file, or auto-claim orphan).
     try {
-      const res = await api.patch<{ item: ApiChecklistItem }>(`/api/checklist-items/${id}`, { is_completed: true });
+      const res = await api.patch<{ item: ApiChecklistItem }>(`/api/checklist-items/${id}`, {
+        is_completed: true,
+      });
       if (res.status === 200 && res.data) {
-        setChecklist((prev) => prev.map((c) => (c.id === id ? res.data!.item : c)));
+        setChecklist((prev) =>
+          prev.map((c) => (c.id === id ? { ...res.data!.item, has_attachment: true } : c))
+        );
         showToast(t("workerTaskUpdated"));
       } else {
-        showToast(res.error?.message || t("workerTaskUpdateFailed"));
+        showToast(res.error?.message ?? t("workerTaskUpdateFailed"));
       }
     } catch (err) {
       console.error(err);

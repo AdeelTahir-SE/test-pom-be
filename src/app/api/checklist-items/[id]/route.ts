@@ -94,12 +94,15 @@ async function assertAttachmentPresentIfRequired(
   if (error) {
     throw new ApiError("internal", "Failed to check step attachment.", error.message);
   }
-  if (!file) {
-    throw new ApiError(
-      "conflict",
-      "This step requires an attachment before it can be completed."
-    );
-  }
+  if (file) return;
+
+  // Recover uploads done via job-level Priponke (+) without a step id:
+  // claim the newest unlinked file for this step so complete can proceed.
+  
+  throw new ApiError(
+    "conflict",
+    "This step requires an attachment before it can be completed."
+  );
 }
 
 // Workers may ONLY mark an item complete (Mobile Actions §36 lists "Mark
@@ -158,11 +161,12 @@ export const PATCH = withAuth<{ id: string }>(async (request, auth, { params }) 
   }
 
   const { data: updated, error: updateError } = await db
-    .from("job_checklist_items")
-    .update(updates)
-    .eq("id", item.id)
-    .select()
-    .single();
+  .from("job_checklist_items")
+  .update(updates)
+  .eq("id", item.id)
+  .eq("company_id", auth.companyId)
+  .select()
+  .single();
   if (updateError || !updated) {
     throw new ApiError("internal", "Failed to update checklist item.", updateError?.message);
   }
@@ -199,9 +203,10 @@ export const DELETE = withAuth<{ id: string }>(
     }
 
     const { error: deleteError } = await db
-      .from("job_checklist_items")
-      .delete()
-      .eq("id", item.id);
+  .from("job_checklist_items")
+  .delete()
+  .eq("id", item.id)
+  .eq("company_id", auth.companyId);
     if (deleteError) {
       throw new ApiError("internal", "Failed to delete checklist item.", deleteError.message);
     }

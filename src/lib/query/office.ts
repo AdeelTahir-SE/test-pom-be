@@ -154,6 +154,7 @@ export async function fetchJobFiles(jobId: string) {
         document_type: string | null;
         document_preview: string | null;
         checklist_item_id?: string | null;
+        attachment_type?: string | null;
       }>;
     }>(`/api/jobs/${jobId}/files`)
   );

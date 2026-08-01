@@ -31,7 +31,39 @@ export function documentTypeLabel(
   t: (key: TranslationKey) => string
 ): string | null {
   if (!isDocumentType(type)) return null;
+  if (type === "other") return null; // never show generic "Dokument" as a type badge
   return t(DOCUMENT_TYPE_LABEL_KEY[type]);
+}
+
+/** Priponke / preview title: real doc types, else Slika/PDF/filename — never fake "Dokument". */
+export function attachmentDisplayTitle(
+  input: {
+    fileName: string;
+    attachmentType?: string | null;
+    documentType?: string | null;
+  },
+  t: (key: TranslationKey) => string
+): { title: string; showFileNameSub: boolean } {
+  const typed = documentTypeLabel(input.documentType, t);
+  if (typed) {
+    return { title: `📄 ${typed}`, showFileNameSub: true };
+  }
+  if (input.attachmentType === "image") {
+    return { title: t("documentTypeImage"), showFileNameSub: true };
+  }
+  if (input.attachmentType === "pdf") {
+    return { title: t("documentTypePdf"), showFileNameSub: true };
+  }
+  return { title: input.fileName, showFileNameSub: false };
+}
+
+/** Hide weak OCR timeline rows that Mark saw as duplicate "Dokument" for photos. */
+export function shouldShowTimelineEvent(e: TimelineEventLike): boolean {
+  if (e.event_type !== "ocr_completed") return true;
+  const meta = e.metadata ?? {};
+  const docType = meta.document_type;
+  if (!docType || docType === "other") return false;
+  return isDocumentType(docType);
 }
 
 function snippet(text: unknown, max = 40): string | null {

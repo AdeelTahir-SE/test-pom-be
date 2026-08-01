@@ -157,19 +157,24 @@ function TaskRow({
     );
   }
 
+  // Toggle and attachment must be sibling controls — nested <button> is invalid HTML
+  // and causes React hydration errors.
   return (
-    <button
-      onClick={(e) => {
-        e.stopPropagation();
-        onToggle();
-      }}
-      className="flex items-center gap-[6px] w-full text-left cursor-pointer bg-transparent border-none p-0 outline-none"
-      style={{ background: "transparent", border: "none", padding: 0 }}
-    >
-      {checkbox}
-      {text}
+    <div className="flex items-center gap-[6px] w-full text-left">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+        className="flex items-center gap-[6px] flex-1 min-w-0 text-left cursor-pointer bg-transparent border-none p-0 outline-none"
+        style={{ background: "transparent", border: "none", padding: 0 }}
+      >
+        {checkbox}
+        {text}
+      </button>
       <TaskRowTrailing task={task} onAttachmentClick={onAttachmentClick} />
-    </button>
+    </div>
   );
 }
 
