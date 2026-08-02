@@ -104,9 +104,13 @@ export function jobToWorkerCard(
   worker: ApiUser | undefined,
   t: Translate
 ): Worker {
+  // Completed steps stay frozen above incomplete (Mark: history consistency).
   const tasks: TaskItem[] = checklist
     .slice()
-    .sort((a, b) => a.order_index - b.order_index)
+    .sort((a, b) => {
+      if (a.is_completed !== b.is_completed) return a.is_completed ? -1 : 1;
+      return a.order_index - b.order_index;
+    })
     .map((item) => ({
       id: item.id,
       text: item.label,

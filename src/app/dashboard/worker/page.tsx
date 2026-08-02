@@ -195,7 +195,7 @@ export default function WorkerDashboard() {
     const ordered = [...checklist].sort((a, b) => a.order_index - b.order_index);
     const next = ordered.find((c) => !c.is_completed);
     if (!next || next.id !== item.id) return;
-    // Attachment presence is enforced server-side (linked file, or auto-claim orphan).
+    // Attachment presence is enforced server-side (file linked to this step).
     try {
       const res = await api.patch<{ item: ApiChecklistItem }>(`/api/checklist-items/${id}`, {
         is_completed: true,

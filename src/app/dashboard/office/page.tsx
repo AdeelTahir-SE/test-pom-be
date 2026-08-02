@@ -405,12 +405,11 @@ export default function OfficeDashboard() {
         }>;
       }>(`/api/jobs/${item.job_id}/files`);
       if (filesRes.status === 200 && filesRes.data?.files?.length) {
+        // Only a file linked to this exact step counts (Mark: no orphans / guessing).
         const linked = filesRes.data.files.find((f) => f.checklist_item_id === item.id);
-        const orphan = filesRes.data.files.find((f) => !f.checklist_item_id);
-        const file = linked ?? orphan ?? null;
-        if (file) {
-          attachmentName = file.file_name;
-          attachmentUrl = file.signed_url;
+        if (linked) {
+          attachmentName = linked.file_name;
+          attachmentUrl = linked.signed_url;
           hasAttachment = true;
         }
       }
@@ -437,7 +436,7 @@ export default function OfficeDashboard() {
       .flat()
       .find((i) => i.id === pending.taskId);
     if (!item) return;
-    // Attachment presence is enforced server-side (linked file, or auto-claim orphan).
+    // Attachment presence is enforced server-side (file linked to this step).
 
     const patchLocal = (list: ApiChecklistItem[]) =>
       list.map((i) =>

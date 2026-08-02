@@ -96,9 +96,6 @@ async function assertAttachmentPresentIfRequired(
   }
   if (file) return;
 
-  // Recover uploads done via job-level Priponke (+) without a step id:
-  // claim the newest unlinked file for this step so complete can proceed.
-  
   throw new ApiError(
     "conflict",
     "This step requires an attachment before it can be completed."
@@ -140,6 +137,8 @@ export const PATCH = withAuth<{ id: string }>(async (request, auth, { params }) 
   const updates: Record<string, unknown> = {};
   if (!isWorker) {
     if ("label" in input && input.label !== undefined) updates.label = input.label;
+    // order_index may be rewritten when densifying after incomplete-only reorder;
+    // UI freezes completed steps so users cannot drag them under incomplete ones.
     if ("order_index" in input && input.order_index !== undefined) {
       updates.order_index = input.order_index;
     }

@@ -132,7 +132,7 @@ function SortableTaskItem({ task, onClick, onDelete, onOpenAttachment, deleteLab
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: task.id });
+  } = useSortable({ id: task.id, disabled: task.completed });
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -146,6 +146,9 @@ function SortableTaskItem({ task, onClick, onDelete, onOpenAttachment, deleteLab
       style={style}
       className="flex items-center gap-1 w-full group"
     >
+      {task.completed ? (
+        <span className="shrink-0 p-1 w-6" aria-hidden />
+      ) : (
       <button
         type="button"
         {...attributes}
@@ -156,6 +159,7 @@ function SortableTaskItem({ task, onClick, onDelete, onOpenAttachment, deleteLab
       >
         <GripVertical className="w-4 h-4" />
       </button>
+      )}
       <button
         type="button"
         onClick={onClick}
@@ -341,8 +345,8 @@ export function WorkerDetailModal({
     showToast(res.error?.message ?? "Opombe ni bilo mogoče shraniti.");
   };
 
-  const fromWorkerTasks = (workerTasks: Worker["tasks"]): TaskItem[] =>
-    workerTasks.map(t => ({
+  const fromWorkerTasks = (workerTasks: Worker["tasks"]): TaskItem[] => {
+    const mapped = workerTasks.map((t) => ({
       id: t.id,
       text: t.text,
       completed: t.completed,
@@ -350,6 +354,10 @@ export function WorkerDetailModal({
       attachment: t.hasAttachment || false,
       requiresAttachment: t.requiresAttachment || false,
     }));
+    const done = mapped.filter((t) => t.completed);
+    const todo = mapped.filter((t) => !t.completed);
+    return [...done, ...todo];
+  };
 
   // Core lists — seeded from the worker prop (already sourced from real
   // checklist data by the parent dashboard's mapper), then mutated directly
@@ -416,7 +424,7 @@ export function WorkerDetailModal({
     [timelineQuery.data, t, cardNumber]
   );
 
-  // Keep step clip state in sync with linked files (and orphans for requires_attachment).
+  // Step clip state follows files linked to that exact checklist item only.
   React.useEffect(() => {
     if (!filesQuery.data) return;
     setTasks((prev) => {
@@ -425,7 +433,7 @@ export function WorkerDetailModal({
         const linked = (filesQuery.data ?? []).some((f) => f.checklist_item_id === task.id);
         if (linked === task.attachment) return task;
         changed = true;
-        return { ...task, attachment: linked || task.attachment };
+        return { ...task, attachment: linked };
       });
       return changed ? next : prev;
     });
@@ -557,6 +565,7 @@ export function WorkerDetailModal({
   );
 
   // Persist checklist order via PATCH order_index (managers/owners).
+  // Completed steps stay frozen at the top; only incomplete steps may reorder.
   const handleTaskDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -564,11 +573,19 @@ export function WorkerDetailModal({
       showToast("Počakajte, kartica se še shranjuje…");
       return;
     }
-    const oldIndex = tasks.findIndex((t) => t.id === active.id);
-    const newIndex = tasks.findIndex((t) => t.id === over.id);
+    const activeTask = tasks.find((t) => t.id === active.id);
+    const overTask = tasks.find((t) => t.id === over.id);
+    if (!activeTask || !overTask || activeTask.completed || overTask.completed) return;
+
+    const completed = tasks.filter((t) => t.completed);
+    const incomplete = tasks.filter((t) => !t.completed);
+    const oldIndex = incomplete.findIndex((t) => t.id === active.id);
+    const newIndex = incomplete.findIndex((t) => t.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
+
     const previous = tasks;
-    const reordered = arrayMove(tasks, oldIndex, newIndex);
+    const reorderedIncomplete = arrayMove(incomplete, oldIndex, newIndex);
+    const reordered = [...completed, ...reorderedIncomplete];
     tasksDirtyRef.current = true;
     setTasks(reordered);
     const results = await Promise.all(
@@ -588,6 +605,8 @@ export function WorkerDetailModal({
     void onRefresh?.();
   };
 
+  const completedCount = tasks.filter((t) => t.completed).length;
+
   const resetAddStep = () => {
     setStepText("");
     setStepRequiresAttachment(false);
@@ -600,13 +619,16 @@ export function WorkerDetailModal({
       { is_completed: true }
     );
     if (res.status === 200 && res.data) {
-      setTasks((prev) =>
-        prev.map((t) =>
+      setTasks((prev) => {
+        const updated = prev.map((t) =>
           t.id === task.id
             ? { ...t, completed: true, time: nowTime(), attachment: t.attachment || !!t.requiresAttachment }
             : t
-        )
-      );
+        );
+        const done = updated.filter((t) => t.completed);
+        const todo = updated.filter((t) => !t.completed);
+        return [...done, ...todo];
+      });
       onRefresh?.();
     } else {
       showToast(res.error?.message ?? t("modalConfirmStepMissingTitle"));
@@ -624,9 +646,22 @@ export function WorkerDetailModal({
   const handleAddStep = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!stepText.trim() || !jobId) return;
+    if (!jobReady) {
+      showToast(t("modalAttachFailed"));
+      return;
+    }
+    // Never insert above completed steps (Mark: completed stay frozen on top).
+    const insertIndex = Math.min(
+      Math.max(stepPosition - 1, completedCount),
+      tasks.length
+    );
     const res = await api.post<{ item: { id: string; label: string; is_completed: boolean; requires_attachment: boolean } }>(
       `/api/jobs/${jobId}/checklist`,
-      { label: stepText, requires_attachment: stepRequiresAttachment }
+      {
+        label: stepText.trim(),
+        requires_attachment: stepRequiresAttachment,
+        order_index: insertIndex,
+      }
     );
     if (res.status === 201 && res.data) {
       const item = res.data.item;
@@ -637,11 +672,17 @@ export function WorkerDetailModal({
         attachment: false,
         requiresAttachment: item.requires_attachment,
       };
-      const insertIndex = Math.min(Math.max(stepPosition - 1, 0), tasks.length);
-      setTasks((prev) => [...prev.slice(0, insertIndex), newTask, ...prev.slice(insertIndex)]);
+      setTasks((prev) => {
+        const next = [...prev.slice(0, insertIndex), newTask, ...prev.slice(insertIndex)];
+        const done = next.filter((t) => t.completed);
+        const todo = next.filter((t) => !t.completed);
+        return [...done, ...todo];
+      });
       setAddStepOpen(false);
       resetAddStep();
       onRefresh?.();
+    } else {
+      showToast(res.error?.message ?? "Koraka ni bilo mogoče dodati.");
     }
   };
 
@@ -903,10 +944,8 @@ export function WorkerDetailModal({
           {/* Plus action icon to add attachment only */}
           <button
             onClick={() => {
-              const needy = tasks.find(
-                (t) => !t.completed && t.requiresAttachment && !t.attachment
-              );
-              openAttachDialog(needy?.id ?? null);
+              // Job-level Priponke only — never auto-link to a checklist step.
+              openAttachDialog(null);
             }}
             className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
           >
@@ -1160,10 +1199,13 @@ export function WorkerDetailModal({
                 <div>
                   <AuraLabel>{t("modalStepPosition")}</AuraLabel>
                   <AuraSelect
-                    value={stepPosition}
+                    value={Math.max(stepPosition, completedCount + 1)}
                     onChange={(e) => setStepPosition(Number(e.target.value))}
                   >
-                    {Array.from({ length: tasks.length + 1 }, (_, i) => i + 1).map((pos) => (
+                    {Array.from(
+                      { length: tasks.length - completedCount + 1 },
+                      (_, i) => completedCount + 1 + i
+                    ).map((pos) => (
                       <option key={pos} value={pos}>
                         {pos === tasks.length + 1
                           ? t("modalStepPositionEnd")
@@ -1288,13 +1330,11 @@ export function WorkerDetailModal({
             const hasLinked =
               !!task.attachment ||
               attachments.some((a) => a.checklistItemId === task.id);
-            const orphan = attachments.find((a) => !a.checklistItemId);
-            const hasOrphan = !!orphan;
-            const missingAttachment =
-              !!task.requiresAttachment && !hasLinked && !hasOrphan;
-            const stepAttachment =
-              attachments.find((a) => a.checklistItemId === task.id) ??
-              (hasOrphan && task.requiresAttachment ? orphan : undefined);
+            // Job-level Priponke files do not satisfy step attachment.
+            const missingAttachment = !!task.requiresAttachment && !hasLinked;
+            const stepAttachment = attachments.find(
+              (a) => a.checklistItemId === task.id
+            );
             return (
               <div className={auraCard}>
                 <div className="flex flex-col gap-4 text-slate-800">
@@ -1521,20 +1561,61 @@ export function WorkerDetailModal({
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  {previewAttachment.url ? (
-                    <a
-                      href={previewAttachment.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="aspect-video rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center hover:bg-slate-200 transition-colors"
-                    >
-                      <Paperclip className="w-10 h-10 text-slate-400" />
-                    </a>
-                  ) : (
-                    <div className="aspect-video rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center">
-                      <Paperclip className="w-10 h-10 text-slate-300" />
-                    </div>
-                  )}
+                  {(() => {
+                    const url = previewAttachment.url;
+                    const isImage =
+                      previewAttachment.attachmentType === "image" ||
+                      /\.(jpe?g|png|gif|webp|heic|bmp)$/i.test(previewAttachment.name);
+                    const isPdf =
+                      previewAttachment.attachmentType === "pdf" ||
+                      /\.pdf$/i.test(previewAttachment.name);
+                    if (url && isImage) {
+                      return (
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block aspect-video rounded-xl bg-slate-100 border border-slate-200 overflow-hidden"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={url}
+                            alt={previewAttachment.name}
+                            className="w-full h-full object-contain"
+                          />
+                        </a>
+                      );
+                    }
+                    if (url && isPdf) {
+                      return (
+                        <iframe
+                          src={url}
+                          title={previewAttachment.name}
+                          className="w-full aspect-video rounded-xl bg-slate-100 border border-slate-200"
+                        />
+                      );
+                    }
+                    if (url) {
+                      return (
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="aspect-video rounded-xl bg-slate-100 border border-slate-200 flex flex-col items-center justify-center gap-2 hover:bg-slate-200 transition-colors"
+                        >
+                          <Paperclip className="w-10 h-10 text-slate-400" />
+                          <span className="text-xs text-[#1B3A6B] font-medium">
+                            {previewAttachment.name}
+                          </span>
+                        </a>
+                      );
+                    }
+                    return (
+                      <div className="aspect-video rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center">
+                        <Paperclip className="w-10 h-10 text-slate-300" />
+                      </div>
+                    );
+                  })()}
                   {(() => {
                     const { title, showFileNameSub } = attachmentDisplayTitle(
                       {
