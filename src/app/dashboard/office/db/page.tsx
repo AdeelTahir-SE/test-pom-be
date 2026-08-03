@@ -1,12 +1,18 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Logo } from '@/components/Logo';
 import { useLanguage } from '@/lib/useLanguage';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { api } from '@/lib/api-client';
+import type { ApiJob, ApiOfficeReminder } from '@/lib/dashboardMappers';
+import { dbAttachmentCategory, type DbAttachmentCategory } from '@/lib/dbAttachmentCategory';
+import {
+  jobAttachmentErrorMessage,
+  validateJobAttachmentFile,
+} from '@/lib/uploadValidation';
 import {
   Columns3,
   Folder,
@@ -14,13 +20,13 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
-  Paperclip,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AddTaskModal } from '@/components/dashboard/AddTaskModal';
 import { TeamManagementModal } from '@/components/dashboard/TeamManagementModal';
 import { AddWorkerCard } from '@/components/dashboard/AddWorkerCard';
 import { AuraPhoneInput } from '@/components/dashboard/PhoneInput';
+import { AuraFileInput } from '@/components/dashboard/AuraForm';
 
 interface TeamUser {
   id: string;
@@ -30,6 +36,63 @@ interface TeamUser {
   phone: string | null;
   is_active: boolean;
   created_at: string;
+}
+
+interface DbJobRow {
+  id: string;
+  date: string;
+  customer: string;
+  project: string;
+  notes: string;
+}
+
+interface DbCustomerRow {
+  id: string;
+  date: string;
+  name: string;
+  project: string;
+  notes: string;
+}
+
+interface DbAttachmentRow {
+  id: string;
+  jobId: string;
+  date: string;
+  project: string;
+  name: string;
+  aiDetails: string;
+  category: DbAttachmentCategory;
+  signedUrl: string | null;
+}
+
+interface DbOfficeNoteRow {
+  id: string;
+  date: string;
+  who: string;
+  project: string;
+  content: string;
+  time: string;
+}
+
+interface ApiFileRow {
+  id: string;
+  job_id: string;
+  job_title: string | null;
+  file_name: string;
+  attachment_type: string;
+  document_type: string | null;
+  document_preview: string | null;
+  created_at: string;
+  signed_url: string | null;
+}
+
+interface ApiCustomerRow {
+  id: string;
+  name: string;
+  created_at: string;
+  latest_note: string | null;
+  jobs: { id: string; title: string }[];
+  job_count: number;
 }
 
 export default function DatabaseDashboard() {
@@ -47,20 +110,39 @@ export default function DatabaseDashboard() {
   // Live Staff Data
   const [staffList, setStaffList] = useState<TeamUser[]>([]);
   const [staffLoading, setStaffLoading] = useState(true);
+  const [jobsList, setJobsList] = useState<DbJobRow[]>([]);
+  const [jobsLoading, setJobsLoading] = useState(false);
+  const [customersList, setCustomersList] = useState<DbCustomerRow[]>([]);
+  const [customersLoading, setCustomersLoading] = useState(false);
+  const [attachmentsList, setAttachmentsList] = useState<DbAttachmentRow[]>([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [officeNotes, setOfficeNotes] = useState<DbOfficeNoteRow[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [dataError, setDataError] = useState<string | null>(null);
 
   // Modals state
   const [isTeamOpen, setIsTeamOpen] = useState(false);
   const [isAddWorkerOpen, setIsAddWorkerOpen] = useState(false);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
+  const [isAddAttachmentOpen, setIsAddAttachmentOpen] = useState(false);
+  const [attachJobId, setAttachJobId] = useState('');
+  const [attachFile, setAttachFile] = useState<File | null>(null);
+  const [attachUploading, setAttachUploading] = useState(false);
 
   // Attachment Sub-Tabs: 0 = Vse, 1 = Računi, 2 = Dokumenti, 3 = Slike
   const [attachmentSubTab, setAttachmentSubTab] = useState(0);
 
-  // Search Queries state (for Zaposleni = 0, Pisarna = 4)
+  // Search Queries state (for Zaposleni = 0, Dela = 1, Stranke = 2, Pisarna = 4)
   const [searchQueries, setSearchQueries] = useState<Record<number, string>>({
     0: '',
+    1: '',
+    2: '',
     4: '',
   });
+  const [staffRoleFilter, setStaffRoleFilter] = useState<'all' | 'owner' | 'manager' | 'worker'>(
+    'all'
+  );
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
 
   // Pagination & Sorting State
   const [currentPage, setCurrentPage] = useState(1);
@@ -74,6 +156,19 @@ export default function DatabaseDashboard() {
 
   // Phone state for company profile
   const [companyPhone, setCompanyPhone] = useState(officeContact?.phone || user?.phone || '');
+  const [phoneSaving, setPhoneSaving] = useState(false);
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [billingBusy, setBillingBusy] = useState(false);
+  const phoneSyncedRef = useRef(false);
+
+  useEffect(() => {
+    if (phoneSyncedRef.current) return;
+    const next = officeContact?.phone || user?.phone || '';
+    if (next || officeContact || user) {
+      setCompanyPhone(next);
+      phoneSyncedRef.current = true;
+    }
+  }, [officeContact, user]);
 
   // Format Date helper to match DD.MM.YY (e.g. 24.07.26)
   const formatDate = (dateStr: string) => {
@@ -95,6 +190,13 @@ export default function DatabaseDashboard() {
     return `${day}.${month}.${year}`;
   };
 
+  const formatTimeOfDay = (iso: string, remindTime?: string | null) => {
+    if (remindTime && /^\d{1,2}:\d{2}/.test(remindTime)) return remindTime.slice(0, 5);
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+
   // Fetch Staff
   const loadStaff = useCallback(async () => {
     setStaffLoading(true);
@@ -108,19 +210,163 @@ export default function DatabaseDashboard() {
     }
   }, []);
 
+  const loadJobs = useCallback(async () => {
+    setJobsLoading(true);
+    setDataError(null);
+    try {
+      const res = await api.get<{ jobs: ApiJob[] }>('/api/jobs');
+      if (res.status !== 200) {
+        setDataError(res.error?.message ?? 'Opravil ni bilo mogoče naložiti.');
+        setJobsList([]);
+        return;
+      }
+      setJobsList(
+        (res.data?.jobs ?? []).map((j) => ({
+          id: j.id,
+          date: j.scheduled_at || j.created_at,
+          customer: j.customer?.trim() || '—',
+          project: j.title,
+          notes: j.description?.trim() || '',
+        }))
+      );
+    } catch (err) {
+      console.error(err);
+      setDataError('Opravil ni bilo mogoče naložiti.');
+    } finally {
+      setJobsLoading(false);
+    }
+  }, []);
+
+  const loadCustomers = useCallback(async () => {
+    setCustomersLoading(true);
+    try {
+      const res = await api.get<{ customers: ApiCustomerRow[] }>('/api/customers');
+      if (res.status !== 200) {
+        setCustomersList([]);
+        return;
+      }
+      setCustomersList(
+        (res.data?.customers ?? []).map((c) => ({
+          id: c.id,
+          date: c.created_at,
+          name: c.name,
+          project:
+            c.jobs.length > 0
+              ? c.jobs.map((j) => j.title).join(', ')
+              : c.job_count > 0
+                ? `${c.job_count} del`
+                : '—',
+          notes: c.latest_note?.trim() || '',
+        }))
+      );
+    } catch (err) {
+      console.error(err);
+      setCustomersList([]);
+    } finally {
+      setCustomersLoading(false);
+    }
+  }, []);
+
+  const loadAttachments = useCallback(async () => {
+    setAttachmentsLoading(true);
+    try {
+      const res = await api.get<{ files: ApiFileRow[] }>('/api/files');
+      if (res.status !== 200) {
+        setAttachmentsList([]);
+        return;
+      }
+      const mapped: DbAttachmentRow[] = [];
+      for (const f of res.data?.files ?? []) {
+        const category = dbAttachmentCategory({
+          attachment_type: f.attachment_type,
+          document_type: f.document_type,
+        });
+        if (!category) continue;
+        mapped.push({
+          id: f.id,
+          jobId: f.job_id,
+          date: f.created_at,
+          project: f.job_title || '—',
+          name: f.file_name,
+          aiDetails: f.document_preview?.trim() || '—',
+          category,
+          signedUrl: f.signed_url,
+        });
+      }
+      setAttachmentsList(mapped);
+    } catch (err) {
+      console.error(err);
+      setAttachmentsList([]);
+    } finally {
+      setAttachmentsLoading(false);
+    }
+  }, []);
+
+  const loadOfficeNotes = useCallback(async () => {
+    setNotesLoading(true);
+    try {
+      const [remindersRes] = await Promise.all([
+        api.get<{ reminders: ApiOfficeReminder[] }>('/api/office-reminders?all=1'),
+      ]);
+      if (remindersRes.status !== 200) {
+        setOfficeNotes([]);
+        return;
+      }
+      const nameById = new Map(staffList.map((s) => [s.id, s.full_name]));
+      // Reminders include created_by on the raw row even if ApiOfficeReminder omits it.
+      setOfficeNotes(
+        ((remindersRes.data?.reminders as Array<
+          ApiOfficeReminder & { created_by?: string }
+        >) ?? []).map((r) => ({
+          id: r.id,
+          date: r.remind_on || r.created_at,
+          who: (r.created_by && nameById.get(r.created_by)) || '—',
+          project: r.title,
+          content: r.description?.trim() || '',
+          time: formatTimeOfDay(r.created_at, r.remind_time),
+        }))
+      );
+    } catch (err) {
+      console.error(err);
+      setOfficeNotes([]);
+    } finally {
+      setNotesLoading(false);
+    }
+  }, [staffList]);
+
   useEffect(() => {
     if (!authLoading && user) {
-      loadStaff();
+      void loadStaff();
     }
   }, [authLoading, user, loadStaff]);
+
+  useEffect(() => {
+    if (authLoading || !user) return;
+    if (activeTab === 1) void loadJobs();
+    if (activeTab === 2) void loadCustomers();
+    if (activeTab === 3) void loadAttachments();
+    if (activeTab === 4) void loadOfficeNotes();
+  }, [
+    activeTab,
+    authLoading,
+    user,
+    loadJobs,
+    loadCustomers,
+    loadAttachments,
+    loadOfficeNotes,
+  ]);
 
   // Reset pagination & set default sorts when switching tabs
   useEffect(() => {
     setCurrentPage(1);
+    setShowFilterPanel(false);
     if (activeTab === 0) {
       setSortField('created_at');
       setSortOrder('desc');
     } else if (activeTab === 1) {
+      setSortField('date');
+      setSortOrder('desc');
+    } else if (activeTab === 2) {
       setSortField('date');
       setSortOrder('desc');
     } else if (activeTab === 3) {
@@ -131,121 +377,6 @@ export default function DatabaseDashboard() {
       setSortOrder('desc');
     }
   }, [activeTab]);
-
-  // Precise Mock Data matching the Slovenian/English screenshot details
-  const mockJobs = [
-    {
-      id: 'j-1',
-      date: '2026-07-24',
-      customer: 'Company XY',
-      project: 'Prenova kopalnice',
-      worker: 'Adam K.',
-      attachments: ['scan003.jpg', 'contract.doc', 'photo01.jpg'],
-      notes: 'Ključ je na recepciji. Parkiraj za hišo.',
-    },
-    {
-      id: 'j-2',
-      date: '2026-07-24',
-      customer: 'Frank Bird',
-      project: 'Dostava na dom',
-      worker: 'Jack',
-      attachments: [],
-      notes: '',
-    },
-    {
-      id: 'j-3',
-      date: '2026-07-24',
-      customer: 'Alessia V.',
-      project: 'Transport Ljubljana - Muenchen',
-      worker: 'Slippy Joe',
-      attachments: ['Cargo list'],
-      notes: 'Preveri dovoljenja za mednarodni transport.',
-    },
-  ];
-
-  const mockAttachments = {
-    invoices: [
-      {
-        id: 'a-i1',
-        jobId: 'job-1',
-        date: '2026-07-24',
-        project: 'Prenova kopalnice',
-        name: 'racun_001.pdf',
-        aiDetails: 'Hotel ABX d.o.o.\n684,20€\n12.06.2026',
-      },
-      {
-        id: 'a-i2',
-        jobId: 'job-2',
-        date: '2026-07-24',
-        project: 'Dostava na dom',
-        name: 'racun_002.pdf',
-        aiDetails: 'Servisni zapisnik\nHotel ABG\nServis klimatske naprave\nOpravil: Marko',
-      },
-      {
-        id: 'a-i3',
-        jobId: 'job-3',
-        date: '2026-07-24',
-        project: 'Transport Ljubljana - Muenchen',
-        name: 'racun_003.pdf',
-        aiDetails: 'Cargo list\n24t pšenice\n12.06.2026',
-      },
-    ],
-    documents: [
-      {
-        id: 'a-d1',
-        jobId: 'job-1',
-        date: '2026-07-24',
-        project: 'Prenova kopalnice',
-        name: 'pogodba.pdf',
-        aiDetails: 'Pogodba št. 123/2026\nPrenova kopalnice\nPlačano',
-      },
-      {
-        id: 'a-d2',
-        jobId: 'job-2',
-        date: '2026-07-24',
-        project: 'Dostava na dom',
-        name: 'navodila.pdf',
-        aiDetails: 'Navodila za dostavo\nPodrobnosti o pakiranju',
-      },
-    ],
-    photos: [
-      {
-        id: 'a-p1',
-        jobId: 'job-1',
-        date: '2026-07-24',
-        project: 'Prenova kopalnice',
-        name: 'slika_001.jpg',
-        aiDetails: 'Predelava stene\nVgradnja novih oken',
-      },
-    ],
-  };
-
-  const mockOfficeNotes = [
-    {
-      id: 'n-1',
-      date: '2026-07-24',
-      who: 'Alessia',
-      project: 'Kosilo s Kristino',
-      content: 'Some notes here whatever they wrote.',
-      time: '13:00',
-    },
-    {
-      id: 'n-2',
-      date: '2026-07-24',
-      who: 'Alex P.',
-      project: 'Dostava na dom',
-      content: '',
-      time: '15:00',
-    },
-    {
-      id: 'n-3',
-      date: '2026-07-24',
-      who: 'Adam Bird',
-      project: 'Transport Ljubljana - Muenchen',
-      content: 'Pokliči Petra',
-      time: '15:15',
-    },
-  ];
 
   // Helper sorting function
   const handleSort = (field: string) => {
@@ -279,6 +410,9 @@ export default function DatabaseDashboard() {
   // Staff list filtering & sorting
   const getFilteredStaff = () => {
     let result = [...staffList].filter((s) => s.is_active);
+    if (staffRoleFilter !== 'all') {
+      result = result.filter((s) => s.role === staffRoleFilter);
+    }
     const query = searchQueries[0]?.toLowerCase() || '';
 
     if (query) {
@@ -295,27 +429,50 @@ export default function DatabaseDashboard() {
 
   // Jobs filtering & sorting
   const getFilteredJobs = () => {
-    let result = [...mockJobs];
+    let result = [...jobsList];
+    const query = searchQueries[1]?.toLowerCase() || '';
+    if (query) {
+      result = result.filter(
+        (j) =>
+          j.customer.toLowerCase().includes(query) ||
+          j.project.toLowerCase().includes(query) ||
+          j.notes.toLowerCase().includes(query)
+      );
+    }
     return getSortedData(result);
   };
 
-  // Attachments filtering & sorting
+  const getFilteredCustomers = () => {
+    let result = [...customersList];
+    const query = searchQueries[2]?.toLowerCase() || '';
+    if (query) {
+      result = result.filter(
+        (c) =>
+          c.name.toLowerCase().includes(query) ||
+          c.project.toLowerCase().includes(query) ||
+          c.notes.toLowerCase().includes(query)
+      );
+    }
+    return getSortedData(result);
+  };
+
+  // Attachments filtering & sorting — category from saved DB fields
   const getFilteredAttachments = () => {
     let result =
       attachmentSubTab === 0
-        ? [...mockAttachments.invoices, ...mockAttachments.documents, ...mockAttachments.photos]
+        ? [...attachmentsList]
         : attachmentSubTab === 1
-          ? mockAttachments.invoices
+          ? attachmentsList.filter((a) => a.category === 'invoice')
           : attachmentSubTab === 2
-            ? mockAttachments.documents
-            : mockAttachments.photos;
+            ? attachmentsList.filter((a) => a.category === 'document')
+            : attachmentsList.filter((a) => a.category === 'image');
 
     return getSortedData(result);
   };
 
   // Notes filtering & sorting
   const getFilteredNotes = () => {
-    let result = [...mockOfficeNotes];
+    let result = [...officeNotes];
     const query = searchQueries[4]?.toLowerCase() || '';
 
     if (query) {
@@ -337,6 +494,8 @@ export default function DatabaseDashboard() {
         return getFilteredStaff();
       case 1:
         return getFilteredJobs();
+      case 2:
+        return getFilteredCustomers();
       case 3:
         return getFilteredAttachments();
       case 4:
@@ -350,6 +509,12 @@ export default function DatabaseDashboard() {
   const totalPages = Math.max(1, Math.ceil(activeDataset.length / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
   const paginatedDataset = activeDataset.slice(startIndex, startIndex + rowsPerPage);
+  const tableLoading =
+    (activeTab === 0 && staffLoading) ||
+    (activeTab === 1 && jobsLoading) ||
+    (activeTab === 2 && customersLoading) ||
+    (activeTab === 3 && attachmentsLoading) ||
+    (activeTab === 4 && notesLoading);
 
   // Soft delete Staff member (sets is_active to false, hides from list but keeps all data)
   const handleDeactivateStaff = async () => {
@@ -370,6 +535,105 @@ export default function DatabaseDashboard() {
       alert('Težava pri povezavi z strežnikom.');
     } finally {
       setDeletingUser(false);
+    }
+  };
+
+  const handleSaveCompanyPhone = async () => {
+    if (!user) return;
+    setPhoneSaving(true);
+    try {
+      const res = await api.patch(`/api/users/${user.id}`, {
+        phone: companyPhone.trim() ? companyPhone.trim() : null,
+      });
+      if (res.status === 200) {
+        alert('Telefon shranjen.');
+      } else {
+        alert(res.error?.message || 'Telefona ni bilo mogoče shraniti.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Težava pri povezavi z strežnikom.');
+    } finally {
+      setPhoneSaving(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!user?.email) return;
+    setPasswordBusy(true);
+    try {
+      const res = await api.post('/api/auth/forgot-password', { email: user.email });
+      if (res.status === 200 || res.status === 201) {
+        alert('Poslali smo povezavo za ponastavitev gesla na vaš e-poštni naslov.');
+      } else {
+        alert(res.error?.message || 'Ponastavitve gesla ni bilo mogoče začeti.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Težava pri povezavi z strežnikom.');
+    } finally {
+      setPasswordBusy(false);
+    }
+  };
+
+  const handleBilling = async () => {
+    setBillingBusy(true);
+    try {
+      const path =
+        company?.stripe_customer_id && company.subscription_active
+          ? '/api/billing/portal'
+          : '/api/billing/checkout';
+      const res = await api.post<{ url: string }>(path, {});
+      if (res.status === 200 && res.data?.url) {
+        window.location.href = res.data.url;
+        return;
+      }
+      alert(res.error?.message || 'Naročila ni bilo mogoče odpreti.');
+    } catch (err) {
+      console.error(err);
+      alert('Težava pri povezavi z strežnikom.');
+    } finally {
+      setBillingBusy(false);
+    }
+  };
+
+  const handleDeleteOfficeNote = async (noteId: string) => {
+    const res = await api.patch(`/api/office-reminders/${noteId}`, { hidden: true });
+    if (res.status === 200) {
+      setOfficeNotes((prev) => prev.filter((n) => n.id !== noteId));
+    } else {
+      alert(res.error?.message || 'Zapiska ni bilo mogoče izbrisati.');
+    }
+  };
+
+  const handleUploadAttachment = async () => {
+    if (!attachJobId || !attachFile) {
+      alert('Izberite opravilo in datoteko.');
+      return;
+    }
+    const validation = validateJobAttachmentFile(attachFile);
+    if (!validation.ok) {
+      alert(jobAttachmentErrorMessage(validation.error, t));
+      return;
+    }
+    setAttachUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('files', attachFile);
+      const res = await api.post(`/api/jobs/${attachJobId}/files`, formData);
+      if (res.status === 200 || res.status === 201) {
+        setIsAddAttachmentOpen(false);
+        setAttachFile(null);
+        setAttachJobId('');
+        await loadAttachments();
+      } else {
+        alert(res.error?.message || 'Priponke ni bilo mogoče naložiti.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Težava pri povezavi z strežnikom.');
+    } finally {
+      setAttachUploading(false);
     }
   };
 
@@ -558,15 +822,17 @@ export default function DatabaseDashboard() {
               <span className='font-inter font-medium text-base leading-6 align-middle'>Terenska kartica</span>
             </button>
 
-            <a
-              href="https://buy.stripe.com/test"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-[8px] text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer w-full"
+            <button
+              type="button"
+              onClick={() => void handleBilling()}
+              disabled={billingBusy || user?.role !== 'owner'}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-[8px] text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer w-full disabled:opacity-50"
             >
               <Folder className="h-4.5 w-4.5 shrink-0 text-slate-500" />
-              <span className='font-inter font-medium text-base leading-6 align-middle'>Naročilo</span>
-            </a>
+              <span className='font-inter font-medium text-base leading-6 align-middle'>
+                {billingBusy ? '…' : 'Naročilo'}
+              </span>
+            </button>
           </nav>
         </div>
       </aside>
@@ -609,14 +875,16 @@ export default function DatabaseDashboard() {
           >
             {activeTab === 0 && 'Zaposleni'}
             {activeTab === 1 && 'Dela'}
+            {activeTab === 2 && 'Naročniki'}
             {activeTab === 3 && 'Priponke'}
             {activeTab === 4 && 'Pisarna'}
             {activeTab === 5 && 'Podatki podjetja'}
           </h1>
 
-          {/* Search Bar for Tabs 0, 4 */}
-          {(activeTab === 0 || activeTab === 4) && (
-            <div className="flex items-center gap-4 mb-6">
+          {/* Search Bar for Tabs 0, 1, 2, 4 */}
+          {(activeTab === 0 || activeTab === 1 || activeTab === 2 || activeTab === 4) && (
+            <div className="flex flex-col gap-3 mb-6">
+              <div className="flex items-center gap-4">
               <div className="flex-1 relative">
                 <span className="absolute left-0 top-1/2 -translate-y-1/2 text-slate-400">
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -635,11 +903,35 @@ export default function DatabaseDashboard() {
                   style={{ fontFamily: 'Inter, sans-serif' }}
                 />
               </div>
-              <button className="h-9 w-9 border border-slate-200 rounded-[8px] bg-white hover:bg-slate-50 flex items-center justify-center cursor-pointer transition-colors shadow-sm">
+              <button
+                type="button"
+                onClick={() => setShowFilterPanel((v) => !v)}
+                className="h-9 w-9 border border-slate-200 rounded-[8px] bg-white hover:bg-slate-50 flex items-center justify-center cursor-pointer transition-colors shadow-sm"
+                title="Filter"
+              >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M1.5 3H10.5M3 6H9M4.5 9H7.5" stroke="#242731" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </button>
+              </div>
+              {showFilterPanel && activeTab === 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">Dostop:</span>
+                  <select
+                    value={staffRoleFilter}
+                    onChange={(e) => {
+                      setStaffRoleFilter(e.target.value as typeof staffRoleFilter);
+                      setCurrentPage(1);
+                    }}
+                    className="appearance-none bg-white border border-slate-200 rounded-[8px] px-3 py-1.5 text-xs text-slate-700"
+                  >
+                    <option value="all">Vsi</option>
+                    <option value="owner">Vodja</option>
+                    <option value="manager">Pisarna</option>
+                    <option value="worker">Teren</option>
+                  </select>
+                </div>
+              )}
             </div>
           )}
 
@@ -651,32 +943,40 @@ export default function DatabaseDashboard() {
                <div className="flex items-start justify-between py-2 border-b border-slate-100">
                 <div className="flex gap-12 items-baseline">
                   <span className="w-32 text-[#8A94A6] text-sm">Podjetje</span>
-                  <span className="text-[#242731] text-sm font-medium">{company?.name || 'Nokia d.o.o.'}</span>
+                  <span className="text-[#242731] text-sm font-medium">{company?.name || '—'}</span>
                 </div>
               </div>
 
               {/* Panoga row */}
               <div className="flex gap-12 py-2 border-b border-slate-100">
                 <span className="w-32 text-[#8A94A6] text-sm">Panoga</span>
-                <span className="text-[#242731] text-sm font-medium">{company?.business_module || 'Whatever they write'}</span>
+                <span className="text-[#242731] text-sm font-medium">{company?.business_module || '—'}</span>
               </div>
               
               {/* Telefon row */}
               <div className="flex gap-12 py-2 border-b border-slate-100">
                 <span className="w-32 text-[#8A94A6] text-sm">Telefon</span>
-                <div className="flex-1">
+                <div className="flex-1 flex flex-col gap-2">
                   <AuraPhoneInput
                     value={companyPhone}
                     onChange={setCompanyPhone}
                     placeholder="30 123 456"
                   />
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveCompanyPhone()}
+                    disabled={phoneSaving || user?.role !== 'owner'}
+                    className="self-start text-[#3B82F6] hover:underline text-sm font-medium cursor-pointer disabled:opacity-50"
+                  >
+                    {phoneSaving ? 'Shranjujem…' : 'Shrani telefon'}
+                  </button>
                 </div>
               </div>
 
               {/* E-pošta row */}
               <div className="flex gap-12 py-2 border-b border-slate-100">
                 <span className="w-32 text-[#8A94A6] text-sm">E-pošta</span>
-                <span className="text-[#242731] text-sm font-medium">{officeContact?.email || user?.email || 'info@bestevercompany.com'}</span>
+                <span className="text-[#242731] text-sm font-medium">{officeContact?.email || user?.email || '—'}</span>
               </div>
 
               {/* Geslo row */}
@@ -686,8 +986,13 @@ export default function DatabaseDashboard() {
                   <span className="text-[#242731] text-sm font-medium">***********</span>
                 </div>
                 <div className="pl-44">
-                  <button onClick={() => alert('Spremeni geslo')} className="text-[#3B82F6] hover:underline text-sm font-medium cursor-pointer">
-                    Spremeni geslo
+                  <button
+                    type="button"
+                    onClick={() => void handleChangePassword()}
+                    disabled={passwordBusy}
+                    className="text-[#3B82F6] hover:underline text-sm font-medium cursor-pointer disabled:opacity-50"
+                  >
+                    {passwordBusy ? '…' : 'Spremeni geslo'}
                   </button>
                 </div>
               </div>
@@ -783,14 +1088,20 @@ export default function DatabaseDashboard() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {paginatedDataset.length === 0 ? (
+                          {tableLoading ? (
                             <tr>
                               <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
-                                Ni najdenih opravil.
+                                Nalaganje…
+                              </td>
+                            </tr>
+                          ) : paginatedDataset.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
+                                {dataError || 'Ni najdenih opravil.'}
                               </td>
                             </tr>
                           ) : (
-                            paginatedDataset.map((job) => (
+                            paginatedDataset.map((job: DbJobRow) => (
                               <tr key={job.id} className="hover:bg-slate-50/50 transition-colors">
                                 <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle12}>
                                   {formatDate(job.date)}
@@ -832,14 +1143,20 @@ export default function DatabaseDashboard() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {paginatedDataset.length === 0 ? (
+                          {tableLoading ? (
+                            <tr>
+                              <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
+                                Nalaganje…
+                              </td>
+                            </tr>
+                          ) : paginatedDataset.length === 0 ? (
                             <tr>
                               <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
                                 Ni najdenih strank.
                               </td>
                             </tr>
                           ) : (
-                            paginatedDataset.map((cust) => (
+                            paginatedDataset.map((cust: DbCustomerRow) => (
                               <tr key={cust.id} className="hover:bg-slate-50/50 transition-colors">
                                 <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle12}>
                                   {formatDate(cust.date)}
@@ -886,7 +1203,11 @@ export default function DatabaseDashboard() {
                         ))}
                       </div>
                       <button
-                        onClick={() => alert('Dodaj priponko')}
+                        type="button"
+                        onClick={() => {
+                          if (jobsList.length === 0) void loadJobs();
+                          setIsAddAttachmentOpen(true);
+                        }}
                         className="text-sm text-slate-400 hover:text-slate-[#242731] cursor-pointer font-medium hover:underline"
                       >
                         Dodaj
@@ -904,14 +1225,20 @@ export default function DatabaseDashboard() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {paginatedDataset.length === 0 ? (
+                          {tableLoading ? (
+                            <tr>
+                              <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
+                                Nalaganje…
+                              </td>
+                            </tr>
+                          ) : paginatedDataset.length === 0 ? (
                             <tr>
                               <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
                                 Ni najdenih datotek v tej kategoriji.
                               </td>
                             </tr>
                           ) : (
-                            paginatedDataset.map((item) => (
+                            paginatedDataset.map((item: DbAttachmentRow) => (
                               <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
                                 <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle12}>
                                   {formatDate(item.date)}
@@ -924,8 +1251,19 @@ export default function DatabaseDashboard() {
                                     {item.project}
                                   </button>
                                 </td>
-                                <td className="px-6 py-4 text-blue-600 font-medium cursor-pointer hover:underline" style={tdStyle12}>
-                                  {item.name}
+                                <td className="px-6 py-4 text-blue-600 font-medium" style={tdStyle12}>
+                                  {item.signedUrl ? (
+                                    <a
+                                      href={item.signedUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="hover:underline"
+                                    >
+                                      {item.name}
+                                    </a>
+                                  ) : (
+                                    item.name
+                                  )}
                                 </td>
                                 <td className="px-6 py-4 text-slate-800 whitespace-pre-line leading-relaxed" style={tdStyle12}>
                                   {item.aiDetails}
@@ -954,17 +1292,23 @@ export default function DatabaseDashboard() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {paginatedDataset.length === 0 ? (
+                          {tableLoading ? (
+                            <tr>
+                              <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                                Nalaganje…
+                              </td>
+                            </tr>
+                          ) : paginatedDataset.length === 0 ? (
                             <tr>
                               <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
                                 Ni najdenih zapiskov.
                               </td>
                             </tr>
                           ) : (
-                            paginatedDataset.map((note) => (
+                            paginatedDataset.map((note: DbOfficeNoteRow) => (
                               <tr key={note.id} className="hover:bg-slate-50/50 transition-colors">
                                 <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle12}>
-                                  {formatDate(note.date)} | {note.time}
+                                  {formatDate(note.date)}{note.time ? ` | ${note.time}` : ''}
                                 </td>
                                 <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
                                   {note.who}
@@ -977,11 +1321,8 @@ export default function DatabaseDashboard() {
                                 </td>
                                 <td className="px-6 py-4 text-right" style={tdStyle10}>
                                   <button
-                                    onClick={() => {
-                                      const updated = mockOfficeNotes.filter((n) => n.id !== note.id);
-                                      // This is a frontend-only soft delete - in real app would call API
-                                      console.log('Soft delete note:', note.id);
-                                    }}
+                                    type="button"
+                                    onClick={() => void handleDeleteOfficeNote(note.id)}
                                     className="hover:text-red-600 cursor-pointer transition-colors"
                                     style={{ color: '#24273166' }}
                                   >
@@ -1134,6 +1475,8 @@ export default function DatabaseDashboard() {
           try {
             const res = await api.post('/api/jobs', taskData);
             if (res.status === 201 || res.status === 200) {
+              await Promise.all([loadJobs(), loadCustomers()]);
+              setActiveTab(1);
               alert('Naloga uspešno dodana.');
             } else {
               alert(res.error?.message || 'Napaka pri ustvarjanju naloge.');
@@ -1144,6 +1487,67 @@ export default function DatabaseDashboard() {
           }
         }}
       />
+
+      <Dialog
+        open={isAddAttachmentOpen}
+        onOpenChange={(open) => {
+          setIsAddAttachmentOpen(open);
+          if (!open) {
+            setAttachFile(null);
+            setAttachJobId('');
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm w-[90vw] bg-white rounded-[8px] p-6 border border-slate-200">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold text-slate-900">
+              Dodaj priponko
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 my-4 text-xs text-slate-600">
+            <label className="flex flex-col gap-1">
+              <span className="font-medium text-slate-700">Opravilo</span>
+              <select
+                value={attachJobId}
+                onChange={(e) => setAttachJobId(e.target.value)}
+                className="h-9 rounded-[8px] border border-slate-200 px-3 bg-white"
+              >
+                <option value="">Izberite opravilo</option>
+                {jobsList.map((j) => (
+                  <option key={j.id} value={j.id}>
+                    {j.project}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <AuraFileInput
+              id="db-attach-file"
+              onFile={(file) => setAttachFile(file)}
+              onReject={(message) => alert(message)}
+            />
+            {attachFile ? (
+              <span className="text-slate-500">{attachFile.name}</span>
+            ) : null}
+          </div>
+          <DialogFooter className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setIsAddAttachmentOpen(false)}
+              className="flex-1 h-9 rounded-[8px] border border-slate-200 text-xs font-semibold text-slate-500 hover:bg-slate-50"
+            >
+              Prekliči
+            </button>
+            <button
+              type="button"
+              disabled={attachUploading}
+              onClick={() => void handleUploadAttachment()}
+              className="flex-1 h-9 rounded-[8px] bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold disabled:opacity-50"
+            >
+              {attachUploading ? 'Nalagam…' : 'Naloži'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

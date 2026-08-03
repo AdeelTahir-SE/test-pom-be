@@ -33,26 +33,21 @@ export interface Order {
   workerName: string;
 }
 
-export interface Message {
-  id: string;
-  workerId: string;
-  workerName: string;
-  text: string;
-  time: string;
-  type: 'glasovno' | 'tekst';
-  targetTask?: string;
-}
+import type { Message } from "@/lib/types/messages";
+
+/** @deprecated Prefer `@/lib/types/messages` in production dashboard code. */
+export type { Message };
 
 export const initialWorkers: Worker[] = [
   {
     id: "w1",
-    name: "Anthony H",
+    name: "Albert H",
     avatar: "AH",
     role: "Novak d.o.o.",
     currentTask: "Kopalnica prenova",
     status: "v_teku",
-    phone: "+386 40 123 456",
-    email: "anthony.hopkins@dnevnik.app",
+    phone: "+386 X4 123 456",
+    email: "al8erth3s@gmail.com",
     unreadCount: 1,
     location: "Ljubljana",
     tasks: [
@@ -68,13 +63,13 @@ export const initialWorkers: Worker[] = [
   },
   {
     id: "w2",
-    name: "ANA NOVAK",
+    name: "ALEKS NOVAK",
     avatar: "AN",
     role: "JGD d.o.o.",
     currentTask: "Čiščenje prostorov",
     status: "zakasnitev",
-    phone: "+386 31 987 654",
-    email: "alec.navarro@dnevnik.app",
+    phone: "+386 X1 987 654",
+    email: "aleks.nf5@yahoo.com",
     unreadCount: 0,
     location: "Ljubljana",
     tasks: [
@@ -88,12 +83,12 @@ export const initialWorkers: Worker[] = [
   {
     id: "w3",
     name: "PAVLE",
-    avatar: "BD",
+    avatar: "P",
     role: "FxG d.o.o.",
     currentTask: "Dostava cvetja",
     status: "v_teku",
-    phone: "+386 41 555 666",
-    email: "bo.derek@dnevnik.app",
+    phone: "+386 X1 555 666",
+    email: "pavli992h@yahoo.com",
     unreadCount: 0,
     location: "Celje",
     tasks: [

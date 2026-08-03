@@ -3,6 +3,11 @@
 import React, { useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/lib/useLanguage";
+import {
+  JOB_ATTACHMENT_ACCEPT,
+  jobAttachmentErrorMessage,
+  validateJobAttachmentFile,
+} from "@/lib/uploadValidation";
 
 // Aura-styled form primitives inspired by the responsive-contact-section-with-support-form template.
 // Colors are mapped to the existing Dnevnik.app palette (navy primary #1B3A6B).
@@ -111,6 +116,7 @@ export function AuraSelect({
 type AuraFileInputProps = Readonly<{
   onFileSelect?: (fileName: string) => void;
   onFile?: (file: File) => void;
+  onReject?: (message: string) => void;
   className?: string;
   id?: string;
 }>;
@@ -118,6 +124,7 @@ type AuraFileInputProps = Readonly<{
 export function AuraFileInput({
   onFileSelect,
   onFile,
+  onReject,
   className,
   id,
 }: AuraFileInputProps) {
@@ -128,10 +135,17 @@ export function AuraFileInput({
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      onFileSelect?.(file.name);
-      onFile?.(file);
+    e.target.value = "";
+    if (!file) return;
+
+    const result = validateJobAttachmentFile(file);
+    if (!result.ok) {
+      onReject?.(jobAttachmentErrorMessage(result.error, t));
+      return;
     }
+
+    onFileSelect?.(file.name);
+    onFile?.(file);
   };
 
   return (
@@ -140,6 +154,7 @@ export function AuraFileInput({
         ref={inputRef}
         type="file"
         id={id}
+        accept={JOB_ATTACHMENT_ACCEPT}
         className="hidden"
         onChange={handleChange}
       />

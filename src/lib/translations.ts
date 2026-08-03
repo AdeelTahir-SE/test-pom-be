@@ -16,12 +16,10 @@ export const translations = {
     heroTitle: "Teren in pisarna. Kot ena ekipa.",
     heroSubTitleMain: "Za večjo učinkovitost in enostavnejše vodenje.",
     heroSubtitle: "Razpršena sporočila, zapiski, opomniki, komunikacija in dokumenti s terena se uredijo v enoten sistem, ki temelji na izboljšani komunikaciji.",
-    heroCtaMain: "Rezerviraj predstavitev",
-    heroCtaSub: "Dogovori se za klic",
     heroSubText: "Manj klicev, manj kaosa, izboljšan pregled.",
 
     // Industries
-    indTitle: "Prilagojeno za panoge na terenu",
+    indTitle: "Prilagojeno za panoge z delom na terenu",
 
     // Benefit Grid
     benefitsLabel: "ZAKAJ JE POMEMBNO",
@@ -158,7 +156,6 @@ export const translations = {
     priceSec3Item3: "Celotna zgodovina dela in komunikacije",
     priceSec3Item4: "500x AI pretvorba dokumentov v uporabne podatke in analize",
     priceCancelAnytime: "Brez vezave. Odpoved kadarkoli.",
-    priceCta: "Preizkusi brezplačno za 14 dni",
     priceTrust1: "Brez doplačil",
     priceTrust2: "Brez vezave",
     priceTrust3: "Brez skritih stroškov",
@@ -178,11 +175,11 @@ export const translations = {
     authLoginSubtitle: "Povežite pisarno in teren v enoten delovni dan.",
     authEmailLabel: "E-naslov",
     authPasswordLabel: "Geslo",
-    authForgotPassword: "Forgot Your Password?",
+    authForgotPassword: "Pozabljeno geslo",
     authDemoRoleLabel: "Izbira vloge za demo predogled",
     authRoleOffice: "Vodstvo / Pisarna",
     authRoleWorker: "Terenski delavec",
-    authLoginBtn: "Sign In",
+    authLoginBtn: "Registracija",
     authNoAccount: "Še nimate računa?",
     authCreateAccount: "Registracija za podjetje",
     authLoginFailed: "Prijava ni uspela. Preverite e-pošto in geslo.",
@@ -219,7 +216,7 @@ export const translations = {
     authEmailPlaceholder: "janez@podjetje.si",
     authPassPlaceholder: "Najmanj 8 znakov",
     authAgreeTerms: "Strinjam se s splošnimi pogoji uporabe in varovanjem zasebnosti.",
-    authRegisterBtn: "Sign Up",
+    authRegisterBtn: "Registracija",
     authHasAccount: "Že imate račun?",
 
     // Office Dashboard (live)
@@ -272,10 +269,14 @@ export const translations = {
     workerRecording: "Snemam glasovno...",
     workerRecordingDesc: "Prepis se samodejno sinhronizira z delovnim nalogom v pisarni.",
     workerStopRecord: "Ustavi in pošlji transkript",
+    workerVoiceSaving: "Shranjujem…",
     workerMicUnavailable: "Dostop do mikrofona ni na voljo.",
+    workerNetworkError: "Ni povezave. Preverite internet in poskusite znova.",
+    workerLoadFailed: "Podatkov ni bilo mogoče naložiti.",
     workerTaskUpdated: "Status opravila posodobljen!",
     workerTaskUpdateFailed: "Napaka pri posodobitvi opravila.",
     workerVoiceSent: "Glasovno sporočilo poslano!",
+    workerVoiceSendFailed: "Glasovnega sporočila ni bilo mogoče poslati.",
     workerLoading: "Nalaganje…",
 
     // Modals (live)
@@ -347,6 +348,8 @@ export const translations = {
     modalAttachTitle: "Dodaj priponko",
     modalAttachSuccess: "Priponka naložena.",
     modalAttachFailed: "Priponke ni bilo mogoče naložiti.",
+    fileTooLarge: "Datoteka je prevelika (največ 25 MB).",
+    fileTypeUnsupported: "Nepodprta vrsta datoteke. Dovoljeno: JPG, PNG, PDF, DOC, DOCX, TXT.",
     modalCancel: "Prekliči",
     modalAdd: "Dodaj",
     modalUploading: "Nalagam…",
@@ -586,7 +589,7 @@ export const translations = {
     tab2Sol4: "Time savings and simplified work for everyone in the process.",
     // Tab 3 Pains & Solutions
     tab3Pain1: "Occasional problems and delays are discovered on the field too late.",
-    tab3Pain2: "Difficult to assign responsibility in case of complaints or mistakes.",
+    tab3Pain2: "Difficult to as responsibility in case of complaints or mistakes.",
     tab3Pain3: "Manager tries to manually coordinate where teams are and connect data.",
     tab3Pain4: "Two worlds. Field. Office.",
     tab3Sol1: "All field problems are visible in real-time on a single screen.",
@@ -600,7 +603,7 @@ export const translations = {
     timelineTitle: "How it Works",
     timelineSubtitle: "4 simple steps from task creation to secure archiving.",
     timelineStep1Title: "Manager or secretary prepares the work order",
-    timelineStep1Desc: "In one minute, create a daily card, assign the responsible field tech, and add tasks, instructions, and attachments.",
+    timelineStep1Desc: "In one minute, create a daily card, as the responsible field tech, and add tasks, instructions, and attachments.",
     timelineStep2Title: "Employee works as usual",
     timelineStep2Desc: "Confirms tasks on the go, adds photos, comments, or voice notes. All changes are visible in real time.",
     timelineStep3Title: "Manager monitors progress live",
@@ -635,7 +638,7 @@ export const translations = {
     showcaseSlide2CardText: "Tell Maks to bring 2 buckets of white paint when returning from Celje warehouse.",
     showcaseSlide2CardStatus: "Logged to work order",
     showcaseSlide3Title: "Flexible Task Ordering",
-    showcaseSlide3Desc: "Managers in the office can drag and drop task sequences, append emergency instructions, or instantly assign urgent jobs to free techs.",
+    showcaseSlide3Desc: "Managers in the office can drag and drop task sequences, append emergency instructions, or instantly as urgent jobs to free techs.",
     showcaseSlide3Link: "Immediate synchronization with the field",
     showcaseSlide3CardTitle: "Edit tasks for Matej",
     showcaseSlide3CardSave: "Save",
@@ -683,7 +686,7 @@ export const translations = {
     footerContact: "Contact",
 
     // Auth Pages
-    authLoginTitle: "Sign In",
+    authLoginTitle: " In",
     authLoginSubtitle: "Connect your office and field into a unified workday.",
     authEmailLabel: "Email Address",
     authPasswordLabel: "Password",
@@ -691,16 +694,16 @@ export const translations = {
     authDemoRoleLabel: "Select role for demo preview",
     authRoleOffice: "Management / Office",
     authRoleWorker: "Field Worker",
-    authLoginBtn: "Sign In",
+    authLoginBtn: " In",
     authNoAccount: "Don't have an account?",
     authCreateAccount: "Create a free account",
     authLoginFailed: "Login failed. Check your email and password.",
-    authLoginSuccessReset: "Password updated. Sign in with your new password.",
-    authGoogleBtn: "Sign in with Google",
-    authGoogleRegisterBtn: "Sign Up with Google",
-    authGoogleFailed: "Google sign-in failed.",
+    authLoginSuccessReset: "Password updated.  in with your new password.",
+    authGoogleBtn: " in with Google",
+    authGoogleRegisterBtn: " Up with Google",
+    authGoogleFailed: "Google -in failed.",
     authGoogleMissingCode: "Missing Google confirmation code.",
-    authGoogleRedirecting: "Signing you in …",
+    authGoogleRedirecting: "ing you in …",
     authOrEmail: "or with email",
     authOr: "or",
     authForgotTitle: "Reset password",
@@ -728,7 +731,7 @@ export const translations = {
     authEmailPlaceholder: "john@company.com",
     authPassPlaceholder: "At least 8 characters",
     authAgreeTerms: "I agree to the terms of service and privacy policy.",
-    authRegisterBtn: "Sign Up",
+    authRegisterBtn: " Up",
     authHasAccount: "Already have an account?",
 
     // Office Dashboard (live)
@@ -759,7 +762,7 @@ export const translations = {
 
     // Worker Dashboard (live)
     workerHeading: "Field Screen",
-    workerNoActiveJob: "You currently have no active job assigned.",
+    workerNoActiveJob: "You currently have no active job ased.",
     workerDetail: "DETAILS",
     workerInfo: "INFO",
     workerCall: "CALL",
@@ -781,10 +784,14 @@ export const translations = {
     workerRecording: "Recording voice...",
     workerRecordingDesc: "Transcript automatically syncs with the office job order.",
     workerStopRecord: "Stop and send transcript",
+    workerVoiceSaving: "Saving…",
     workerMicUnavailable: "Microphone access is unavailable.",
+    workerNetworkError: "No connection. Check your internet and try again.",
+    workerLoadFailed: "Could not load data.",
     workerTaskUpdated: "Task status updated!",
     workerTaskUpdateFailed: "Failed to update task.",
     workerVoiceSent: "Voice message sent!",
+    workerVoiceSendFailed: "Could not send the voice message.",
     workerLoading: "Loading…",
 
     // Modals (live)
@@ -856,6 +863,8 @@ export const translations = {
     modalAttachTitle: "Add Attachment",
     modalAttachSuccess: "Attachment uploaded.",
     modalAttachFailed: "Could not upload attachment.",
+    fileTooLarge: "File is too large (max 25 MB).",
+    fileTypeUnsupported: "Unsupported file type. Allowed: JPG, PNG, PDF, DOC, DOCX, TXT.",
     modalCancel: "Cancel",
     modalAdd: "Add",
     modalUploading: "Uploading…",
@@ -913,7 +922,7 @@ export const translations = {
     modalDeleteStepSubmit: "Delete",
 
     // Card fallbacks & tooltips (live)
-    cardUnassigned: "Unassigned",
+    cardUnased: "Unased",
     cardSenderOffice: "Office",
     cardUnknownSender: "Unknown",
     cardNoTask: "No task",
@@ -936,7 +945,7 @@ export const translations = {
     // Timeline event labels (live)
     timelineJobCreated: "Job order created",
     timelineCard: "Card",
-    timelineWorkerAssigned: "Worker assigned",
+    timelineWorkerAsed: "Worker ased",
     timelineJobUpdated: "Job order updated",
     timelineJobHidden: "Card hidden from board",
     timelineChecklistCompleted: "Completed step",

@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Message } from "@/lib/mockData";
+import type { Message } from "@/lib/types/messages";
 
 export interface OfficeCardThreadItem {
   id: string;
@@ -13,10 +13,7 @@ export interface OfficeCardThreadItem {
 
 interface OfficeCardProps {
   message: Message;
-  onResolve: () => void;
   onDismiss: () => void;
-  onArchive?: () => void;
-  onCall?: () => void;
   onReply?: () => void;
   iconType?: "mic" | "document";
   showRedButton?: boolean;
@@ -77,19 +74,12 @@ function typeLabel(type: "glasovno" | "tekst", iconType: "mic" | "document"): st
 
 export function OfficeCard({
   message,
-  onResolve,
   onDismiss,
-  onArchive = () => {},
-  onCall = () => {},
   onReply,
   iconType = "mic",
   showRedButton = false,
   thread,
 }: OfficeCardProps) {
-  void onResolve;
-  void onArchive;
-  void onCall;
-
   const threadItems =
     thread && thread.length > 0
       ? thread
@@ -248,6 +238,16 @@ export function OfficeCard({
       </div>
 
       <div
+        role={onReply ? "button" : undefined}
+        tabIndex={onReply ? 0 : undefined}
+        onClick={onReply}
+        onKeyDown={(e) => {
+          if (!onReply) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onReply();
+          }
+        }}
         style={{
           boxSizing: "border-box",
           display: "flex",
@@ -265,6 +265,7 @@ export function OfficeCard({
             "0px 12px 28px -18px rgba(15, 23, 42, 0.26), inset 0px 1px 0px 1px #FFFFFF",
           zIndex: 1,
           position: "relative",
+          cursor: onReply ? "pointer" : undefined,
         }}
       >
         <p
@@ -281,21 +282,7 @@ export function OfficeCard({
         </p>
 
         {threadItems.map((item, index) => (
-          <div key={item.id} className="w-full" style={{ marginTop: index === 0 ? 0 : 4 }}>
-            {threadItems.length > 1 && (
-              <p
-                style={{
-                  fontFamily: "'PT Sans', sans-serif",
-                  fontSize: "11px",
-                  lineHeight: "14px",
-                  color: "rgba(70, 84, 103, 0.55)",
-                  textTransform: "uppercase",
-                  marginBottom: "6px",
-                }}
-              >
-                {item.senderLabel} • {item.time}
-              </p>
-            )}
+          <div key={`${item.id}-${index}`} className="w-full" style={{ marginTop: index === 0 ? 0 : 4 }}>
             <div className="flex items-start gap-[12px] w-full">
               <div
                 style={{

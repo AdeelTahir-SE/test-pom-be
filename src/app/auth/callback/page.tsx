@@ -3,12 +3,17 @@ import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api, setSession } from "@/lib/api-client";
 import { useLanguage } from "@/lib/useLanguage";
+import {
+  clearPendingGoogleRegister,
+  readPendingGoogleRegister,
+} from "@/lib/pendingGoogleRegister";
+import { logClientError } from "@/lib/clientError";
 import Link from "next/link";
 
 interface OAuthLoginResponse {
   needs_registration?: boolean;
-access_token?: string;
-refresh_token?: string;
+  access_token?: string;
+  refresh_token?: string;
   user: {
     id: string;
     email: string;
@@ -18,18 +23,23 @@ refresh_token?: string;
   company_id: string | null;
 }
 
+interface GoogleRegisterResponse {
+  user: { id: string; role: string };
+  company: { id: string };
+}
+
 export default function AuthCallbackPage() {
   const { t } = useLanguage();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const processingRef = useRef(false);
-  
-useEffect(() => {
-  let cancelled = false;
-  async function finish() {
-  if (processingRef.current) return;
-  processingRef.current = true;
-    
+
+  useEffect(() => {
+    let cancelled = false;
+    async function finish() {
+      if (processingRef.current) return;
+      processingRef.current = true;
+
       const params = new URLSearchParams(window.location.search);
       const code = params.get("code");
       const errorDescription = params.get("error_description") || params.get("error");
@@ -43,11 +53,10 @@ useEffect(() => {
         return;
       }
 
- try {
-        const res = await api.post<OAuthLoginResponse>(
-          "/api/auth/oauth/callback",
-          { code }
-        );
+      try {
+        const res = await api.post<OAuthLoginResponse>("/api/auth/oauth/callback", {
+          code,
+        });
 
         if (cancelled) return;
 
@@ -57,29 +66,55 @@ useEffect(() => {
         }
 
         if (res.data.access_token && res.data.refresh_token) {
-  setSession(res.data.access_token, res.data.refresh_token);
-}
+          setSession(res.data.access_token, res.data.refresh_token);
+        }
 
         if (res.data.needs_registration || !res.data.user.role) {
-          const q = new URLSearchParams();
-          if (res.data.user.full_name) q.set("name", res.data.user.full_name);
-          if (res.data.user.email) q.set("email", res.data.user.email);
-          router.replace(`/register/complete-profile?${q.toString()}`);
-          return;
+          const pending = readPendingGoogleRegister();
+
+          // Happy path (a11 #9): register page already collected company data.
+          if (pending) {
+            const finishRes = await api.post<GoogleRegisterResponse>(
+              "/api/auth/register/google",
+              {
+                company_name: pending.company_name,
+                business_module: pending.business_module,
+                ...(pending.full_name ? { full_name: pending.full_name } : {}),
+              }
+            );
+            if (cancelled) return;
+
+            if (finishRes.status === 201 && finishRes.data) {
+              clearPendingGoogleRegister();
+              router.replace("/dashboard/office");
+              return;
+            }
+
+            logClientError("auth.googleRegister", finishRes.error, {
+              status: finishRes.status,
+            });
+            // Keep pending so complete-profile can prefill; user can retry.
+          }
+
+          router.replace("/register/complete-profile");
+return;
         }
+
+        // Existing Google user — drop any stale pending registration draft.
+        clearPendingGoogleRegister();
 
         if (res.data.user.role === "worker") {
           router.replace("/dashboard/worker");
         } else {
           router.replace("/dashboard/office");
         }
-} catch {
-  processingRef.current = false;
-
-  if (!cancelled) {
-    setError(t("authGoogleFailed"));
-  }
-}
+      } catch (err) {
+        processingRef.current = false;
+        logClientError("auth.oauthCallback", err);
+        if (!cancelled) {
+          setError(t("authGoogleFailed"));
+        }
+      }
     }
 
     void finish();

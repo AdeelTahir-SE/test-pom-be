@@ -111,12 +111,15 @@ function nowTime() {
 }
 
 const getErrorMessage = (err: unknown): string => {
+  if (err instanceof Error) {
+    return err.message;
+  }
   if (err && typeof err === "object") {
-    if ("message" in err && typeof (err as any).message === "string") {
-      return (err as any).message;
+    if ("message" in err && typeof (err as Record<string, unknown>).message === "string") {
+      return (err as Record<string, unknown>).message as string;
     }
-    if ("error" in err && typeof (err as any).error === "string") {
-      return (err as any).error;
+    if ("error" in err && typeof (err as Record<string, unknown>).error === "string") {
+      return (err as Record<string, unknown>).error as string;
     }
   }
   return "Nepričakovana napaka. Poskusite znova.";
@@ -271,20 +274,36 @@ export function WorkerDetailModal({
   const [attachOnlyFile, setAttachOnlyFile] = React.useState<File | null>(null);
   const [attachOnlyUploading, setAttachOnlyUploading] = React.useState(false);
   const [attachForStepId, setAttachForStepId] = React.useState<string | null>(null);
-  const [toastMessage, setToastMessage] = React.useState<string | null>(null);
-
-  const showToast = React.useCallback((msg: string) => {
-    setToastMessage(msg);
-    window.setTimeout(() => setToastMessage(null), 2500);
-  }, []);
-
   const mountedRef = React.useRef(true);
   React.useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
 
-  const resolvedCustomerName = (customerName ?? worker?.role ?? "").trim();
+  const [toastMessage, setToastMessage] = React.useState<string | null>(null);
+  const toastTimeoutRef = React.useRef<number | null>(null);
+
+  const showToast = React.useCallback((msg: string) => {
+    if (toastTimeoutRef.current) {
+      window.clearTimeout(toastTimeoutRef.current);
+    }
+    setToastMessage(msg);
+    toastTimeoutRef.current = window.setTimeout(() => {
+      if (mountedRef.current) {
+        setToastMessage(null);
+      }
+    }, 2500);
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) {
+        window.clearTimeout(toastTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const resolvedCustomerName = (customerName ?? "").trim();
   const [customerNotes, setCustomerNotes] = React.useState<CustomerNoteDto[]>([]);
   const [saveNoteOpen, setSaveNoteOpen] = React.useState(false);
   const [saveNoteChecked, setSaveNoteChecked] = React.useState(true);
@@ -298,46 +317,7 @@ export function WorkerDetailModal({
   const [newNoteText, setNewNoteText] = React.useState("");
   const [newNoteType, setNewNoteType] = React.useState<"once" | "always">("once");
   const [newNoteSaving, setNewNoteSaving] = React.useState(false);
-
-  const handleAddNote = async (force = false) => {
-    const noteText = newNoteText.trim();
-    if (!noteText) return;
-    if (!resolvedCustomerName) {
-      showToast("Naročnik je obvezen za dodajanje opombe.");
-      return;
-    }
-    setNewNoteSaving(true);
-    try {
-      const finalNoteContent = newNoteType === "once"
-        ? JSON.stringify({ text: noteText, jobId })
-        : noteText;
-      const res = await api.post<{ note: CustomerNoteDto }>(`/api/customers/notes`, {
-        customer_name: resolvedCustomerName,
-        note: finalNoteContent,
-        force,
-        job_id: jobId ?? undefined,
-      });
-      if (res.status === 409) {
-        const okAnyway = window.confirm(t("customerNotesDuplicateConfirm"));
-        if (okAnyway) {
-          await handleAddNote(true);
-        }
-        return;
-      }
-      if (res.status >= 200 && res.status < 300) {
-        setNewNoteText("");
-        setIsAddNoteOpen(false);
-        void loadCustomerNotes(resolvedCustomerName);
-        void refreshFilesAndTimeline();
-        return;
-      }
-      showToast(res.error?.message ?? "Opombe ni bilo mogoče shraniti.");
-    } catch (err) {
-      showToast(getErrorMessage(err));
-    } finally {
-      setNewNoteSaving(false);
-    }
-  };
+  const [tasksSyncNonce, setTasksSyncNonce] = React.useState(0);
 
   const fromWorkerTasks = (workerTasks: Worker["tasks"]): TaskItem[] => {
     const mapped = workerTasks.map((t) => ({
@@ -358,21 +338,27 @@ export function WorkerDetailModal({
   React.useEffect(() => {
     if (tasksDirtyRef.current) return;
     setTasks(fromWorkerTasks(worker?.tasks || []));
-  }, [worker]);
+  }, [worker, tasksSyncNonce]);
 
   const [deleteCardOpen, setDeleteCardOpen] = React.useState(false);
   const [stepPosition, setStepPosition] = React.useState(tasks.length + 1);
   const queryClient = useQueryClient();
   const jobReady = !!jobId && !isOptimisticId(jobId);
+  const workerRef = React.useRef(worker);
+  workerRef.current = worker;
+
+  React.useEffect(() => {
+    setStepPosition(tasks.length + 1);
+  }, [tasks.length]);
 
   const filesQuery = useQuery({
-    queryKey: queryKeys.job.files(jobId ?? "none"),
+    queryKey: queryKeys.job.files(jobId || ""),
     queryFn: () => fetchJobFiles(jobId!),
     enabled: isOpen && jobReady,
     staleTime: 30_000,
   });
   const timelineQuery = useQuery({
-    queryKey: queryKeys.job.timeline(jobId ?? "none"),
+    queryKey: queryKeys.job.timeline(jobId || ""),
     queryFn: () => fetchJobTimeline(jobId!),
     enabled: isOpen && jobReady,
     staleTime: 30_000,
@@ -469,6 +455,83 @@ export function WorkerDetailModal({
     }
   }, [showToast]);
 
+  async function postCustomerNote(
+    noteText: string,
+    noteType: "once" | "always",
+    customerName: string,
+    force: boolean,
+    isRetry: boolean,
+  ): Promise<{ success: boolean; shouldRetry?: boolean }> {
+    if (!noteText || !customerName) {
+      return { success: false };
+    }
+    try {
+      const finalNoteContent = noteType === "once"
+        ? JSON.stringify({ text: noteText, jobId })
+        : noteText;
+      const res = await api.post<{ note: CustomerNoteDto }>(`/api/customers/notes`, {
+        customer_name: customerName,
+        note: finalNoteContent,
+        force,
+        job_id: jobId ?? undefined,
+      });
+      if (!mountedRef.current) return { success: false };
+      if (res.status === 409) {
+        if (isRetry) {
+          showToast("Opomba je podvojena in je ni bilo mogoče shraniti.");
+          return { success: false };
+        }
+        return { success: false, shouldRetry: true };
+      }
+      if (res.status >= 200 && res.status < 300) {
+        return { success: true };
+      }
+      showToast(res.error?.message ?? "Opombe ni bilo mogoče shraniti.");
+      return { success: false };
+    } catch (err) {
+      showToast(getErrorMessage(err));
+      return { success: false };
+    }
+  }
+
+  const submitNote = React.useCallback(async (force: boolean, isRetry = false): Promise<boolean> => {
+    const noteText = newNoteText.trim();
+    if (!noteText) return false;
+    if (!resolvedCustomerName) {
+      showToast("Naročnik je obvezen za dodajanje opombe.");
+      return false;
+    }
+    const result = await postCustomerNote(noteText, newNoteType, resolvedCustomerName, force, isRetry);
+    if (result.shouldRetry) {
+      const okAnyway = window.confirm(t("customerNotesDuplicateConfirm"));
+      if (okAnyway) {
+        return submitNote(true, true);
+      }
+      return false;
+    }
+    if (result.success) {
+      setNewNoteText("");
+      setIsAddNoteOpen(false);
+      if (mountedRef.current) {
+        void loadCustomerNotes(resolvedCustomerName);
+        void refreshFilesAndTimeline();
+      }
+    }
+    return result.success;
+  }, [newNoteText, newNoteType, resolvedCustomerName, jobId, t, showToast, loadCustomerNotes, refreshFilesAndTimeline]);
+
+  const handleAddNote = async (force = false) => {
+    if (newNoteSaving) return;
+    setNewNoteSaving(true);
+    try {
+      await submitNote(force);
+    } finally {
+      if (mountedRef.current) {
+        setNewNoteSaving(false);
+      }
+    }
+  };
+
   React.useEffect(() => {
     if (!isOpen) {
       setCustomerNotes([]);
@@ -477,6 +540,7 @@ export function WorkerDetailModal({
       setSaveNoteCustomer("");
       setSaveNoteChecked(true);
       completeAfterSaveRef.current = false;
+      tasksDirtyRef.current = false;
       if (ocrTimeoutRef.current) {
         window.clearTimeout(ocrTimeoutRef.current);
         ocrTimeoutRef.current = null;
@@ -489,77 +553,82 @@ export function WorkerDetailModal({
   const handleDeleteCustomerNote = async (id: string) => {
     try {
       const res = await api.delete<{ deleted: boolean }>(`/api/customer-notes/${id}`);
+      if (!mountedRef.current) return;
       if (res.status >= 200 && res.status < 300) {
         setCustomerNotes((prev) => prev.filter((n) => n.id !== id));
       } else {
         showToast(res.error?.message ?? "Opombe ni bilo mogoče odstraniti.");
       }
     } catch (err) {
-      showToast(getErrorMessage(err));
+      if (mountedRef.current) {
+        showToast(getErrorMessage(err));
+      }
     }
   };
 
-  const openSaveNoteDialog = (thenComplete: boolean) => {
+  const openSaveNoteDialog = React.useCallback((thenComplete: boolean) => {
     completeAfterSaveRef.current = thenComplete;
     setSaveNoteChecked(true);
     setSaveNoteText("");
     setSaveNoteCustomer(resolvedCustomerName);
     setSaveNoteOpen(true);
-  };
+  }, [resolvedCustomerName]);
 
-  const requestComplete = () => {
+  const requestComplete = React.useCallback(() => {
     openSaveNoteDialog(true);
-  };
+  }, [openSaveNoteDialog]);
 
-  const finishComplete = () => {
+  const finishComplete = React.useCallback(() => {
     const shouldComplete = completeAfterSaveRef.current;
     completeAfterSaveRef.current = false;
     setSaveNoteOpen(false);
     setSaveNoteText("");
     setSaveNoteCustomer("");
     if (shouldComplete) onChangeJobStatus?.("completed");
-  };
+  }, [onChangeJobStatus]);
 
-  const handleSaveCustomerNote = async (force = false) => {
+  const submitSaveNote = React.useCallback(async (force: boolean, isRetry = false): Promise<boolean> => {
     const note = saveNoteText.trim();
     const customer = saveNoteCustomer.trim() || resolvedCustomerName;
     if (!saveNoteChecked || !note) {
       finishComplete();
-      return;
+      return true;
     }
     if (!customer) {
       showToast(t("customerNotesSaveCustomerRequired"));
-      return;
+      return false;
     }
+    const result = await postCustomerNote(note, "always", customer, force, isRetry);
+    if (result.shouldRetry) {
+      const okAnyway = window.confirm(t("customerNotesDuplicateConfirm"));
+      if (okAnyway) {
+        return submitSaveNote(true, true);
+      }
+      return false;
+    }
+    if (result.success) {
+      if (mountedRef.current) {
+        setCustomerNotes((prev) => {
+          const newNote: CustomerNoteDto = { id: `temp-${Date.now()}`, note, created_at: new Date().toISOString() };
+          return [newNote, ...prev];
+        });
+        void loadCustomerNotes(customer);
+      }
+      finishComplete();
+      return true;
+    }
+    return false;
+  }, [saveNoteText, saveNoteCustomer, resolvedCustomerName, saveNoteChecked, jobId, t, showToast, finishComplete, loadCustomerNotes]);
+
+  const handleSaveCustomerNote = async (force = false) => {
+    if (saveNoteSaving) return;
     setSaveNoteSaving(true);
     try {
-      const res = await api.post<{ note: CustomerNoteDto }>(`/api/customers/notes`, {
-        customer_name: customer,
-        note,
-        force,
-        job_id: jobId ?? undefined,
-      });
-      if (res.status === 409) {
-        const okAnyway = window.confirm(t("customerNotesDuplicateConfirm"));
-        if (okAnyway) {
-          await handleSaveCustomerNote(true);
-        }
-        return;
-      }
-      if (res.status >= 200 && res.status < 300) {
-        if (res.data?.note) {
-          setCustomerNotes((prev) => [res.data!.note, ...prev]);
-        } else {
-          void loadCustomerNotes(customer);
-        }
-        finishComplete();
-        return;
-      }
-      showToast(res.error?.message ?? "Opombe ni bilo mogoče shraniti.");
-    } catch (err) {
-      showToast(getErrorMessage(err));
+      await submitSaveNote(force);
     } finally {
-      setSaveNoteSaving(false);
+      if (mountedRef.current) {
+        setSaveNoteSaving(false);
+      }
     }
   };
 
@@ -583,7 +652,8 @@ export function WorkerDetailModal({
     const oldIndex = incomplete.findIndex((t) => t.id === active.id);
     const newIndex = incomplete.findIndex((t) => t.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
-    const previous = tasks;
+
+    const previous = [...tasks];
     const reorderedIncomplete = arrayMove(incomplete, oldIndex, newIndex);
     const reordered = [...completed, ...reorderedIncomplete];
     tasksDirtyRef.current = true;
@@ -594,6 +664,7 @@ export function WorkerDetailModal({
           api.patch(`/api/checklist-items/${task.id}`, { order_index: index })
         )
       );
+      if (!mountedRef.current) return;
       if (results.some((r) => r.status < 200 || r.status >= 300)) {
         throw new Error("Vrstnega reda ni bilo mogoče shraniti.");
       }
@@ -601,9 +672,14 @@ export function WorkerDetailModal({
       tasksDirtyRef.current = false;
       void onRefresh?.();
     } catch (err) {
-      setTasks(previous);
+      if (mountedRef.current) {
+        setTasks(previous);
+      }
       tasksDirtyRef.current = false;
-      showToast(getErrorMessage(err));
+      setTasksSyncNonce((n) => n + 1);
+      if (mountedRef.current) {
+        showToast(getErrorMessage(err));
+      }
     }
   };
 
@@ -621,11 +697,15 @@ export function WorkerDetailModal({
         `/api/checklist-items/${task.id}`,
         { is_completed: true }
       );
+      if (!mountedRef.current) return;
       if (res.status >= 200 && res.status < 300 && res.data) {
+        const serverTime = res.data.item.completed_at
+          ? formatSiTimeFromIso(res.data.item.completed_at)
+          : nowTime();
         setTasks((prev) => {
           const updated = prev.map((t) =>
             t.id === task.id
-              ? { ...t, completed: true, time: nowTime(), attachment: t.attachment || !!t.requiresAttachment }
+              ? { ...t, completed: true, time: serverTime }
               : t
           );
           const done = updated.filter((t) => t.completed);
@@ -637,13 +717,16 @@ export function WorkerDetailModal({
         showToast(res.error?.message ?? t("modalConfirmStepMissingTitle"));
       }
     } catch (err) {
-      showToast(getErrorMessage(err));
+      if (mountedRef.current) {
+        showToast(getErrorMessage(err));
+      }
     }
   };
 
   const handleDeleteTask = async (taskId: string) => {
     try {
       const res = await api.delete(`/api/checklist-items/${taskId}`);
+      if (!mountedRef.current) return;
       if (res.status >= 200 && res.status < 300) {
         setTasks((prev) => prev.filter((t) => t.id !== taskId));
         onRefresh?.();
@@ -651,7 +734,9 @@ export function WorkerDetailModal({
         showToast("Koraka ni bilo mogoče izbrisati.");
       }
     } catch (err) {
-      showToast(getErrorMessage(err));
+      if (mountedRef.current) {
+        showToast(getErrorMessage(err));
+      }
     }
   };
 
@@ -675,6 +760,7 @@ export function WorkerDetailModal({
           order_index: insertIndex,
         }
       );
+      if (!mountedRef.current) return;
       if (res.status >= 200 && res.status < 300 && res.data) {
         const item = res.data.item;
         const newTask: TaskItem = {
@@ -697,7 +783,9 @@ export function WorkerDetailModal({
         showToast(res.error?.message ?? "Koraka ni bilo mogoče dodati.");
       }
     } catch (err) {
-      showToast(getErrorMessage(err));
+      if (mountedRef.current) {
+        showToast(getErrorMessage(err));
+      }
     }
   };
 
@@ -708,6 +796,7 @@ export function WorkerDetailModal({
     if (checklistItemId) formData.append("checklist_item_id", checklistItemId);
     try {
       const res = await api.post<{ files: unknown[] }>(`/api/jobs/${jobId}/files`, formData);
+      if (!mountedRef.current) return false;
       if (res.status >= 200 && res.status < 300) {
         if (checklistItemId) {
           setTasks((prev) =>
@@ -723,7 +812,9 @@ export function WorkerDetailModal({
       showToast(res.error?.message ?? t("modalAttachFailed"));
       return false;
     } catch (err) {
-      showToast(getErrorMessage(err));
+      if (mountedRef.current) {
+        showToast(getErrorMessage(err));
+      }
       return false;
     }
   };
@@ -737,6 +828,7 @@ export function WorkerDetailModal({
   const handleHideAttachment = async (fileId: string) => {
     try {
       const res = await api.patch(`/api/files/${fileId}`, { hidden: true });
+      if (!mountedRef.current) return;
       if (res.status >= 200 && res.status < 300) {
         if (jobId) {
           queryClient.setQueryData(queryKeys.job.files(jobId), (prev: unknown) => {
@@ -745,12 +837,14 @@ export function WorkerDetailModal({
           });
         }
         setPreviewAttachment(null);
-        void queryClient.invalidateQueries({ queryKey: queryKeys.job.timeline(jobId ?? "none") });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.job.timeline(jobId || "") });
       } else {
         showToast(res.error?.message ?? "Priponke ni bilo mogoče skriti.");
       }
     } catch (err) {
-      showToast(getErrorMessage(err));
+      if (mountedRef.current) {
+        showToast(getErrorMessage(err));
+      }
     }
   };
 
@@ -779,7 +873,27 @@ export function WorkerDetailModal({
 
   const firstIncompleteId = tasks.find((t) => !t.completed)?.id ?? null;
 
-  const renderContentBody = () => (
+  const taskIds = React.useMemo(() => tasks.map((t) => t.id), [tasks]);
+
+  const canPreviewAttachment = (att: AttachmentItem): boolean =>
+  !!att.documentPreview && !!att.documentType && att.documentType !== "other";
+
+function TimelineIcon({ type }: { type: TimelineItem["type"] }) {
+  switch (type) {
+    case "voice":
+      return (
+        <svg width="12" height="12" viewBox="0 0 32 36" fill="#6D778E" className="shrink-0 mt-0.5">
+          <path d="M20.8542 17.1124C19.2762 18.3754 8.94271 26.6494 6.55021 28.5664L2.50471 24.5209L14.0067 10.2649L20.8542 17.1124ZM28.8177 2.31188C25.7352 -0.770625 20.7357 -0.770625 17.6532 2.31188C15.6207 4.34588 15.4482 6.57487 15.3492 7.36538L23.7642 15.7804C24.4902 15.6994 26.7672 15.5269 28.8177 13.4764C31.9017 10.3939 31.9017 5.39438 28.8177 2.31188ZM14.0667 29.2219C10.6287 29.2219 9.05821 31.3624 6.84271 32.7544C5.27371 33.7384 3.78871 33.2389 3.07471 32.3554C2.81521 32.0389 2.07421 30.8989 3.33571 29.5924L3.14821 29.4049L1.45921 27.7684C-0.598793 29.8924 -0.234293 32.4304 1.04071 34.0039C2.50321 35.8099 5.44471 36.7219 8.23321 34.9714C10.6107 33.4789 11.6637 31.8394 14.0667 31.8394C15.6207 31.8394 17.0367 32.5354 19.2942 35.9989L21.4857 34.5709C19.3962 31.3609 17.3337 29.2219 14.0667 29.2219Z" />
+        </svg>
+      );
+    case "attachment":
+      return <Paperclip className="w-3.5 h-3.5 text-slate-300 shrink-0 mt-0.5" />;
+    default:
+      return null;
+  }
+}
+
+const renderContentBody = () => (
     <div className="flex flex-col gap-[48px] text-[#1E293B]">
       {(onDeleteCard || jobStatus === "completed") && (
         <div className="flex items-center justify-end gap-3">
@@ -915,7 +1029,7 @@ export function WorkerDetailModal({
           collisionDetection={closestCenter}
           onDragEnd={handleTaskDragEnd}
         >
-          <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+          <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
             <div className="flex flex-col gap-2">
               {tasks.map((task) => (
                 <SortableTaskItem
@@ -942,8 +1056,7 @@ export function WorkerDetailModal({
           </SortableContext>
         </DndContext>
       </div>
-
-      <div className="flex flex-col gap-3">
+<div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <span
             style={{
@@ -959,6 +1072,7 @@ export function WorkerDetailModal({
           </span>
           <button
             onClick={() => {
+              // Job-level Priponke only — never auto-link to a checklist step.
               openAttachDialog(null);
             }}
             className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
@@ -984,10 +1098,7 @@ export function WorkerDetailModal({
               },
               t
             );
-            const showPreview =
-              !!att.documentPreview &&
-              !!att.documentType &&
-              att.documentType !== "other";
+            const showPreview = canPreviewAttachment(att);
             return (
               <button
                 key={att.id}
@@ -1061,25 +1172,19 @@ export function WorkerDetailModal({
                   {event.text}
                 </span>
               </div>
-              {event.type === "attachment" && (
+              {event.type === "attachment" && event.fileId && (
                 <button
                   type="button"
                   onClick={() => {
-                    if (event.fileId) {
-                      const att = attachments.find((a) => a.id === event.fileId);
-                      if (att) setPreviewAttachment(att);
-                    }
+                    const att = attachments.find((a) => a.id === event.fileId);
+                    if (att) setPreviewAttachment(att);
                   }}
                   className="shrink-0 mt-0.5 bg-transparent border-none p-0 outline-none cursor-pointer hover:text-slate-400 transition-colors"
                 >
-                  <Paperclip className="w-3.5 h-3.5 text-slate-300" />
+                  <TimelineIcon type={event.type} />
                 </button>
               )}
-              {event.type === "voice" && (
-                <svg width="12" height="12" viewBox="0 0 32 36" fill="#6D778E" className="shrink-0 mt-0.5">
-                  <path d="M20.8542 17.1124C19.2762 18.3754 8.94271 26.6494 6.55021 28.5664L2.50471 24.5209L14.0067 10.2649L20.8542 17.1124ZM28.8177 2.31188C25.7352 -0.770625 20.7357 -0.770625 17.6532 2.31188C15.6207 4.34588 15.4482 6.57487 15.3492 7.36538L23.7642 15.7804C24.4902 15.6994 26.7672 15.5269 28.8177 13.4764C31.9017 10.3939 31.9017 5.39438 28.8177 2.31188ZM14.0667 29.2219C10.6287 29.2219 9.05821 31.3624 6.84271 32.7544C5.27371 33.7384 3.78871 33.2389 3.07471 32.3554C2.81521 32.0389 2.07421 30.8989 3.33571 29.5924L3.14821 29.4049L1.45921 27.7684C-0.598793 29.8924 -0.234293 32.4304 1.04071 34.0039C2.50321 35.8099 5.44471 36.7219 8.23321 34.9714C10.6107 33.4789 11.6637 31.8394 14.0667 31.8394C15.6207 31.8394 17.0367 32.5354 19.2942 35.9989L21.4857 34.5709C19.3962 31.3609 17.3337 29.2219 14.0667 29.2219Z" />
-                </svg>
-              )}
+              {event.type !== "attachment" && <TimelineIcon type={event.type} />}
             </div>
           ))}
         </div>
@@ -1290,6 +1395,7 @@ export function WorkerDetailModal({
                 <AuraFileInput
                   id="attach-only-file"
                   onFile={setAttachOnlyFile}
+                  onReject={showToast}
                 />
                 {attachOnlyFile && (
                   <span className="text-[11px] text-slate-500 truncate">
@@ -1335,6 +1441,7 @@ export function WorkerDetailModal({
             const hasLinked =
               !!task.attachment ||
               attachments.some((a) => a.checklistItemId === task.id);
+            // Job-level Priponke files do not satisfy step attachment.
             const missingAttachment = !!task.requiresAttachment && !hasLinked;
             const stepAttachment = attachments.find(
               (a) => a.checklistItemId === task.id
@@ -1376,6 +1483,7 @@ export function WorkerDetailModal({
                       <AuraFileInput
                         id="confirm-step-attachment"
                         onFile={setConfirmStepFile}
+                        onReject={showToast}
                       />
                       {confirmStepFile && (
                         <span className="text-[11px] text-slate-500 truncate">
@@ -1577,6 +1685,7 @@ export function WorkerDetailModal({
                           rel="noopener noreferrer"
                           className="block aspect-video rounded-xl bg-slate-100 border border-slate-200 overflow-hidden"
                         >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={url}
                             alt={previewAttachment.name}

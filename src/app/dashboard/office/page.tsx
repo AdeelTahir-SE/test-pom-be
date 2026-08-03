@@ -19,8 +19,19 @@ import {
   jobNumber,
   formatTime,
 } from '@/lib/dashboardMappers';
-import type { Worker, Order, Message } from '@/lib/mockData';
+import type { Worker, Order } from '@/lib/mockData';
+import type { Message } from '@/lib/types/messages';
 import { LIMITS } from '@/config/constants';
+import {
+  JOB_ATTACHMENT_ACCEPT,
+  jobAttachmentErrorMessage,
+  validateJobAttachmentFile,
+} from "@/lib/uploadValidation";
+import {
+  apiFailureMessage,
+  logClientError,
+  userFacingCatchMessage,
+} from "@/lib/clientError";
 import {
   LogOut,
   Send,
@@ -198,6 +209,7 @@ export default function OfficeDashboard() {
   const [replyInput, setReplyInput] = useState('');
   const [replyLoading, setReplyLoading] = useState(false);
   const [isRecordingReply, setIsRecordingReply] = useState(false);
+  const [isSavingVoiceReply, setIsSavingVoiceReply] = useState(false);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeWorkerId, setComposeWorkerId] = useState('');
   const [pendingDeleteJobId, setPendingDeleteJobId] = useState<string | null>(
@@ -519,6 +531,11 @@ export default function OfficeDashboard() {
     const target = cardAttachTargetRef.current;
     cardAttachTargetRef.current = null;
     if (!file || !target) return;
+    const validation = validateJobAttachmentFile(file);
+    if (!validation.ok) {
+      showToast(jobAttachmentErrorMessage(validation.error, t));
+      return;
+    }
     const formData = new FormData();
     formData.append('files', file);
     formData.append('checklist_item_id', target.taskId);
@@ -931,6 +948,7 @@ export default function OfficeDashboard() {
 
   const handleStartRecordReply = async () => {
     if (!replyJobId) return;
+    const jobIdForUpload = replyJobId;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
@@ -939,49 +957,81 @@ export default function OfficeDashboard() {
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
       };
+      // Close recording UI only after the blob is finalized and upload finishes
+      // (Mark a11: stop() is async; don't setIsRecordingReply(false) in the click handler).
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
         if (mediaStreamRef.current === stream) mediaStreamRef.current = null;
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const formData = new FormData();
-        formData.append('audio', blob, 'voice-message.webm');
         try {
+          if (blob.size === 0) {
+            showToast(t("workerVoiceSendFailed"));
+            return;
+          }
+          const formData = new FormData();
+          formData.append('audio', blob, 'voice-message.webm');
           const res = await api.post<{ message: ApiJobMessage }>(
-            `/api/jobs/${replyJobId}/voice-message`,
+            `/api/jobs/${jobIdForUpload}/voice-message`,
             formData,
           );
           if ((res.status === 200 || res.status === 201) && res.data) {
             setReplyMessages((prev) => [...prev, res.data!.message]);
             void refreshBoard();
           } else {
-            console.error(res.error);
+            logClientError("office.voiceUpload", res.error, {
+              status: res.status,
+              jobId: jobIdForUpload,
+            });
             showToast(
-              res.error?.message ??
-                'Glasovnega sporočila ni bilo mogoče poslati.',
+              apiFailureMessage(res.error, res.status, t("workerVoiceSendFailed"))
             );
           }
         } catch (err) {
-          console.error(err);
-          showToast('Glasovnega sporočila ni bilo mogoče poslati.');
+          logClientError("office.voiceUpload", err, { jobId: jobIdForUpload });
+          showToast(
+            userFacingCatchMessage(
+              err,
+              t("workerVoiceSendFailed"),
+              t("workerNetworkError")
+            )
+          );
+        } finally {
+          setIsSavingVoiceReply(false);
+          setIsRecordingReply(false);
+          mediaRecorderRef.current = null;
         }
       };
       recorder.start();
       mediaRecorderRef.current = recorder;
+      setIsSavingVoiceReply(false);
       setIsRecordingReply(true);
       autoStopTimerRef.current = setTimeout(() => {
-        if (mediaRecorderRef.current?.state === 'recording')
+        if (mediaRecorderRef.current?.state === 'recording') {
+          setIsSavingVoiceReply(true);
           mediaRecorderRef.current.stop();
-        setIsRecordingReply(false);
+        }
       }, LIMITS.VOICE_MAX_SECONDS * 1000);
-    } catch {
-      showToast(t('workerMicUnavailable'));
+    } catch (err) {
+      logClientError("office.startReplyRecording", err);
+      showToast(
+        userFacingCatchMessage(
+          err,
+          t("workerMicUnavailable"),
+          t("workerNetworkError"),
+          t("workerMicUnavailable")
+        )
+      );
     }
   };
 
   const handleStopRecordReply = () => {
     if (autoStopTimerRef.current) clearTimeout(autoStopTimerRef.current);
-    mediaRecorderRef.current?.stop();
-    setIsRecordingReply(false);
+    if (isSavingVoiceReply) return;
+    // Only stop capture here — UI stays open until onstop finishes upload.
+    if (mediaRecorderRef.current?.state === 'recording') {
+      setIsSavingVoiceReply(true);
+      mediaRecorderRef.current.stop();
+    }
   };
 
   if (authLoading || dataLoading) {
@@ -1573,13 +1623,13 @@ export default function OfficeDashboard() {
                       targetTask: 'Ni komunikacije',
                     }}
                     iconType="mic"
-                    onResolve={() => {}}
                     onDismiss={() => dismissDummy('komunikacija')}
                   />
                 ))}
               {communicationThreads.map((thread) => {
-                const latest = thread.latest;
-                const card = communicationToMessage(latest, t);
+                const original = thread.messages[0]!;
+                // Header = original sender + original send time; title = job (Mark).
+                const card = communicationToMessage(original, t);
                 return (
                   <OfficeCard
                     key={thread.jobId}
@@ -1595,11 +1645,6 @@ export default function OfficeDashboard() {
                       type: m.message_type === 'voice' ? 'glasovno' : 'tekst',
                     }))}
                     iconType="mic"
-                    onResolve={() =>
-                      void handleDismissConversation(
-                        thread.messages.map((m) => m.id),
-                      )
-                    }
                     onDismiss={() =>
                       void handleDismissConversation(
                         thread.messages.map((m) => m.id),
@@ -1741,7 +1786,7 @@ export default function OfficeDashboard() {
         ref={cardAttachInputRef}
         type="file"
         className="hidden"
-        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+        accept={JOB_ATTACHMENT_ACCEPT}
         onChange={(e) => {
           const file = e.target.files?.[0] ?? null;
           e.target.value = '';
@@ -2141,18 +2186,24 @@ export default function OfficeDashboard() {
           className="max-w-sm w-[90vw] bg-[#0F172A] text-white border-none"
         >
           <div className="flex flex-col items-center text-center py-4">
-            <div className="w-16 h-16 rounded-full bg-red-600 flex items-center justify-center mb-6 animate-pulse shadow-lg">
+            <div
+              className={`w-16 h-16 rounded-full flex items-center justify-center mb-6 shadow-lg ${
+                isSavingVoiceReply ? "bg-slate-600" : "bg-red-600 animate-pulse"
+              }`}
+            >
               <Mic className="w-8 h-8 text-white" />
             </div>
             <h3 className="font-bold text-base tracking-wide">
-              {t('workerRecording')}
+              {isSavingVoiceReply ? t("workerVoiceSaving") : t("workerRecording")}
             </h3>
-            <Button
-              onClick={handleStopRecordReply}
-              className="mt-8 rounded-full h-11 px-6 bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs cursor-pointer"
-            >
-              {t('workerStopRecord')}
-            </Button>
+            {!isSavingVoiceReply && (
+              <Button
+                onClick={handleStopRecordReply}
+                className="mt-8 rounded-full h-11 px-6 bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs cursor-pointer"
+              >
+                {t("workerStopRecord")}
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>

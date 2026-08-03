@@ -4,7 +4,14 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/lib/useLanguage";
 import { api, getToken } from "@/lib/api-client";
-import type { BusinessModule } from "@/config/business-modules";
+import {
+  isValidBusinessModule,
+  type BusinessModule,
+} from "@/config/business-modules";
+import {
+  clearPendingGoogleRegister,
+  readPendingGoogleRegister,
+} from "@/lib/pendingGoogleRegister";
 
 const MODULE_LABELS: Record<BusinessModule, string> = {
   construction: "Gradbeništvo",
@@ -18,13 +25,6 @@ const MODULE_LABELS: Record<BusinessModule, string> = {
 
 const STARTER_MODULES = Object.keys(MODULE_LABELS) as BusinessModule[];
 
-const COMPANY_SIZE_OPTIONS = [
-  { value: "", label: "Velikost podjetja (ni obvezno)" },
-  { value: "1-5", label: "1–5 zaposlenih" },
-  { value: "6-14", label: "6–14 zaposlenih" },
-  { value: "15+", label: "15+ zaposlenih" },
-];
-
 interface GoogleRegisterResponse {
   user: { id: string; role: string };
   company: { id: string };
@@ -35,15 +35,21 @@ export default function CompleteProfilePage() {
   const router = useRouter();
   const [company, setCompany] = useState("");
   const [businessModule, setBusinessModule] = useState<BusinessModule | "">("");
-  const [companySize, setCompanySize] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const pending = readPendingGoogleRegister();
     const params = new URLSearchParams(window.location.search);
-    const name = params.get("name");
-    if (name) setCompany(name);
+    const companyFromQuery = params.get("company");
+    const moduleFromQuery = params.get("module");
+    // Prefer sessionStorage (a11 #9); query params are a fallback from callback.
+    const nextCompany =
+      pending?.company_name || companyFromQuery || params.get("name") || "";
+    if (nextCompany) setCompany(nextCompany);
+    const nextModule = pending?.business_module || moduleFromQuery;
+    if (isValidBusinessModule(nextModule)) setBusinessModule(nextModule);
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -64,22 +70,23 @@ export default function CompleteProfilePage() {
       return;
     }
     try {
-  const res = await api.post<GoogleRegisterResponse>("/api/auth/register/google", {
-    company_name: company,
-    business_module: businessModule,
-  });
+      const res = await api.post<GoogleRegisterResponse>("/api/auth/register/google", {
+        company_name: company.trim(),
+        business_module: businessModule,
+      });
 
-  if (res.status !== 201 || !res.data) {
-    setError(res.error?.message ?? "Registracija ni uspela. Poskusite znova.");
-    return;
-  }
+      if (res.status !== 201 || !res.data) {
+        setError(res.error?.message ?? "Registracija ni uspela. Poskusite znova.");
+        return;
+      }
 
-  router.push("/dashboard/office");
-} catch {
-  setError("Registracija ni uspela. Poskusite znova.");
-} finally {
-  setSubmitting(false);
-}
+      clearPendingGoogleRegister();
+      router.push("/dashboard/office");
+    } catch {
+      setError("Registracija ni uspela. Poskusite znova.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -146,34 +153,6 @@ export default function CompleteProfilePage() {
               {STARTER_MODULES.map((mod) => (
                 <option key={mod} value={mod}>
                   {MODULE_LABELS[mod]}
-                </option>
-              ))}
-            </select>
-            <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </span>
-          </div>
-
-          <div className="relative">
-            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                <circle cx="9" cy="7" r="4" />
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-              </svg>
-            </span>
-            <select
-              value={companySize}
-              onChange={(e) => setCompanySize(e.target.value)}
-              aria-label="Število zaposlenih"
-              className="w-full h-[52px] pl-12 pr-10 rounded-[8px] border border-slate-300 bg-[#F5F5F5] text-sm text-slate-900 focus:outline-none appearance-none"
-            >
-              {COMPANY_SIZE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
                 </option>
               ))}
             </select>

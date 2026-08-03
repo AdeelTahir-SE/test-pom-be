@@ -18,6 +18,7 @@ export type OfficeCommunicationDto = {
   worker_id: string | null;
   worker_name: string | null;
   sender_name: string | null;
+  recipient_name: string | null;
 };
 
 // GET /api/office/communications?date=YYYY-MM-DD
@@ -102,22 +103,26 @@ export const GET = withAuth(async (request, auth) => {
   }
 
   const senderIds = [...new Set(rows.map((m) => m.sender_id))];
-  const { data: senders, error: sendersError } =
-    senderIds.length > 0
+  const recipientIds = [
+    ...new Set(rows.map((m) => m.recipient_id).filter((id): id is string => !!id)),
+  ];
+  const personIds = [...new Set([...senderIds, ...recipientIds])];
+  const { data: people, error: peopleError } =
+    personIds.length > 0
       ? await db
           .from("users")
           .select("id, full_name")
           .eq("company_id", auth.companyId)
-          .in("id", senderIds)
+          .in("id", personIds)
       : { data: [] as { id: string; full_name: string }[], error: null };
-  if (sendersError) {
-    throw new ApiError("internal", "Failed to load senders for communications.", sendersError.message);
+  if (peopleError) {
+    throw new ApiError("internal", "Failed to load message people.", peopleError.message);
   }
 
   const jobTitleById = new Map((jobs ?? []).map((j) => [j.id, j.title]));
   const workerByJobId = new Map((assignments ?? []).map((a) => [a.job_id, a.worker_id]));
   const workerNameById = new Map((workers ?? []).map((w) => [w.id, w.full_name]));
-  const senderNameById = new Map((senders ?? []).map((s) => [s.id, s.full_name]));
+  const personNameById = new Map((people ?? []).map((p) => [p.id, p.full_name]));
 
   const result: OfficeCommunicationDto[] = rows.map((m) => {
     const workerId = workerByJobId.get(m.job_id) ?? null;
@@ -133,7 +138,8 @@ export const GET = withAuth(async (request, auth) => {
       job_title: jobTitleById.get(m.job_id) ?? null,
       worker_id: workerId,
       worker_name: workerId ? workerNameById.get(workerId) ?? null : null,
-      sender_name: senderNameById.get(m.sender_id) ?? null,
+      sender_name: personNameById.get(m.sender_id) ?? null,
+      recipient_name: m.recipient_id ? personNameById.get(m.recipient_id) ?? null : null,
     };
   });
 

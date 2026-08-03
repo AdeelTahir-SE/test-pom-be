@@ -9,18 +9,94 @@ import type {
 
 export class ApiRequestError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  response?: unknown;
+
+  constructor(status: number, message: string, response?: unknown) {
     super(message);
     this.status = status;
+    this.response = response;
   }
 }
 
 export async function unwrapApi<T>(result: Promise<ApiResult<T>>): Promise<T> {
-  const res = await result;
-  if (res.status >= 400 || res.data === undefined) {
-    throw new ApiRequestError(res.status, res.error?.message ?? `Request failed (${res.status})`);
+  let res: ApiResult<T>;
+
+  try {
+    res = await result;
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Network error";
+
+    console.error("API NETWORK ERROR:", message);
+
+    throw new ApiRequestError(
+      0,
+      message,
+      err
+    );
   }
+
+    if (res.status >= 400 || res.data == null) {
+    const message =
+      res.error?.message ??
+      `Request failed (${res.status})`;
+
+    console.error("API ERROR:", {
+      status: res.status,
+      message,
+      response: res,
+    });
+
+    throw new ApiRequestError(
+  res.status,
+  message,
+  res
+);
+  }
+
   return res.data;
+}
+function validateDayKey(dayKey: unknown) {
+  if (typeof dayKey !== "string") {
+    throw new Error(`Invalid date value: ${dayKey}`);
+  }
+
+  const regex = /^\d{4}-\d{2}-\d{2}$/;
+
+  if (!regex.test(dayKey)) {
+    throw new Error(`Invalid date format: ${dayKey}`);
+  }
+
+  const parts = dayKey.split("-");
+
+  if (parts.length !== 3) {
+    throw new Error(`Invalid date: ${dayKey}`);
+  }
+
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  const day = Number(parts[2]);
+
+  if (
+    Number.isNaN(year) ||
+    Number.isNaN(month) ||
+    Number.isNaN(day) ||
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day)
+  ) {
+    throw new Error(`Invalid date: ${dayKey}`);
+  }
+
+  const date = new Date(year, month - 1, day);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    throw new Error(`Invalid date: ${dayKey}`);
+  }
 }
 
 export interface OfficeSummaryData {
@@ -46,9 +122,14 @@ export async function fetchJobs() {
 }
 
 export async function fetchReminders(dayKey: string) {
+  validateDayKey(dayKey);
+
   const data = await unwrapApi(
-    api.get<{ reminders: ApiOfficeReminder[] }>(`/api/office-reminders?date=${dayKey}`)
+    api.get<{ reminders: ApiOfficeReminder[] }>(
+      `/api/office-reminders?date=${encodeURIComponent(dayKey)}`
+    )
   );
+
   return data.reminders;
 }
 
@@ -72,9 +153,12 @@ export interface OfficeCommunicationDto {
   worker_id: string | null;
   worker_name: string | null;
   sender_name?: string | null;
+  recipient_name?: string | null;
 }
 
 export async function fetchOfficeCommunications(dayKey: string) {
+  validateDayKey(dayKey);
+
   const data = await unwrapApi(
     api.get<{ messages: OfficeCommunicationDto[] }>(
       `/api/office/communications?date=${encodeURIComponent(dayKey)}`
@@ -89,6 +173,8 @@ export async function fetchWorkers() {
 }
 
 export async function fetchSummary(dayKey: string) {
+  validateDayKey(dayKey);
+
   return unwrapApi(
     api.get<OfficeSummaryData>(
       `/api/dashboard/summary?date=${encodeURIComponent(dayKey)}`
@@ -105,6 +191,8 @@ export interface DailySummaryDto {
 }
 
 export async function fetchDailySummary(dayKey: string) {
+  validateDayKey(dayKey);
+
   const data = await unwrapApi(
     api.get<{ summary: DailySummaryDto | null }>(
       `/api/daily-summaries?date=${encodeURIComponent(dayKey)}`
@@ -120,25 +208,37 @@ export async function fetchDailySummaryHistory() {
   return data.summaries;
 }
 
-const BULK_CHECKLIST_MAX_IDS = 100;
+const BULK_CHECKLIST_MAX_IDS = 25;
 
 export async function fetchChecklistsForJobs(jobIds: string[]) {
   if (jobIds.length === 0) return {};
 
   const map: Record<string, ApiChecklistItem[]> = {};
+
+  const chunks: string[][] = [];
+
   for (let i = 0; i < jobIds.length; i += BULK_CHECKLIST_MAX_IDS) {
-    const chunk = jobIds.slice(i, i + BULK_CHECKLIST_MAX_IDS);
-    const data = await unwrapApi(
-      api.get<{ checklistsByJob: Record<string, ApiChecklistItem[]> }>(
-        `/api/jobs/checklists?ids=${encodeURIComponent(chunk.join(","))}`
+    chunks.push(jobIds.slice(i, i + BULK_CHECKLIST_MAX_IDS));
+  }
+
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      unwrapApi(
+        api.get<{ checklistsByJob: Record<string, ApiChecklistItem[]> }>(
+          `/api/jobs/checklists?ids=${encodeURIComponent(chunk.join(","))}`
+        )
       )
-    );
-    Object.assign(map, data.checklistsByJob);
+    )
+  );
+
+  for (const result of results) {
+    Object.assign(map, result.checklistsByJob);
   }
 
   for (const id of jobIds) {
     if (!map[id]) map[id] = [];
   }
+
   return map;
 }
 

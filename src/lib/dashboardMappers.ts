@@ -1,9 +1,9 @@
 // Maps real backend API shapes onto the existing dashboard components' view
-// models (Worker/TaskItem/Order/Message from lib/mockData.ts). Keeping the
-// presentational components (WorkerCard, CommunicationCard, OfficeCard,
-// SummaryCard) unchanged and doing the translation here in one place avoids
-// touching a dozen already-built, styled components during integration.
-import type { Worker, TaskItem, Order, Message } from "@/lib/mockData";
+// models (Worker/TaskItem/Order from lib/mockData; Message from lib/types/messages).
+// Keeping the presentational components unchanged and doing the translation here
+// in one place avoids touching a dozen already-built, styled components.
+import type { Worker, TaskItem, Order } from "@/lib/mockData";
+import type { Message } from "@/lib/types/messages";
 import type { TranslationKey } from "@/lib/translations";
 import { formatSiDateTimeCompact } from "@/lib/officeDate";
 
@@ -199,26 +199,34 @@ export function notificationToMessage(
   };
 }
 
-/** Shared office KOMUNIKACIJA feed row → card model (a6). */
+/** Shared office KOMUNIKACIJA feed row → card model (a6).
+ * Header = sender + time; inner title = job name (Mark). */
 export function communicationToMessage(
   m: {
     id: string;
     content: string;
     message_type: string;
     created_at: string;
+    sender_id: string;
     job_title: string | null;
     worker_id: string | null;
     worker_name: string | null;
+    sender_name?: string | null;
+    recipient_name?: string | null;
   },
   t: Translate
 ): Message {
+  const sender = m.sender_name?.trim() || t("cardUnknownSender");
+
   return {
     id: m.id,
     workerId: m.worker_id ?? "",
-    workerName: m.worker_name ?? t("cardUnknownSender"),
+    // OfficeCard header uses workerName → sender (Mark).
+    workerName: sender,
     text: m.content,
     time: formatTime(m.created_at),
     type: m.message_type === "voice" ? "glasovno" : "tekst",
-    targetTask: m.job_title ?? undefined,
+    // Inner bold title = job name on the TEREN card (Mark).
+    targetTask: m.job_title?.trim() || undefined,
   };
 }

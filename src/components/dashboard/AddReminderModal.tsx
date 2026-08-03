@@ -303,6 +303,7 @@ const finalPhone = normalizePhone(fullPhone) ?? "";
     <AuraFileInput
       id="reminder-attachment"
       onFile={(file) => setAttachmentFile(file)}
+      onReject={(msg) => window.alert(msg)}
     />
     {attachmentFile && (
       <span className="text-[11px] text-slate-500 truncate">

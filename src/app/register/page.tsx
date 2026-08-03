@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/lib/useLanguage";
 import { api, setSession } from "@/lib/api-client";
 import type { BusinessModule } from "@/config/business-modules";
+import { savePendingGoogleRegister } from "@/lib/pendingGoogleRegister";
 import Link from "next/link";
 
 const STARTER_MODULES: BusinessModule[] = [
@@ -82,28 +83,41 @@ export default function RegisterPage() {
 };
 
   const handleGoogle = async () => {
-  setError(null);
-  setGoogleLoading(true);
+    setError(null);
 
-  try {
-    const res = await api.get<{ url: string }>("/api/auth/google");
+    // Mark a11 #9: Google OAuth only returns identity — company fields must
+    // travel via sessionStorage and be applied after the callback.
+    if (!company.trim()) {
+      setError("Vnesite ime podjetja");
+      return;
+    }
+    if (!businessModule) {
+      setError("Izberite panogo");
+      return;
+    }
 
-    if (
-  res.status !== 200 ||
-  !res.data?.url ||
-  typeof res.data.url !== "string"
-) {
-  setError(res.error?.message ?? t("authGoogleFailed"));
-  return;
-}
+    setGoogleLoading(true);
+    try {
+      savePendingGoogleRegister({
+        company_name: company.trim(),
+        business_module: businessModule,
+        ...(name.trim() ? { full_name: name.trim() } : {}),
+      });
 
-    window.location.href = res.data.url;
-  } catch {
-    setError("Google prijava ni uspela. Poskusite znova.");
-  } finally {
-    setGoogleLoading(false);
-  }
-};
+      const res = await api.get<{ url: string }>("/api/auth/google");
+
+      if (res.status !== 200 || !res.data?.url || typeof res.data.url !== "string") {
+        setError(res.error?.message ?? t("authGoogleFailed"));
+        return;
+      }
+
+      window.location.href = res.data.url;
+    } catch {
+      setError("Google prijava ni uspela. Poskusite znova.");
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-[#0b0f19] px-4 py-12 relative overflow-hidden font-sans text-slate-800 dark:text-slate-100">

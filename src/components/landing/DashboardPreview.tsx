@@ -2,7 +2,8 @@
 
 import React from "react";
 import { useLanguage } from "@/lib/useLanguage";
-import type { Worker, Order, Message } from "@/lib/mockData";
+import type { Worker, Order } from "@/lib/mockData";
+import type { Message } from "@/lib/types/messages";
 import { SummaryCard, OverviewRow, UrgentRow } from "@/components/dashboard/SummaryCard";
 import { WorkerCard } from "@/components/dashboard/WorkerCard";
 import { OfficeCard } from "@/components/dashboard/OfficeCard";
@@ -425,9 +426,7 @@ export function DashboardPreview() {
                     message={m}
                     iconType={idx === 2 ? "document" : "mic"}
                     showRedButton={idx === 1}
-                    onResolve={noop}
                     onDismiss={noop}
-                    onArchive={noop}
                   />
                 ))}
               </div>

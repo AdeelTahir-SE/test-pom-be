@@ -12,12 +12,22 @@ import { WorkerDetailModal } from "@/components/dashboard/WorkerDetailModal";
 import { OfficeCard } from "@/components/dashboard/OfficeCard";
 import { ApiJob, ApiChecklistItem, jobToWorkerCard, jobNumber, formatTime } from "@/lib/dashboardMappers";
 import type { ApiNotification } from "@/lib/dashboardMappers";
-import type { Message } from "@/lib/mockData";
+import type { Message } from "@/lib/types/messages";
 import type { OfficeCardThreadItem } from "@/components/dashboard/OfficeCard";
 import { LIMITS } from "@/config/constants";
 import { formatSiDateTimeCompact } from "@/lib/officeDate";
 import { toTelHref } from "@/lib/phone";
 import { playMessageBeep } from "@/lib/playMessageBeep";
+import {
+  JOB_ATTACHMENT_ACCEPT,
+  jobAttachmentErrorMessage,
+  validateJobAttachmentFile,
+} from "@/lib/uploadValidation";
+import {
+  apiFailureMessage,
+  logClientError,
+  userFacingCatchMessage,
+} from "@/lib/clientError";
 
 interface ApiJobMessage {
   id: string;
@@ -116,19 +126,26 @@ export default function WorkerDashboard() {
         setInboundNotifs([]);
       }
     } catch (err) {
-      console.error(err);
+      logClientError("worker.loadAll", err);
+      setToastMessage(
+        userFacingCatchMessage(err, t("workerLoadFailed"), t("workerNetworkError"))
+      );
+      setTimeout(() => setToastMessage(null), 2000);
     } finally {
       setDataLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!authLoading && user) loadAll();
   }, [authLoading, user, loadAll]);
 
+  // Mark a11 #8: clear interval AND ignore in-flight poll responses after unmount.
   useEffect(() => {
+    let cancelled = false;
     const interval = setInterval(async () => {
       const res = await api.get<{ unread_count: number }>("/api/messages/unread-count");
+      if (cancelled) return;
       if (res.status !== 200 || !res.data) return;
       const next = res.data.unread_count;
       if (unreadPrimedRef.current && next > prevUnreadRef.current) {
@@ -140,7 +157,10 @@ export default function WorkerDashboard() {
       prevUnreadRef.current = next;
       unreadPrimedRef.current = true;
     }, 15000);
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [loadAll]);
 
   useEffect(() => {
@@ -206,11 +226,14 @@ export default function WorkerDashboard() {
         );
         showToast(t("workerTaskUpdated"));
       } else {
-        showToast(res.error?.message ?? t("workerTaskUpdateFailed"));
+        logClientError("worker.toggleTask", res.error, { status: res.status, id });
+        showToast(apiFailureMessage(res.error, res.status, t("workerTaskUpdateFailed")));
       }
     } catch (err) {
-      console.error(err);
-      showToast(t("workerTaskUpdateFailed"));
+      logClientError("worker.toggleTask", err, { id });
+      showToast(
+        userFacingCatchMessage(err, t("workerTaskUpdateFailed"), t("workerNetworkError"))
+      );
     }
   };
 
@@ -228,11 +251,14 @@ export default function WorkerDashboard() {
         setChecklistUploadFile((prev) => ({ ...prev, [id]: null as unknown as File }));
         showToast(t("workerTaskUpdated"));
       } else {
-        showToast(t("workerTaskUpdateFailed"));
+        logClientError("worker.checklistUpload", res.error, { status: res.status, id });
+        showToast(apiFailureMessage(res.error, res.status, t("workerTaskUpdateFailed")));
       }
     } catch (err) {
-      console.error(err);
-      showToast(t("workerTaskUpdateFailed"));
+      logClientError("worker.checklistUpload", err, { id });
+      showToast(
+        userFacingCatchMessage(err, t("workerTaskUpdateFailed"), t("workerNetworkError"))
+      );
     } finally {
       setChecklistUploading((prev) => ({ ...prev, [id]: false }));
     }
@@ -281,16 +307,41 @@ export default function WorkerDashboard() {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
       };
       recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
+        stream.getTracks().forEach((track) => track.stop());
         releaseRecordingLock();
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        if (blob.size === 0) return;
+        if (blob.size === 0) {
+          showToast(t("workerVoiceSendFailed"));
+          return;
+        }
         const formData = new FormData();
         formData.append("audio", blob, "voice-message.webm");
-        const res = await api.post<{ message: ApiJobMessage }>(`/api/jobs/${job.id}/voice-message`, formData);
-        if ((res.status === 200 || res.status === 201) && res.data) {
-          setMessages((prev) => [...prev, res.data!.message]);
-          showToast(t("workerVoiceSent"));
+        try {
+          const res = await api.post<{ message: ApiJobMessage }>(
+            `/api/jobs/${job.id}/voice-message`,
+            formData
+          );
+          if ((res.status === 200 || res.status === 201) && res.data) {
+            setMessages((prev) => [...prev, res.data!.message]);
+            showToast(t("workerVoiceSent"));
+          } else {
+            logClientError("worker.voiceUpload", res.error, {
+              status: res.status,
+              jobId: job.id,
+            });
+            showToast(
+              apiFailureMessage(res.error, res.status, t("workerVoiceSendFailed"))
+            );
+          }
+        } catch (uploadErr) {
+          logClientError("worker.voiceUpload", uploadErr, { jobId: job.id });
+          showToast(
+            userFacingCatchMessage(
+              uploadErr,
+              t("workerVoiceSendFailed"),
+              t("workerNetworkError")
+            )
+          );
         }
       };
       recorder.start();
@@ -301,9 +352,17 @@ export default function WorkerDashboard() {
           mediaRecorderRef.current.stop();
         }
       }, LIMITS.VOICE_MAX_SECONDS * 1000);
-    } catch {
+    } catch (err) {
+      logClientError("worker.startRecord", err);
       releaseRecordingLock();
-      showToast(t("workerMicUnavailable"));
+      showToast(
+        userFacingCatchMessage(
+          err,
+          t("workerMicUnavailable"),
+          t("workerNetworkError"),
+          t("workerMicUnavailable")
+        )
+      );
     }
   };
 
@@ -583,9 +642,17 @@ export default function WorkerDashboard() {
                             type="file"
                             id={`file-${task.id}`}
                             className="hidden"
+                            accept={JOB_ATTACHMENT_ACCEPT}
                             onChange={(e) => {
                               const file = e.target.files?.[0];
-                              if (file) setChecklistUploadFile((prev) => ({ ...prev, [task.id]: file }));
+                              e.target.value = "";
+                              if (!file) return;
+                              const validation = validateJobAttachmentFile(file);
+                              if (!validation.ok) {
+                                showToast(jobAttachmentErrorMessage(validation.error, t));
+                                return;
+                              }
+                              setChecklistUploadFile((prev) => ({ ...prev, [task.id]: file }));
                             }}
                           />
                           <button
@@ -673,7 +740,6 @@ export default function WorkerDashboard() {
                     message={inboundCardMessage}
                     thread={inboundThread}
                     iconType="mic"
-                    onResolve={() => {}}
                     onDismiss={() => void handleDismissInboundBox()}
                     onReply={() => void handleOpenChat()}
                   />

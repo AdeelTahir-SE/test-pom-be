@@ -14,12 +14,15 @@ export const dynamic = "force-dynamic";
 // column (Dashboard spec: "Workers never see this column"). Hidden reminders
 // are excluded. Exact `remind_on = forDate` match (like jobs by date). Legacy
 // null remind_on rows appear only on app-today. Optional `?date=YYYY-MM-DD`
-// for the office day navigator. Ordered by order_index.
+// for the office day navigator. Optional `?all=1` returns every visible
+// reminder (DB / Pisarna list). Ordered by order_index.
 export const GET = withAuth(
   async (request, auth) => {
     const db = getAdminClient();
     const today = getZonedDayAndHour().calendarDay;
-    const dateParam = new URL(request.url).searchParams.get("date");
+    const url = new URL(request.url);
+    const includeAll = url.searchParams.get("all") === "1";
+    const dateParam = url.searchParams.get("date");
     const forDate =
       dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : today;
 
@@ -27,14 +30,20 @@ export const GET = withAuth(
       .from("office_reminders")
       .select("*")
       .eq("company_id", auth.companyId)
-      .is("hidden_at", null)
-      .order("order_index", { ascending: true });
+      .is("hidden_at", null);
 
-    if (forDate === today) {
-      // Exact day + legacy undated (null remind_on).
-      query = query.or(`remind_on.eq.${forDate},remind_on.is.null`);
+    if (!includeAll) {
+      query = query.order("order_index", { ascending: true });
+      if (forDate === today) {
+        // Exact day + legacy undated (null remind_on).
+        query = query.or(`remind_on.eq.${forDate},remind_on.is.null`);
+      } else {
+        query = query.eq("remind_on", forDate);
+      }
     } else {
-      query = query.eq("remind_on", forDate);
+      query = query
+        .order("created_at", { ascending: false })
+        .order("order_index", { ascending: true });
     }
 
     const { data, error } = await query;

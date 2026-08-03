@@ -132,7 +132,7 @@ function TaskRow({
 
   const text = (
     <span
-      className="flex-1 truncate"
+      className="flex-1 truncate min-w-0"
       style={{
         fontFamily: "'PT Sans', sans-serif",
         fontWeight: 400,
@@ -147,32 +147,26 @@ function TaskRow({
     </span>
   );
 
-  if (disabled) {
-    return (
-      <div className="flex items-center gap-[6px] w-full text-left">
-        {checkbox}
-        {text}
-        <TaskRowTrailing task={task} onAttachmentClick={onAttachmentClick} />
-      </div>
-    );
-  }
-
-  // Toggle and attachment must be sibling controls — nested <button> is invalid HTML
-  // and causes React hydration errors.
+  // Mark a11: checkbox button | plain text | attachment button — never nest buttons.
   return (
     <div className="flex items-center gap-[6px] w-full text-left">
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggle();
-        }}
-        className="flex items-center gap-[6px] flex-1 min-w-0 text-left cursor-pointer bg-transparent border-none p-0 outline-none"
-        style={{ background: "transparent", border: "none", padding: 0 }}
-      >
-        {checkbox}
-        {text}
-      </button>
+      {disabled || task.completed ? (
+        <span className="shrink-0 inline-flex">{checkbox}</span>
+      ) : (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle();
+          }}
+          className="shrink-0 inline-flex items-center justify-center cursor-pointer bg-transparent border-none p-0 outline-none"
+          aria-label="Potrdi korak"
+          title="Potrdi korak"
+        >
+          {checkbox}
+        </button>
+      )}
+      {text}
       <TaskRowTrailing task={task} onAttachmentClick={onAttachmentClick} />
     </div>
   );
