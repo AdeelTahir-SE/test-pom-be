@@ -27,13 +27,6 @@ const MODULE_LABELS: Record<BusinessModule, string> = {
   moving: "Selitve",
 };
 
-const COMPANY_SIZE_OPTIONS = [
-  { value: "", label: "Izberite velikost" },
-  { value: "1-5", label: "1–5 zaposlenih" },
-  { value: "6-14", label: "6–14 zaposlenih" },
-  { value: "15+", label: "15+ zaposlenih" },
-];
-
 interface RegisterResponse {
   access_token: string;
   refresh_token: string;
@@ -49,7 +42,6 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [businessModule, setBusinessModule] = useState<BusinessModule | "">("");
-  const [companySize, setCompanySize] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -71,7 +63,6 @@ export default function RegisterPage() {
       password,
       company_name: company,
       business_module: businessModule as BusinessModule,
-      company_size: companySize,
       ...(name.trim() ? { full_name: name.trim() } : {}),
     });
 
@@ -182,35 +173,6 @@ export default function RegisterPage() {
               {STARTER_MODULES.map((mod) => (
                 <option key={mod} value={mod}>
                   {MODULE_LABELS[mod]}
-                </option>
-              ))}
-            </select>
-            <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </span>
-          </div>
-
-          {/* Company size dropdown - hidden for now */}
-          <div className="relative hidden">
-            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                <circle cx="9" cy="7" r="4" />
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-              </svg>
-            </span>
-            <select
-              value={companySize}
-              onChange={(e) => setCompanySize(e.target.value)}
-              aria-label="Število zaposlenih"
-              className="w-full h-[52px] pl-12 pr-10 rounded-[8px] border border-slate-300 bg-[#F5F5F5] text-sm text-slate-900 focus:outline-none appearance-none"
-            >
-              {COMPANY_SIZE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
                 </option>
               ))}
             </select>
