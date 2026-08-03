@@ -56,10 +56,9 @@ export default function DatabaseDashboard() {
   // Attachment Sub-Tabs: 0 = Vse, 1 = Računi, 2 = Dokumenti, 3 = Slike
   const [attachmentSubTab, setAttachmentSubTab] = useState(0);
 
-  // Search Queries state (for Zaposleni = 0, Stranke = 2, Pisarna = 4)
+  // Search Queries state (for Zaposleni = 0, Pisarna = 4)
   const [searchQueries, setSearchQueries] = useState<Record<number, string>>({
     0: '',
-    2: '',
     4: '',
   });
 
@@ -124,9 +123,6 @@ export default function DatabaseDashboard() {
     } else if (activeTab === 1) {
       setSortField('date');
       setSortOrder('desc');
-    } else if (activeTab === 2) {
-      setSortField('date');
-      setSortOrder('desc');
     } else if (activeTab === 3) {
       setSortField('date');
       setSortOrder('desc');
@@ -164,36 +160,6 @@ export default function DatabaseDashboard() {
       worker: 'Slippy Joe',
       attachments: ['Cargo list'],
       notes: 'Preveri dovoljenja za mednarodni transport.',
-    },
-  ];
-
-  const mockCustomers = [
-    {
-      id: 'c-1',
-      date: '2026-07-24',
-      name: 'Company XY',
-      project: 'Prenova kopalnice',
-      notes: 'Ključ je na recepciji. Parkiraj za hišo in vedno koristi stranski vhod. Alarm je 3810',
-      reminders: ['24.07.2026', '31.07.2026', '04.10.2026'],
-      timeline: ['24.07.2026', '31.07.2026', '04.10.2026'],
-    },
-    {
-      id: 'c-2',
-      date: '2026-07-24',
-      name: 'Pizzeria Rose',
-      project: 'Dostava na dom',
-      notes: '',
-      reminders: ['24.07.2026'],
-      timeline: ['24.07.2026', '31.07.2026', '04.10.2026'],
-    },
-    {
-      id: 'c-3',
-      date: '2026-07-24',
-      name: 'Pizzeria Rose',
-      project: 'Transport Ljubljana - Muenchen',
-      notes: 'Suho čiščenje v sobi 202. Receptor podpiše',
-      reminders: [],
-      timeline: ['24.07.2026', '31.07.2026', '04.10.2026'],
     },
   ];
 
@@ -333,23 +299,6 @@ export default function DatabaseDashboard() {
     return getSortedData(result);
   };
 
-  // Customers filtering & sorting
-  const getFilteredCustomers = () => {
-    let result = [...mockCustomers];
-    const query = searchQueries[2]?.toLowerCase() || '';
-
-    if (query) {
-      result = result.filter(
-        (c) =>
-          c.name.toLowerCase().includes(query) ||
-          c.project.toLowerCase().includes(query) ||
-          c.notes.toLowerCase().includes(query)
-      );
-    }
-
-    return getSortedData(result);
-  };
-
   // Attachments filtering & sorting
   const getFilteredAttachments = () => {
     let result =
@@ -388,8 +337,6 @@ export default function DatabaseDashboard() {
         return getFilteredStaff();
       case 1:
         return getFilteredJobs();
-      case 2:
-        return getFilteredCustomers();
       case 3:
         return getFilteredAttachments();
       case 4:
@@ -549,11 +496,7 @@ export default function DatabaseDashboard() {
 
             <button
               onClick={() => setActiveTab(2)}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-[8px] text-xs font-medium transition-all cursor-pointer text-left w-full ${
-                activeTab === 2
-                  ? 'bg-slate-100 text-slate-900 font-semibold'
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
-              }`}
+              className="hidden"
             >
               <Folder className="h-4.5 w-4.5 shrink-0 text-slate-500" />
               <span className='font-inter font-medium text-base leading-6 align-middle'>Naročniki</span>
@@ -666,14 +609,13 @@ export default function DatabaseDashboard() {
           >
             {activeTab === 0 && 'Zaposleni'}
             {activeTab === 1 && 'Dela'}
-            {activeTab === 2 && 'Stranke'}
             {activeTab === 3 && 'Priponke'}
             {activeTab === 4 && 'Pisarna'}
             {activeTab === 5 && 'Podatki podjetja'}
           </h1>
 
-          {/* Search Bar for Tabs 0, 2, 4 */}
-          {(activeTab === 0 || activeTab === 2 || activeTab === 4) && (
+          {/* Search Bar for Tabs 0, 4 */}
+          {(activeTab === 0 || activeTab === 4) && (
             <div className="flex items-center gap-4 mb-6">
               <div className="flex-1 relative">
                 <span className="absolute left-0 top-1/2 -translate-y-1/2 text-slate-400">
@@ -920,7 +862,7 @@ export default function DatabaseDashboard() {
                   </div>
                 )}
 
-                {/* TAB 3: PRIPONKE (ATTACHMENTS) */}
+                {/* TAB 3: Pripinke (ATTACHMENTS) */}
                 {activeTab === 3 && (
                   <div>
                     {/* Category bar matching the exact screenshot visual layout */}

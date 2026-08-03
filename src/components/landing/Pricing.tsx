@@ -35,9 +35,9 @@ export function Pricing() {
         <p className="font-['Inter',sans-serif] text-[10px] md:text-xs font-semibold tracking-[-0.04em] text-blue-500 mb-4 uppercase">
           {t("priceTitle")}
         </p>
-        <h2 className="text-2xl md:text-5xl font-light tracking-tight text-slate-950">
-          {t("priceSubtitle")}
-        </h2>
+        <h2 className="text-[30px] md:text-[40px] lg:text-5xl font-light tracking-tight text-slate-950">
+  {t("priceSubtitle")}
+</h2>
         <p
           className="mt-4 text-slate-500"
           style={{

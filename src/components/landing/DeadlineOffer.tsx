@@ -5,7 +5,6 @@ import React from "react";
 export function DeadlineOffer() {
   return (
     <section id="ponudba" className="max-w-7xl mx-auto px-3 md:px-6 pb-20">
-      {/* Header */}
       <div className="text-center max-w-3xl mx-auto mb-12">
         <p
           className="mb-4 uppercase"
@@ -37,7 +36,6 @@ export function DeadlineOffer() {
         </p>
       </div>
 
-      {/* Wide dark card */}
       <div
         className="rounded-[36px] p-6 md:p-8 flex flex-col lg:flex-row gap-6 md:gap-8 relative overflow-hidden"
         style={{
@@ -47,10 +45,9 @@ export function DeadlineOffer() {
             "0px 28px 70px -35px rgba(15, 23, 42, 0.72), inset 0px 1px 0px 1px rgba(255, 255, 255, 0.13)",
         }}
       >
-        {/* Left copy */}
         <div className="flex-1 flex flex-col gap-4 relative z-10">
           <div className="flex items-center gap-2">
-            <svg width="6" height="6" viewBox="0 0 6 6" fill="none" className="shrink-0">
+            <svg width="6" height="6" viewBox="0 0 6 6" fill="none" className="shrink-0" aria-hidden="true">
               <rect width="6" height="6" rx="3" fill="#60A5FA" />
             </svg>
             <p
@@ -60,7 +57,7 @@ export function DeadlineOffer() {
                 fontWeight: 400,
                 fontSize: "10px",
                 lineHeight: "15px",
-                letterSpacing: "-0.3px",
+                letterSpacing: "0px",
                 color: "#FFFFFF",
               }}
             >
@@ -68,7 +65,7 @@ export function DeadlineOffer() {
             </p>
           </div>
           <h2
-            className="text-2xl md:text-[2.25rem] font-light md:font-normal leading-[2rem] md:leading-[2.5rem]"
+            className="text-[40px] font-light leading-[2.5rem]"
             style={{
               fontFamily: "'Inter', sans-serif",
               letterSpacing: "-0.9px",
@@ -114,7 +111,6 @@ export function DeadlineOffer() {
           </p>
         </div>
 
-        {/* Mini End-of-Day UI */}
         <div
           className="lg:w-[55%] rounded-[28px] p-4 flex flex-col gap-4 relative z-10"
           style={{
@@ -124,7 +120,6 @@ export function DeadlineOffer() {
               "0px 18px 50px -30px rgba(0, 0, 0, 0.62), inset 0px 1px 0px 1px #FFFFFF",
           }}
         >
-          {/* Header */}
           <div className="flex justify-between items-start pb-4 border-b border-slate-200">
             <div className="flex flex-col gap-1">
               <p
@@ -164,6 +159,7 @@ export function DeadlineOffer() {
                 viewBox="0 0 17 17"
                 fill="none"
                 className="shrink-0"
+                aria-hidden="true"
               >
                 <path
                   d="M7.37957 0.56318L7.5103 2.05736M8.55608 14.0108L8.68681 15.5049M2.05648 8.55695L0.562308 8.68768M15.5041 7.38044L14.0099 7.51117M13.3357 1.71557L11.8084 3.37814M1.71402 2.73234L3.5068 4.10444M4.24552 12.548L2.73072 14.3533M14.3524 13.3358L12.5471 11.821"
@@ -175,9 +171,7 @@ export function DeadlineOffer() {
             </div>
           </div>
 
-          {/* 3 small cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {/* 07:00 */}
             <div
               className="rounded-[16px] p-4 flex flex-col gap-1"
               style={{
@@ -192,7 +186,7 @@ export function DeadlineOffer() {
                   fontWeight: 400,
                   fontSize: "10px",
                   lineHeight: "15px",
-                  letterSpacing: "-0.3px",
+                  letterSpacing: "0px",
                   color: "#3B82F6",
                 }}
               >
@@ -211,7 +205,6 @@ export function DeadlineOffer() {
               </p>
             </div>
 
-            {/* Tekom dneva */}
             <div
               className="rounded-[16px] p-4 flex flex-col gap-1"
               style={{
@@ -226,7 +219,7 @@ export function DeadlineOffer() {
                   fontWeight: 400,
                   fontSize: "10px",
                   lineHeight: "15px",
-                  letterSpacing: "-0.3px",
+                  letterSpacing: "0px",
                   color: "#3B82F6",
                 }}
               >
@@ -245,7 +238,6 @@ export function DeadlineOffer() {
               </p>
             </div>
 
-            {/* 17:00 */}
             <div
               className="rounded-[16px] p-4 flex flex-col gap-1 relative overflow-hidden"
               style={{
@@ -267,7 +259,7 @@ export function DeadlineOffer() {
                   fontWeight: 400,
                   fontSize: "10px",
                   lineHeight: "15px",
-                  letterSpacing: "-0.3px",
+                  letterSpacing: "0px",
                   color: "#FFFFFF",
                 }}
               >
@@ -280,7 +272,7 @@ export function DeadlineOffer() {
                   fontWeight: 300,
                   fontSize: "12px",
                   lineHeight: "16px",
-                  color: "#DBEAFE",
+                  color: "#FFFFFF",
                 }}
               >
                 Vodja odpre pregled dneva. V dveh minutah vidi vse. Vsi dokumenti so arhivirani in pripeti na naloge.

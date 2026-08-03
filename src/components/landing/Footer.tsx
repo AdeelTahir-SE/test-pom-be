@@ -8,7 +8,7 @@ export function Footer() {
 
   return (
     <footer
-      className="pb-5"
+      className="pb-0"
       style={{ background: "#E9F2FE" }}
     >
       {/* Horizontal divider */}

@@ -42,6 +42,7 @@ import { fetchJobFiles, fetchJobTimeline } from "@/lib/query/office";
 import { parseNoteText } from "./CustomerNotesBanner";
 import { formatSiDateFromIso, formatSiTimeFromIso } from "@/lib/officeDate";
 import { isOptimisticId } from "@/lib/optimisticId";
+
 interface CustomerNoteDto {
   id: string;
   note: string;
@@ -53,20 +54,15 @@ interface WorkerDetailModalProps {
   onOpenChange: (open: boolean) => void;
   worker: Worker | null;
   jobId: string | null;
-  /** Per-company card id e.g. "#001" — used in timeline lines. */
   cardNumber?: string | null;
-  /** Job customer name — used for persistent customer notes. Falls back to worker.role. */
   customerName?: string | null;
   inlineDrawer?: boolean;
   onRefresh?: () => void;
   jobStatus?: JobStatus;
   onChangeJobStatus?: (status: JobStatus) => void;
   canCancelJob?: boolean;
-  /** Soft-hide the card from the board (Mark a8). */
   onDeleteCard?: () => void;
-  /** Owners/managers can remove notes for future visits. */
   canManageCustomerNotes?: boolean;
-  /** Sync reordered step ids into the parent board (avoids stale override snap-back). */
   onChecklistReorder?: (orderedIds: string[]) => void;
 }
 
@@ -94,11 +90,9 @@ interface AttachmentItem {
 
 interface TimelineItem {
   id: string;
-  /** Always `DD.MM.YYYY · HH:mm` — date and time from stored created_at. */
   time: string;
   text: string;
   type: "step" | "attachment" | "message" | "voice" | "other";
-  /** File ID for attachment events to enable clicking paperclip to open preview */
   fileId?: string;
 }
 
@@ -115,6 +109,18 @@ const TIMELINE_TYPE_BY_EVENT: Record<string, TimelineItem["type"]> = {
 function nowTime() {
   return new Date().toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" });
 }
+
+const getErrorMessage = (err: unknown): string => {
+  if (err && typeof err === "object") {
+    if ("message" in err && typeof (err as any).message === "string") {
+      return (err as any).message;
+    }
+    if ("error" in err && typeof (err as any).error === "string") {
+      return (err as any).error;
+    }
+  }
+  return "Nepričakovana napaka. Poskusite znova.";
+};
 
 interface SortableTaskItemProps {
   task: TaskItem;
@@ -165,7 +171,6 @@ function SortableTaskItem({ task, onClick, onDelete, onOpenAttachment, deleteLab
         onClick={onClick}
         className="flex items-center gap-2 flex-1 text-left bg-transparent border-none p-0 outline-none"
       >
-        {/* Checkbox */}
         <div
           className="shrink-0 flex items-center justify-center"
           style={{
@@ -182,8 +187,6 @@ function SortableTaskItem({ task, onClick, onDelete, onOpenAttachment, deleteLab
             </svg>
           )}
         </div>
-
-        {/* Text */}
         <span
           style={{
             fontFamily: "'PT Sans', sans-serif",
@@ -194,8 +197,6 @@ function SortableTaskItem({ task, onClick, onDelete, onOpenAttachment, deleteLab
         >
           {task.text}
         </span>
-
-        {/* Completion time / clip icon — show clip when required OR already attached */}
         <div className="flex items-center gap-1.5 ml-auto">
           {(task.attachment || task.requiresAttachment) && (
             <span
@@ -227,7 +228,6 @@ function SortableTaskItem({ task, onClick, onDelete, onOpenAttachment, deleteLab
           )}
         </div>
       </button>
-
       {!task.completed && (
         <button
           type="button"
@@ -254,30 +254,19 @@ export function WorkerDetailModal({
   onRefresh,
   jobStatus,
   onChangeJobStatus,
-  canCancelJob = false,
   onDeleteCard,
   canManageCustomerNotes = false,
   onChecklistReorder,
 }: WorkerDetailModalProps) {
   const { t } = useLanguage();
   const [addStepOpen, setAddStepOpen] = React.useState(false);
-
-  // Sub-dialog: Dodaj korak
   const [stepText, setStepText] = React.useState("");
   const [stepRequiresAttachment, setStepRequiresAttachment] = React.useState(false);
-
-  // Confirm step completion
   const [confirmStepId, setConfirmStepId] = React.useState<string | null>(null);
   const [confirmUploading, setConfirmUploading] = React.useState(false);
   const [confirmStepFile, setConfirmStepFile] = React.useState<File | null>(null);
-
-  // Confirm step deletion
   const [deleteStepId, setDeleteStepId] = React.useState<string | null>(null);
-
-  // Attachment preview
   const [previewAttachment, setPreviewAttachment] = React.useState<AttachmentItem | null>(null);
-
-  // Attach-only dialog (optionally linked to a checklist step)
   const [attachOnlyOpen, setAttachOnlyOpen] = React.useState(false);
   const [attachOnlyFile, setAttachOnlyFile] = React.useState<File | null>(null);
   const [attachOnlyUploading, setAttachOnlyUploading] = React.useState(false);
@@ -289,7 +278,12 @@ export function WorkerDetailModal({
     window.setTimeout(() => setToastMessage(null), 2500);
   }, []);
 
-  // Customer knowledge (Add-on 2)
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   const resolvedCustomerName = (customerName ?? worker?.role ?? "").trim();
   const [customerNotes, setCustomerNotes] = React.useState<CustomerNoteDto[]>([]);
   const [saveNoteOpen, setSaveNoteOpen] = React.useState(false);
@@ -299,7 +293,7 @@ export function WorkerDetailModal({
   const [saveNoteSaving, setSaveNoteSaving] = React.useState(false);
   const notesRequestRef = React.useRef(0);
   const completeAfterSaveRef = React.useRef(false);
-
+  const ocrTimeoutRef = React.useRef<number | null>(null);
   const [isAddNoteOpen, setIsAddNoteOpen] = React.useState(false);
   const [newNoteText, setNewNoteText] = React.useState("");
   const [newNoteType, setNewNoteType] = React.useState<"once" | "always">("once");
@@ -312,37 +306,37 @@ export function WorkerDetailModal({
       showToast("Naročnik je obvezen za dodajanje opombe.");
       return;
     }
-
     setNewNoteSaving(true);
-    const finalNoteContent = newNoteType === "once"
-      ? JSON.stringify({ text: noteText, jobId })
-      : noteText;
-
-    const res = await api.post<{ note: CustomerNoteDto }>(`/api/customers/notes`, {
-      customer_name: resolvedCustomerName,
-      note: finalNoteContent,
-      force,
-      job_id: jobId ?? undefined,
-    });
-    setNewNoteSaving(false);
-
-    if (res.status === 409) {
-      const okAnyway = window.confirm(t("customerNotesDuplicateConfirm"));
-      if (okAnyway) {
-        await handleAddNote(true);
+    try {
+      const finalNoteContent = newNoteType === "once"
+        ? JSON.stringify({ text: noteText, jobId })
+        : noteText;
+      const res = await api.post<{ note: CustomerNoteDto }>(`/api/customers/notes`, {
+        customer_name: resolvedCustomerName,
+        note: finalNoteContent,
+        force,
+        job_id: jobId ?? undefined,
+      });
+      if (res.status === 409) {
+        const okAnyway = window.confirm(t("customerNotesDuplicateConfirm"));
+        if (okAnyway) {
+          await handleAddNote(true);
+        }
+        return;
       }
-      return;
+      if (res.status >= 200 && res.status < 300) {
+        setNewNoteText("");
+        setIsAddNoteOpen(false);
+        void loadCustomerNotes(resolvedCustomerName);
+        void refreshFilesAndTimeline();
+        return;
+      }
+      showToast(res.error?.message ?? "Opombe ni bilo mogoče shraniti.");
+    } catch (err) {
+      showToast(getErrorMessage(err));
+    } finally {
+      setNewNoteSaving(false);
     }
-
-    if (res.status === 201 || res.status === 200) {
-      setNewNoteText("");
-      setIsAddNoteOpen(false);
-      void loadCustomerNotes(resolvedCustomerName);
-      void refreshFilesAndTimeline();
-      return;
-    }
-
-    showToast(res.error?.message ?? "Opombe ni bilo mogoče shraniti.");
   };
 
   const fromWorkerTasks = (workerTasks: Worker["tasks"]): TaskItem[] => {
@@ -359,24 +353,18 @@ export function WorkerDetailModal({
     return [...done, ...todo];
   };
 
-  // Core lists — seeded from the worker prop (already sourced from real
-  // checklist data by the parent dashboard's mapper), then mutated directly
-  // against the backend from here.
   const [tasks, setTasks] = React.useState<TaskItem[]>(() => fromWorkerTasks(worker?.tasks || []));
   const tasksDirtyRef = React.useRef(false);
   React.useEffect(() => {
     if (tasksDirtyRef.current) return;
     setTasks(fromWorkerTasks(worker?.tasks || []));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [worker]);
 
   const [deleteCardOpen, setDeleteCardOpen] = React.useState(false);
-
-  // Position where the next new step will be inserted (1-based)
   const [stepPosition, setStepPosition] = React.useState(tasks.length + 1);
-
   const queryClient = useQueryClient();
   const jobReady = !!jobId && !isOptimisticId(jobId);
+
   const filesQuery = useQuery({
     queryKey: queryKeys.job.files(jobId ?? "none"),
     queryFn: () => fetchJobFiles(jobId!),
@@ -415,7 +403,6 @@ export function WorkerDetailModal({
         .filter((e) => shouldShowTimelineEvent(e))
         .map((e) => ({
           id: e.id,
-          // Mark a8/a9: left stamp is time-only; job_created date lives in the text.
           time: formatSiTimeFromIso(e.created_at),
           text: describeTimelineEvent(e, t, cardNumber),
           type: TIMELINE_TYPE_BY_EVENT[e.event_type] ?? "other",
@@ -424,7 +411,6 @@ export function WorkerDetailModal({
     [timelineQuery.data, t, cardNumber]
   );
 
-  // Step clip state follows files linked to that exact checklist item only.
   React.useEffect(() => {
     if (!filesQuery.data) return;
     setTasks((prev) => {
@@ -450,10 +436,10 @@ export function WorkerDetailModal({
     ]);
   }, [jobId, queryClient]);
 
-  // After upload, OCR finishes in the background — soft-poll once for type/preview.
   const scheduleOcrRefresh = React.useCallback(() => {
     if (!jobId) return;
-    window.setTimeout(() => {
+    if (ocrTimeoutRef.current) window.clearTimeout(ocrTimeoutRef.current);
+    ocrTimeoutRef.current = window.setTimeout(() => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.job.files(jobId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.job.timeline(jobId) });
     }, 2500);
@@ -465,13 +451,23 @@ export function WorkerDetailModal({
       setCustomerNotes([]);
       return;
     }
-    const res = await api.get<{ notes: CustomerNoteDto[] }>(
-      `/api/customers/notes?name=${encodeURIComponent(name)}`
-    );
-    if (notesRequestRef.current !== requestId) return;
-    if (res.status === 200 && res.data) setCustomerNotes(res.data.notes);
-    else setCustomerNotes([]);
-  }, []);
+    try {
+      const res = await api.get<{ notes: CustomerNoteDto[] }>(
+        `/api/customers/notes?name=${encodeURIComponent(name)}`
+      );
+      if (notesRequestRef.current !== requestId) return;
+      if (!mountedRef.current) return;
+      if (res.status >= 200 && res.status < 300 && res.data) {
+        setCustomerNotes(res.data.notes);
+      } else {
+        setCustomerNotes([]);
+      }
+    } catch (err) {
+      if (!mountedRef.current) return;
+      setCustomerNotes([]);
+      showToast(getErrorMessage(err));
+    }
+  }, [showToast]);
 
   React.useEffect(() => {
     if (!isOpen) {
@@ -481,17 +477,25 @@ export function WorkerDetailModal({
       setSaveNoteCustomer("");
       setSaveNoteChecked(true);
       completeAfterSaveRef.current = false;
+      if (ocrTimeoutRef.current) {
+        window.clearTimeout(ocrTimeoutRef.current);
+        ocrTimeoutRef.current = null;
+      }
       return;
     }
     void loadCustomerNotes(resolvedCustomerName);
   }, [isOpen, resolvedCustomerName, loadCustomerNotes]);
 
   const handleDeleteCustomerNote = async (id: string) => {
-    const res = await api.delete<{ deleted: boolean }>(`/api/customer-notes/${id}`);
-    if (res.status === 200) {
-      setCustomerNotes((prev) => prev.filter((n) => n.id !== id));
-    } else {
-      showToast(res.error?.message ?? "Opombe ni bilo mogoče odstraniti.");
+    try {
+      const res = await api.delete<{ deleted: boolean }>(`/api/customer-notes/${id}`);
+      if (res.status >= 200 && res.status < 300) {
+        setCustomerNotes((prev) => prev.filter((n) => n.id !== id));
+      } else {
+        showToast(res.error?.message ?? "Opombe ni bilo mogoče odstraniti.");
+      }
+    } catch (err) {
+      showToast(getErrorMessage(err));
     }
   };
 
@@ -503,7 +507,6 @@ export function WorkerDetailModal({
     setSaveNoteOpen(true);
   };
 
-  // Always offer the save-note step on complete — even if Naročnik was left empty.
   const requestComplete = () => {
     openSaveNoteDialog(true);
   };
@@ -528,35 +531,36 @@ export function WorkerDetailModal({
       showToast(t("customerNotesSaveCustomerRequired"));
       return;
     }
-
     setSaveNoteSaving(true);
-    const res = await api.post<{ note: CustomerNoteDto }>(`/api/customers/notes`, {
-      customer_name: customer,
-      note,
-      force,
-      job_id: jobId ?? undefined,
-    });
-    setSaveNoteSaving(false);
-
-    if (res.status === 409) {
-      const okAnyway = window.confirm(t("customerNotesDuplicateConfirm"));
-      if (okAnyway) {
-        await handleSaveCustomerNote(true);
+    try {
+      const res = await api.post<{ note: CustomerNoteDto }>(`/api/customers/notes`, {
+        customer_name: customer,
+        note,
+        force,
+        job_id: jobId ?? undefined,
+      });
+      if (res.status === 409) {
+        const okAnyway = window.confirm(t("customerNotesDuplicateConfirm"));
+        if (okAnyway) {
+          await handleSaveCustomerNote(true);
+        }
+        return;
       }
-      return;
-    }
-
-    if (res.status === 201 || res.status === 200) {
-      if (res.data?.note) {
-        setCustomerNotes((prev) => [res.data!.note, ...prev]);
-      } else {
-        void loadCustomerNotes(customer);
+      if (res.status >= 200 && res.status < 300) {
+        if (res.data?.note) {
+          setCustomerNotes((prev) => [res.data!.note, ...prev]);
+        } else {
+          void loadCustomerNotes(customer);
+        }
+        finishComplete();
+        return;
       }
-      finishComplete();
-      return;
+      showToast(res.error?.message ?? "Opombe ni bilo mogoče shraniti.");
+    } catch (err) {
+      showToast(getErrorMessage(err));
+    } finally {
+      setSaveNoteSaving(false);
     }
-
-    showToast(res.error?.message ?? "Opombe ni bilo mogoče shraniti.");
   };
 
   const sensors = useSensors(
@@ -564,8 +568,6 @@ export function WorkerDetailModal({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // Persist checklist order via PATCH order_index (managers/owners).
-  // Completed steps stay frozen at the top; only incomplete steps may reorder.
   const handleTaskDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -576,33 +578,33 @@ export function WorkerDetailModal({
     const activeTask = tasks.find((t) => t.id === active.id);
     const overTask = tasks.find((t) => t.id === over.id);
     if (!activeTask || !overTask || activeTask.completed || overTask.completed) return;
-
     const completed = tasks.filter((t) => t.completed);
     const incomplete = tasks.filter((t) => !t.completed);
     const oldIndex = incomplete.findIndex((t) => t.id === active.id);
     const newIndex = incomplete.findIndex((t) => t.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
-
     const previous = tasks;
     const reorderedIncomplete = arrayMove(incomplete, oldIndex, newIndex);
     const reordered = [...completed, ...reorderedIncomplete];
     tasksDirtyRef.current = true;
     setTasks(reordered);
-    const results = await Promise.all(
-      reordered.map((task, index) =>
-        api.patch(`/api/checklist-items/${task.id}`, { order_index: index })
-      )
-    );
-    if (results.some((r) => r.status !== 200)) {
+    try {
+      const results = await Promise.all(
+        reordered.map((task, index) =>
+          api.patch(`/api/checklist-items/${task.id}`, { order_index: index })
+        )
+      );
+      if (results.some((r) => r.status < 200 || r.status >= 300)) {
+        throw new Error("Vrstnega reda ni bilo mogoče shraniti.");
+      }
+      onChecklistReorder?.(reordered.map((t) => t.id));
+      tasksDirtyRef.current = false;
+      void onRefresh?.();
+    } catch (err) {
       setTasks(previous);
       tasksDirtyRef.current = false;
-      showToast("Vrstnega reda ni bilo mogoče shraniti.");
-      return;
+      showToast(getErrorMessage(err));
     }
-    // Sync parent board order first so refresh cannot snap back to create-time order.
-    onChecklistReorder?.(reordered.map((t) => t.id));
-    tasksDirtyRef.current = false;
-    void onRefresh?.();
   };
 
   const completedCount = tasks.filter((t) => t.completed).length;
@@ -614,32 +616,42 @@ export function WorkerDetailModal({
   };
 
   const handleToggleComplete = async (task: TaskItem) => {
-    const res = await api.patch<{ item: { id: string; is_completed: boolean; completed_at: string | null } }>(
-      `/api/checklist-items/${task.id}`,
-      { is_completed: true }
-    );
-    if (res.status === 200 && res.data) {
-      setTasks((prev) => {
-        const updated = prev.map((t) =>
-          t.id === task.id
-            ? { ...t, completed: true, time: nowTime(), attachment: t.attachment || !!t.requiresAttachment }
-            : t
-        );
-        const done = updated.filter((t) => t.completed);
-        const todo = updated.filter((t) => !t.completed);
-        return [...done, ...todo];
-      });
-      onRefresh?.();
-    } else {
-      showToast(res.error?.message ?? t("modalConfirmStepMissingTitle"));
+    try {
+      const res = await api.patch<{ item: { id: string; is_completed: boolean; completed_at: string | null } }>(
+        `/api/checklist-items/${task.id}`,
+        { is_completed: true }
+      );
+      if (res.status >= 200 && res.status < 300 && res.data) {
+        setTasks((prev) => {
+          const updated = prev.map((t) =>
+            t.id === task.id
+              ? { ...t, completed: true, time: nowTime(), attachment: t.attachment || !!t.requiresAttachment }
+              : t
+          );
+          const done = updated.filter((t) => t.completed);
+          const todo = updated.filter((t) => !t.completed);
+          return [...done, ...todo];
+        });
+        onRefresh?.();
+      } else {
+        showToast(res.error?.message ?? t("modalConfirmStepMissingTitle"));
+      }
+    } catch (err) {
+      showToast(getErrorMessage(err));
     }
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    const res = await api.delete(`/api/checklist-items/${taskId}`);
-    if (res.status === 200 || res.status === 204) {
-      setTasks((prev) => prev.filter((t) => t.id !== taskId));
-      onRefresh?.();
+    try {
+      const res = await api.delete(`/api/checklist-items/${taskId}`);
+      if (res.status >= 200 && res.status < 300) {
+        setTasks((prev) => prev.filter((t) => t.id !== taskId));
+        onRefresh?.();
+      } else {
+        showToast("Koraka ni bilo mogoče izbrisati.");
+      }
+    } catch (err) {
+      showToast(getErrorMessage(err));
     }
   };
 
@@ -650,39 +662,42 @@ export function WorkerDetailModal({
       showToast(t("modalAttachFailed"));
       return;
     }
-    // Never insert above completed steps (Mark: completed stay frozen on top).
     const insertIndex = Math.min(
       Math.max(stepPosition - 1, completedCount),
       tasks.length
     );
-    const res = await api.post<{ item: { id: string; label: string; is_completed: boolean; requires_attachment: boolean } }>(
-      `/api/jobs/${jobId}/checklist`,
-      {
-        label: stepText.trim(),
-        requires_attachment: stepRequiresAttachment,
-        order_index: insertIndex,
+    try {
+      const res = await api.post<{ item: { id: string; label: string; is_completed: boolean; requires_attachment: boolean } }>(
+        `/api/jobs/${jobId}/checklist`,
+        {
+          label: stepText.trim(),
+          requires_attachment: stepRequiresAttachment,
+          order_index: insertIndex,
+        }
+      );
+      if (res.status >= 200 && res.status < 300 && res.data) {
+        const item = res.data.item;
+        const newTask: TaskItem = {
+          id: item.id,
+          text: item.label,
+          completed: false,
+          attachment: false,
+          requiresAttachment: item.requires_attachment,
+        };
+        setTasks((prev) => {
+          const next = [...prev.slice(0, insertIndex), newTask, ...prev.slice(insertIndex)];
+          const done = next.filter((t) => t.completed);
+          const todo = next.filter((t) => !t.completed);
+          return [...done, ...todo];
+        });
+        setAddStepOpen(false);
+        resetAddStep();
+        onRefresh?.();
+      } else {
+        showToast(res.error?.message ?? "Koraka ni bilo mogoče dodati.");
       }
-    );
-    if (res.status === 201 && res.data) {
-      const item = res.data.item;
-      const newTask: TaskItem = {
-        id: item.id,
-        text: item.label,
-        completed: false,
-        attachment: false,
-        requiresAttachment: item.requires_attachment,
-      };
-      setTasks((prev) => {
-        const next = [...prev.slice(0, insertIndex), newTask, ...prev.slice(insertIndex)];
-        const done = next.filter((t) => t.completed);
-        const todo = next.filter((t) => !t.completed);
-        return [...done, ...todo];
-      });
-      setAddStepOpen(false);
-      resetAddStep();
-      onRefresh?.();
-    } else {
-      showToast(res.error?.message ?? "Koraka ni bilo mogoče dodati.");
+    } catch (err) {
+      showToast(getErrorMessage(err));
     }
   };
 
@@ -691,21 +706,26 @@ export function WorkerDetailModal({
     const formData = new FormData();
     formData.append("files", file);
     if (checklistItemId) formData.append("checklist_item_id", checklistItemId);
-    const res = await api.post<{ files: unknown[] }>(`/api/jobs/${jobId}/files`, formData);
-    if (res.status === 201) {
-      if (checklistItemId) {
-        setTasks((prev) =>
-          prev.map((t) => (t.id === checklistItemId ? { ...t, attachment: true } : t))
-        );
+    try {
+      const res = await api.post<{ files: unknown[] }>(`/api/jobs/${jobId}/files`, formData);
+      if (res.status >= 200 && res.status < 300) {
+        if (checklistItemId) {
+          setTasks((prev) =>
+            prev.map((t) => (t.id === checklistItemId ? { ...t, attachment: true } : t))
+          );
+        }
+        await refreshFilesAndTimeline();
+        scheduleOcrRefresh();
+        onRefresh?.();
+        showToast(t("modalAttachSuccess"));
+        return true;
       }
-      await refreshFilesAndTimeline();
-      scheduleOcrRefresh();
-      onRefresh?.();
-      showToast(t("modalAttachSuccess"));
-      return true;
+      showToast(res.error?.message ?? t("modalAttachFailed"));
+      return false;
+    } catch (err) {
+      showToast(getErrorMessage(err));
+      return false;
     }
-    showToast(res.error?.message ?? t("modalAttachFailed"));
-    return false;
   };
 
   const openAttachDialog = (stepId?: string | null) => {
@@ -715,24 +735,26 @@ export function WorkerDetailModal({
   };
 
   const handleHideAttachment = async (fileId: string) => {
-    const res = await api.patch(`/api/files/${fileId}`, { hidden: true });
-    if (res.status === 200) {
-      if (jobId) {
-        queryClient.setQueryData(queryKeys.job.files(jobId), (prev: unknown) => {
-          const list = Array.isArray(prev) ? prev : [];
-          return list.filter((f: { id: string }) => f.id !== fileId);
-        });
+    try {
+      const res = await api.patch(`/api/files/${fileId}`, { hidden: true });
+      if (res.status >= 200 && res.status < 300) {
+        if (jobId) {
+          queryClient.setQueryData(queryKeys.job.files(jobId), (prev: unknown) => {
+            const list = Array.isArray(prev) ? prev : [];
+            return list.filter((f: { id: string }) => f.id !== fileId);
+          });
+        }
+        setPreviewAttachment(null);
+        void queryClient.invalidateQueries({ queryKey: queryKeys.job.timeline(jobId ?? "none") });
+      } else {
+        showToast(res.error?.message ?? "Priponke ni bilo mogoče skriti.");
       }
-      setPreviewAttachment(null);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.job.timeline(jobId ?? "none") });
-    } else {
-      showToast(res.error?.message ?? "Priponke ni bilo mogoče skriti.");
+    } catch (err) {
+      showToast(getErrorMessage(err));
     }
   };
 
   if (!worker) {
-    // Keep the Dialog mounted while open so a brief job-id swap (optimistic → real)
-    // cannot unmount it and fire onOpenChange(false).
     if (!isOpen) return null;
     return (
       <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -759,7 +781,6 @@ export function WorkerDetailModal({
 
   const renderContentBody = () => (
     <div className="flex flex-col gap-[48px] text-[#1E293B]">
-      {/* Soft-delete only — no call/status in Details (Mark a8/a9). */}
       {(onDeleteCard || jobStatus === "completed") && (
         <div className="flex items-center justify-end gap-3">
           {jobStatus === "completed" && (
@@ -786,7 +807,6 @@ export function WorkerDetailModal({
         </div>
       )}
 
-      {/* Section: OPOMBE */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <span
@@ -860,7 +880,7 @@ export function WorkerDetailModal({
           })()}
         </div>
       </div>
-      {/* Section: Predvidena dela */}
+
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <span
@@ -876,22 +896,20 @@ export function WorkerDetailModal({
             {t("modalSectionTasks")}
           </span>
           <div className="flex items-center gap-2">
-          {/* Plus action icon to add a new step */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setAddStepOpen(true);
-            }}
-            className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
-          >
-            <svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M17.9705 9.48535H9.48528M9.48528 9.48535H1M9.48528 9.48535V1.00007M9.48528 9.48535V17.9706" stroke="#6D778E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setAddStepOpen(true);
+              }}
+              className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
+            >
+              <svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M17.9705 9.48535H9.48528M9.48528 9.48535H1M9.48528 9.48535V1.00007M9.48528 9.48535V17.9706" stroke="#6D778E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
           </div>
         </div>
 
-        {/* Task lists with checkboxes */}
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -905,7 +923,6 @@ export function WorkerDetailModal({
                   task={task}
                   onClick={() => {
                     if (task.completed) return;
-                    // Only the top incomplete step can be marked done (drag others up first).
                     if (task.id !== firstIncompleteId) return;
                     setConfirmStepId(task.id);
                   }}
@@ -926,7 +943,6 @@ export function WorkerDetailModal({
         </DndContext>
       </div>
 
-      {/* Section: Priponke */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <span
@@ -941,10 +957,8 @@ export function WorkerDetailModal({
           >
             {t("modalSectionAttachments")}
           </span>
-          {/* Plus action icon to add attachment only */}
           <button
             onClick={() => {
-              // Job-level Priponke only — never auto-link to a checklist step.
               openAttachDialog(null);
             }}
             className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
@@ -1010,7 +1024,6 @@ export function WorkerDetailModal({
         </div>
       </div>
 
-      {/* Section: Timeline */}
       <div className="flex flex-col gap-3">
         <span
           style={{
@@ -1106,7 +1119,6 @@ export function WorkerDetailModal({
               background: "rgba(241, 245, 249, 1)",
             }}
           >
-            {/* Close Bar */}
             <div className="px-5 py-4 flex items-center justify-between shrink-0 border-b border-slate-200/50 bg-slate-50/50">
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                 {t("modalDetailsDrawer")}
@@ -1121,8 +1133,6 @@ export function WorkerDetailModal({
                 </svg>
               </button>
             </div>
-
-            {/* Scrollable Body */}
             <div className="flex-1 overflow-y-auto px-6 pb-6 pt-6 custom-ios-scrollbar">
               {renderContentBody()}
             </div>
@@ -1150,7 +1160,7 @@ export function WorkerDetailModal({
         </Dialog>
       )}
 
-      {/* ── Sub-Dialog: Dodaj še en korak ── */}
+      {}
       <Dialog open={addStepOpen} onOpenChange={(open) => {
         setAddStepOpen(open);
         if (open) setStepPosition(tasks.length + 1);
@@ -1169,14 +1179,11 @@ export function WorkerDetailModal({
         >
           <form onSubmit={handleAddStep} className={auraCard}>
             <div className="flex flex-col gap-4 text-slate-800">
-              {/* Header */}
               <div className="text-center">
                 <h3 className="text-xl font-semibold tracking-tight text-slate-900">
                   {t("modalStepTitle")}
                 </h3>
               </div>
-
-              {/* Form */}
               <div className="flex flex-col gap-3">
                 <div>
                   <AuraLabel strong>{t("modalStepLabel")}</AuraLabel>
@@ -1195,7 +1202,6 @@ export function WorkerDetailModal({
                     </span>
                   </div>
                 </div>
-
                 <div>
                   <AuraLabel>{t("modalStepPosition")}</AuraLabel>
                   <AuraSelect
@@ -1214,7 +1220,6 @@ export function WorkerDetailModal({
                     ))}
                   </AuraSelect>
                 </div>
-
                 <AuraIconButton
                   active={stepRequiresAttachment}
                   onClick={() => setStepRequiresAttachment(!stepRequiresAttachment)}
@@ -1227,7 +1232,6 @@ export function WorkerDetailModal({
                   title={t("modalStepAttachmentTitle")}
                 />
               </div>
-
               <button type="submit" className={auraButton}>
                 {t("modalStepSubmit")}
               </button>
@@ -1236,7 +1240,7 @@ export function WorkerDetailModal({
         </DialogContent>
       </Dialog>
 
-      {/* ── Sub-Dialog: Attach only (Priponke) ── */}
+      {}
       <Dialog open={attachOnlyOpen} onOpenChange={(open) => {
         setAttachOnlyOpen(open);
         if (!open) {
@@ -1260,15 +1264,18 @@ export function WorkerDetailModal({
               e.preventDefault();
               if (!attachOnlyFile) return;
               setAttachOnlyUploading(true);
-              const success = await uploadJobFile(
-                attachOnlyFile,
-                attachForStepId ?? undefined
-              );
-              setAttachOnlyUploading(false);
-              if (success) {
-                setAttachOnlyOpen(false);
-                setAttachOnlyFile(null);
-                setAttachForStepId(null);
+              try {
+                const success = await uploadJobFile(
+                  attachOnlyFile,
+                  attachForStepId ?? undefined
+                );
+                if (success) {
+                  setAttachOnlyOpen(false);
+                  setAttachOnlyFile(null);
+                  setAttachForStepId(null);
+                }
+              } finally {
+                setAttachOnlyUploading(false);
               }
             }}
             className={auraCard}
@@ -1279,7 +1286,6 @@ export function WorkerDetailModal({
                   {t("modalAttachTitle")}
                 </h3>
               </div>
-
               <div className="flex flex-col gap-3 mb-4">
                 <AuraFileInput
                   id="attach-only-file"
@@ -1291,7 +1297,6 @@ export function WorkerDetailModal({
                   </span>
                 )}
               </div>
-
               <div className="flex justify-center">
                 <button
                   type="submit"
@@ -1306,7 +1311,7 @@ export function WorkerDetailModal({
         </DialogContent>
       </Dialog>
 
-      {/* ── Sub-Dialog: Confirm step finished ── */}
+      {}
       <Dialog open={!!confirmStepId} onOpenChange={(open) => {
         if (!open) {
           setConfirmStepId(null);
@@ -1330,7 +1335,6 @@ export function WorkerDetailModal({
             const hasLinked =
               !!task.attachment ||
               attachments.some((a) => a.checklistItemId === task.id);
-            // Job-level Priponke files do not satisfy step attachment.
             const missingAttachment = !!task.requiresAttachment && !hasLinked;
             const stepAttachment = attachments.find(
               (a) => a.checklistItemId === task.id
@@ -1349,11 +1353,9 @@ export function WorkerDetailModal({
                       </h3>
                     )}
                   </div>
-
                   <p className="text-sm text-slate-600 text-center">
                     <strong>{task.text}</strong>
                   </p>
-
                   {!missingAttachment && stepAttachment && (
                     <button
                       type="button"
@@ -1366,7 +1368,6 @@ export function WorkerDetailModal({
                       </span>
                     </button>
                   )}
-
                   {missingAttachment && (
                     <div className="flex flex-col gap-3">
                       <p className="text-xs text-slate-500 text-center">
@@ -1383,7 +1384,6 @@ export function WorkerDetailModal({
                       )}
                     </div>
                   )}
-
                   <div className="flex justify-center gap-2">
                     {missingAttachment ? (
                       <button
@@ -1392,10 +1392,13 @@ export function WorkerDetailModal({
                         onClick={async () => {
                           if (!confirmStepFile) return;
                           setConfirmUploading(true);
-                          const success = await uploadJobFile(confirmStepFile, task.id);
-                          setConfirmUploading(false);
-                          if (success) {
-                            setConfirmStepFile(null);
+                          try {
+                            const success = await uploadJobFile(confirmStepFile, task.id);
+                            if (success) {
+                              setConfirmStepFile(null);
+                            }
+                          } finally {
+                            setConfirmUploading(false);
                           }
                         }}
                         className="w-[160px] h-10 rounded-xl bg-[#1B3A6B] hover:bg-[#142c52] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold uppercase transition-colors"
@@ -1431,7 +1434,7 @@ export function WorkerDetailModal({
         </DialogContent>
       </Dialog>
 
-      {/* ── Sub-Dialog: Confirm step deletion ── */}
+      {}
       <Dialog open={!!deleteStepId} onOpenChange={(open) => {
         if (!open) setDeleteStepId(null);
       }}>
@@ -1457,11 +1460,9 @@ export function WorkerDetailModal({
                       {t("modalDeleteStepConfirmTitle")}
                     </h3>
                   </div>
-
                   <p className="text-sm text-slate-600 text-center">
                     {t("modalDeleteStepConfirmPrefix")} <strong className="text-slate-900">{task.text}</strong>{t("modalDeleteStepConfirmSuffix")}
                   </p>
-
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -1488,7 +1489,7 @@ export function WorkerDetailModal({
         </DialogContent>
       </Dialog>
 
-      {/* ── Sub-Dialog: Confirm card soft-delete ── */}
+      {}
       <Dialog open={deleteCardOpen} onOpenChange={setDeleteCardOpen}>
         <DialogContent
           style={{
@@ -1536,7 +1537,7 @@ export function WorkerDetailModal({
         </DialogContent>
       </Dialog>
 
-      {/* ── Sub-Dialog: Attachment quick view ── */}
+      {}
       <Dialog open={!!previewAttachment} onOpenChange={(open) => {
         if (!open) setPreviewAttachment(null);
       }}>
@@ -1559,7 +1560,6 @@ export function WorkerDetailModal({
                     {t("modalPreviewTitle")}
                   </h3>
                 </div>
-
                 <div className="flex flex-col gap-2">
                   {(() => {
                     const url = previewAttachment.url;
@@ -1577,7 +1577,6 @@ export function WorkerDetailModal({
                           rel="noopener noreferrer"
                           className="block aspect-video rounded-xl bg-slate-100 border border-slate-200 overflow-hidden"
                         >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={url}
                             alt={previewAttachment.name}
@@ -1636,7 +1635,6 @@ export function WorkerDetailModal({
                   })()}
                   <p className="text-xs text-slate-500">{t("modalPreviewAddedAtPrefix")} {previewAttachment.time} · {previewAttachment.date}</p>
                 </div>
-
                 {previewAttachment.documentPreview &&
                   previewAttachment.documentType &&
                   previewAttachment.documentType !== "other" && (
@@ -1651,22 +1649,19 @@ export function WorkerDetailModal({
                     </div>
                   </div>
                 )}
-
-                {/* Only show OCR dump for real classified documents — not photo noise. */}
                 {previewAttachment.documentType &&
                   previewAttachment.documentType !== "other" && (
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    {t("modalOcrTextLabel")}
-                  </span>
-                  <div className="max-h-40 overflow-y-auto rounded-xl bg-slate-50 border border-slate-100 p-3">
-                    <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">
-                      {previewAttachment.ocrText || t("modalOcrTextNone")}
-                    </p>
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      {t("modalOcrTextLabel")}
+                    </span>
+                    <div className="max-h-40 overflow-y-auto rounded-xl bg-slate-50 border border-slate-100 p-3">
+                      <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">
+                        {previewAttachment.ocrText || t("modalOcrTextNone")}
+                      </p>
+                    </div>
                   </div>
-                </div>
                 )}
-
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -1689,7 +1684,7 @@ export function WorkerDetailModal({
         </DialogContent>
       </Dialog>
 
-      {/* ── Sub-Dialog: Save customer note (Add-on 2) ── */}
+      {}
       <Dialog
         open={saveNoteOpen}
         onOpenChange={(open) => {
@@ -1717,13 +1712,11 @@ export function WorkerDetailModal({
                   {t("customerNotesSaveHint")}
                 </p>
               </div>
-
               <AuraCheckbox
                 checked={saveNoteChecked}
                 onChange={setSaveNoteChecked}
                 label={t("customerNotesSaveCheckbox")}
               />
-
               {saveNoteChecked && (
                 <>
                   <div>
@@ -1749,14 +1742,11 @@ export function WorkerDetailModal({
                   </div>
                 </>
               )}
-
               <div className="flex gap-2">
                 <button
                   type="button"
                   disabled={saveNoteSaving}
-                  onClick={() => {
-                    finishComplete();
-                  }}
+                  onClick={() => finishComplete()}
                   className="flex-1 h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors disabled:opacity-50"
                 >
                   {t("customerNotesSkipBtn")}
@@ -1779,7 +1769,7 @@ export function WorkerDetailModal({
         </DialogContent>
       </Dialog>
 
-      {/* ── Sub-Dialog: Add Customer Note ── */}
+      {}
       <Dialog open={isAddNoteOpen} onOpenChange={setIsAddNoteOpen}>
         <DialogContent
           style={{
@@ -1799,7 +1789,6 @@ export function WorkerDetailModal({
                   Zaznamki za naročnika
                 </h3>
               </div>
-
               <div>
                 <AuraLabel className="text-[10px] uppercase text-slate-500 mb-1.5 block font-bold">NAROČNIK:</AuraLabel>
                 <AuraInput
@@ -1809,7 +1798,6 @@ export function WorkerDetailModal({
                   className="bg-slate-100/60 border-none text-slate-500 select-none cursor-not-allowed"
                 />
               </div>
-
               <div>
                 <div className="flex justify-between items-center mb-1.5">
                   <AuraLabel className="text-[10px] uppercase text-slate-500 block font-bold mb-0">ZAZNAMEK:</AuraLabel>
@@ -1827,7 +1815,6 @@ export function WorkerDetailModal({
                   Če gre za več opomnikov, je priporočljivo, da so zapisani ločeno, vsak za sebe.
                 </p>
               </div>
-
               <div className="flex flex-col gap-3 my-2 pt-2 border-t border-[#1B3A6B]/10">
                 <button
                   type="button"
@@ -1847,11 +1834,9 @@ export function WorkerDetailModal({
                     Zaznamek samo tokrat
                   </span>
                 </button>
-                
                 <div className="text-[9px] font-extrabold text-slate-400/70 tracking-wider pl-8 uppercase">
                   ali
                 </div>
-
                 <button
                   type="button"
                   onClick={() => setNewNoteType("always")}
@@ -1871,7 +1856,6 @@ export function WorkerDetailModal({
                   </span>
                 </button>
               </div>
-
               <button
                 type="button"
                 disabled={newNoteSaving || !newNoteText.trim()}

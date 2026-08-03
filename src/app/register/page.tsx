@@ -131,9 +131,12 @@ export default function RegisterPage() {
       />
 
       <div className="relative z-10 w-full max-w-md rounded-[2.5rem] bg-white/75 backdrop-blur-2xl border border-white shadow-[0_30px_70px_-30px_rgba(15,23,42,0.3),inset_0_2px_0_white] px-8 sm:px-10 py-12 sm:py-16">
-        <h2 className="text-center text-2xl font-semibold text-slate-900 mb-8">
+        <h2 className="text-center text-2xl font-semibold text-slate-900 mb-4">
           {t("authRegisterTitle")}
         </h2>
+        <p className="text-center text-[14px] font-light text-slate-600 mb-8">
+  {t("authRegisterSubtitle")}
+</p>
 
         <form onSubmit={handleRegister} className="space-y-4">
           {error && (
@@ -189,7 +192,8 @@ export default function RegisterPage() {
             </span>
           </div>
 
-          <div className="relative">
+          {/* Company size dropdown - hidden for now */}
+          <div className="relative hidden">
             <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />

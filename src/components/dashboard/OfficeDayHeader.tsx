@@ -50,6 +50,14 @@ function AngelRightIcon({ className }: { className?: string }) {
   );
 }
 
+/** ISO date string in local time (YYYY-MM-DD) for the dateTime attribute. */
+function toISODateLocal(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function OfficeDayHeader({
   title,
   selectedDate,
@@ -86,7 +94,8 @@ export function OfficeDayHeader({
       className="relative mb-6 flex flex-wrap items-center gap-x-4 gap-y-3"
       style={{ fontFamily: "'PT Sans', sans-serif" }}
     >
-      <h1 className="text-[32px] font-semibold tracking-tight text-slate-800 shrink-0 text-center sm:text-left w-full sm:w-auto">
+      {/* 1 — popravljeno: odstranjen redundant lg:text-[32px], ki je duplikat md:text-[32px] */}
+      <h1 className="text-[30px] md:text-[32px] font-medium md:font-light tracking-tight text-slate-800 shrink-0 text-center sm:text-left w-full sm:w-auto">
         {title}
       </h1>
 
@@ -101,9 +110,10 @@ export function OfficeDayHeader({
           <AngelLeftIcon />
         </button>
 
+        {/* 2 — popravljeno: dateTime je zdaj lokalni ISO datum (YYYY-MM-DD), ne UTC toISOString() */}
         <time
-          dateTime={day.toISOString()}
-          className="min-w-[7.5rem] text-center text-[32px] font-medium tabular-nums text-slate-700"
+          dateTime={toISODateLocal(day)}
+          className="min-w-[7.5rem] text-center text-[30px] md:text-[32px] font-medium md:font-light tabular-nums text-slate-700"
         >
           {formatSiDate(day)}
         </time>

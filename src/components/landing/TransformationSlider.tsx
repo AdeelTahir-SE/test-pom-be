@@ -29,7 +29,6 @@ const TITLE_STYLE: React.CSSProperties = {
   fontFamily: "Inter, sans-serif",
   fontWeight: 300,
   fontSize: "32px",
-  lineHeight: "48px",
   letterSpacing: "-1.2px",
   color: "#FFFFFF",
   margin: "0 0 20px 0",
@@ -740,7 +739,8 @@ export function TransformationSlider() {
                 }}
               >
                 <div style={LABEL_STYLE}>PLATFORMA ZA TERENCE</div>
-                <h3 className="ts-title" style={TITLE_STYLE}>En zaslon - vse je dosegljivo z enim dotikom</h3>
+                <h3 className="ts-title leading-[48px] md:leading-[40px] lg:leading-[48px]"
+                    style={TITLE_STYLE}>En zaslon - vse je dosegljivo z enim dotikom</h3>
 
                 {/* Mobile-only image inside the card, displayed after the title */}
                 <div className="ts-mobile-only" style={{ width: "100%", justifyContent: "center", marginTop: "24px", marginBottom: "24px" }}>
@@ -838,7 +838,8 @@ export function TransformationSlider() {
                 }}
               >
                 <div style={LABEL_STYLE_SLIDE_2}>GLASOVNA SPOROČILA</div>
-                <h3 className="ts-title" style={TITLE_STYLE}>Teren govori. Pisarna ukrepa. Delo teče hitreje.</h3>
+                <h3 className="ts-title leading-[48px] md:leading-[40px] lg:leading-[48px]"
+                   style={TITLE_STYLE}>Teren govori. Pisarna ukrepa. Delo teče hitreje.</h3>
 
                 {/* Intro paragraph */}
                 <p className="ts-body" style={{ ...BODY_STYLE, margin: "0 0 36px 0" }}>
@@ -853,14 +854,30 @@ export function TransformationSlider() {
                   <p style={{ fontFamily: "Inter, sans-serif", fontWeight: 400, fontSize: "14px", lineHeight: "20px", color: "#EEF4FB", margin: "0 0 4px 0" }}>
                     Primer. Terenec govori:
                   </p>
-                  <p style={{ fontFamily: "Inter, sans-serif", fontWeight: 300, fontSize: "14px", lineHeight: "20px", color: "#CBD5E1", margin: "0 0 16px 0" }}>
+                  <p
+                    className="text-[14px] md:text-[16px] lg:text-[14px]"
+                    style={{
+                      fontFamily: "Inter, sans-serif",
+                      fontWeight: 300,
+                      lineHeight: "20px",
+                      color: "#CBD5E1",
+                      margin: "0 0 16px 0",
+                    }}
+                  >
                     &ldquo;Poslušaj, prišlo je do prometne nesreče na obvoznici, premikamo se s polžjo hitrostjo in zabijam čas tukaj, ko se mudi. Zgleda, da bom lahko prevzel šele okrog enajstih namesto ob desetih.&rdquo;
                   </p>
                   {/* AI label + AI output: weight 400 for label, 300 for quote */}
                   <p style={{ fontFamily: "Inter, sans-serif", fontWeight: 400, fontSize: "14px", lineHeight: "20px", color: "#EEF4FB", margin: "0 0 4px 0" }}>
                     AI sporočilo pretvori v tekst, ki se prikaže na delovni tabli pisarne.
                   </p>
-                  <p style={{ fontFamily: "Inter, sans-serif", fontWeight: 300, fontSize: "14px", lineHeight: "20px", color: "#CBD5E1", margin: "0 0 16px 0" }}>
+                  <p className="text-[14px] md:text-[16px] lg:text-[14px]"
+                    style={{
+                      fontFamily: "Inter, sans-serif",
+                      fontWeight: 300,
+                      lineHeight: "20px",
+                      color: "#CBD5E1",
+                      margin: "0 0 16px 0",
+                    }}>
                     &ldquo;Prometna nesreča na obvoznici. Prevzem okrog 11:00.&rdquo;
                   </p>
                   {/* Outcome: weight 400 */}
@@ -874,13 +891,27 @@ export function TransformationSlider() {
                   <p style={{ fontFamily: "Inter, sans-serif", fontWeight: 400, fontSize: "14px", lineHeight: "20px", color: "#EEF4FB", margin: "0 0 4px 0" }}>
                     Drug primer: Terenec govori:
                   </p>
-                  <p style={{ fontFamily: "Inter, sans-serif", fontWeight: 300, fontSize: "14px", lineHeight: "20px", color: "#CBD5E1", margin: "0 0 16px 0" }}>
+                  <p className="text-[14px] md:text-[16px] lg:text-[14px]"
+                    style={{
+                      fontFamily: "Inter, sans-serif",
+                      fontWeight: 300,
+                      lineHeight: "20px",
+                      color: "#CBD5E1",
+                      margin: "0 0 16px 0",
+                    }}>
                     &ldquo;Evo, vse smo zaključil. Aja, porabil smo še dve kartuši silikona pa eno PU peno. Ne vem, če je še kaj ostalo v kakem kombiju al če mamo v skladišču.&rdquo;
                   </p>
                   <p style={{ fontFamily: "Inter, sans-serif", fontWeight: 400, fontSize: "14px", lineHeight: "20px", color: "#EEF4FB", margin: "0 0 4px 0" }}>
                     AI prepozna porabljen material in pripravi zapis, ki se prikaže na delovni tabli pisarne.
                   </p>
-                  <p style={{ fontFamily: "Inter, sans-serif", fontWeight: 300, fontSize: "14px", lineHeight: "20px", color: "#CBD5E1", margin: "0 0 16px 0" }}>
+                  <p className="text-[14px] md:text-[16px] lg:text-[14px]"
+                    style={{
+                      fontFamily: "Inter, sans-serif",
+                      fontWeight: 300,
+                      lineHeight: "20px",
+                      color: "#CBD5E1",
+                      margin: "0 0 16px 0",
+                    }}>
                     &ldquo;Porabljeno: 2× kartuša silikona, 1× PU pena. Preveri zalogo.&rdquo;
                   </p>
                   <p style={{ fontFamily: "Inter, sans-serif", fontWeight: 400, fontSize: "14px", lineHeight: "20px", color: "#EEF4FB", margin: "0 0 24px 0" }}>

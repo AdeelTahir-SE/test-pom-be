@@ -29,21 +29,21 @@ export function ImpactSection() {
           SPREMEMBE BODO OPAZNE
         </p>
         <h2
-          className="font-light text-slate-950 lg:whitespace-nowrap text-2xl md:text-5xl"
-          style={{
-            fontFamily: "'Inter', sans-serif",
-            lineHeight: "1.2",
-            letterSpacing: "-0.04em",
-          }}
-        >
-          Kaj se spremeni po nekaj tednih uporabe
-        </h2>
+  className="font-light text-slate-950 text-2xl md:text-[36px] lg:text-5xl lg:whitespace-nowrap"
+  style={{
+    fontFamily: "'Inter', sans-serif",
+    lineHeight: "1.2",
+    letterSpacing: "-0.04em",
+  }}
+>
+  Kaj se spremeni po nekaj tednih uporabe
+</h2>
         <p
-          className="mt-4 text-slate-500 max-w-3xl mx-auto"
+          className="mt-4 text-slate-500 max-w-3xl mx-auto text-base md:text-[16px] lg:text-[18px]"
           style={{
             fontFamily: "'Inter', sans-serif",
             fontWeight: 300,
-            fontSize: "clamp(1rem, 2.5vw, 1.125rem)",
+            // fontSize: "clamp(1rem, 2.5vw, 1.125rem)",
             lineHeight: "28px",
           }}
         >

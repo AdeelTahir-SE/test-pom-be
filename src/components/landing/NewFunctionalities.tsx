@@ -17,25 +17,30 @@ export function NewFunctionalities() {
         </span>
 
         <h2
-          className="text-2xl md:text-5xl font-light text-slate-950"
-          style={{ fontFamily: "'Inter', sans-serif", lineHeight: "1.2", letterSpacing: "-0.04em" }}
-        >
-          Novi funkcionalnosti
-        </h2>
+  className="text-[30px] md:text-[40px] lg:text-5xl font-light text-slate-950"
+  style={{
+    fontFamily: "'Inter', sans-serif",
+    lineHeight: "1.2",
+    letterSpacing: "-0.04em",
+  }}
+>
+  Novi funkcionalnosti
+</h2>
 
         <h3
-          className="mt-2 text-xl md:text-[28px] leading-tight md:leading-[50px] tracking-[-0.04em] font-light text-slate-950"
-          style={{ fontFamily: "'Inter', sans-serif" }}
-        >
-          Za boljšo organizacijo dela
-        </h3>
+  className="mt-2 text-[20px] md:text-[28px] font-normal md:font-light leading-tight md:leading-[50px] tracking-[-0.04em] text-slate-950"
+  style={{ fontFamily: "'Inter', sans-serif" }}
+>
+  Za boljšo organizacijo dela
+</h3>
 
         <div
           className="mt-4 max-w-3xl mx-auto text-base md:text-[18px] leading-7 md:leading-[28px] font-light text-slate-600"
           style={{ fontFamily: "'Inter', sans-serif" }}
         >
-          AI pomočnik pomaga urediti dokumente, aplikacija pa poskrbi, da:
-          <ul className="mt-2 text-left w-full max-w-[315px] mx-auto block pl-5 md:pl-0 md:inline-block md:max-w-none md:w-auto md:mx-0 list-disc md:list-inside">
+<p className="text-left pl-7 md:pl-0 md:text-center">
+  AI pomočnik pomaga urediti dokumente, aplikacija pa poskrbi, da:
+</p>          <ul className="mt-2 text-left w-full max-w-[315px] mx-auto block pl-5 md:pl-0 md:inline-block md:max-w-none md:w-auto md:mx-0 list-disc md:list-inside">
             <li>pomembni detajli o naročnikih ostajajo v podjetju,</li>
             <li>poenostavijo delo,</li>
             <li>omogočijo boljšo izkušnjo strank in lahko povečajo prodajo.</li>
@@ -68,9 +73,9 @@ export function NewFunctionalities() {
             OPERATIVNI SPOMIN
           </p>
 
-          <h3 className="mt-0 w-full lg:w-[574px] h-auto lg:h-[50px] text-2xl md:text-[28px] leading-tight md:leading-[50px] tracking-[-0.04em] font-light text-slate-950">
-            Naročniki niso več samo imena v seznamu
-          </h3>
+          <h3 className="mt-0 w-full lg:w-[574px] h-auto lg:h-[50px] text-[20px] md:text-[24px] lg:text-[28px] font-normal lg:font-light leading-tight md:leading-[50px] tracking-[-0.04em] text-slate-950">
+  Naročniki niso več samo imena v seznamu
+</h3>
 
           <div className="mt-4 w-full lg:w-[574px] text-base md:text-[18px] leading-7 md:leading-[28px] font-light text-slate-600">
             Vsak obisk prinese nove informacije.
@@ -80,7 +85,7 @@ export function NewFunctionalities() {
             <br />
             <br />
             <span className="inline-flex items-center gap-1">
-              <span className="text-light-500">⚠</span>
+              <span className="hidden md:inline text-light-500">⚠</span>
               <span className="font-light">Pomembni detajli za naslednji obisk</span>
             </span>
             <ul className="list-disc ml-5 mt-1 marker:text-light-500">
@@ -91,9 +96,9 @@ export function NewFunctionalities() {
             </ul>
           </div>
 
-          <h4 className="mt-5 w-full lg:w-[574px] h-auto lg:h-[60px] text-lg md:text-[20px] leading-tight md:leading-[60px] font-normal text-slate-950">
-            Manj vprašanj. Manj napak. Bolj profesionalno delo.
-          </h4>
+          <h4 className="mt-7 md:mt-5 w-full lg:w-[574px] h-auto lg:h-[60px] text-lg md:text-[20px] leading-tight md:leading-[60px] font-normal text-slate-950">
+  Manj vprašanj. Manj napak. Bolj profesionalno delo.
+</h4>
 
           <p className="mt-4 w-full lg:w-[574px] h-auto lg:h-[168px] text-base md:text-[18px] leading-7 md:leading-[28px] font-light text-slate-600">
             Tako podjetje ne gradi le zgodovine opravljenega dela, ampak tudi
@@ -114,9 +119,9 @@ export function NewFunctionalities() {
             PAMETNI DOKUMENTI
           </p>
 
-          <h3 className="mt-0 w-full lg:w-[574px] h-auto lg:h-[50px] text-2xl md:text-[28px] leading-tight md:leading-[50px] tracking-[-0.04em] font-light text-slate-950">
-            Dokumenti niso več samo priponke
-          </h3>
+          <h3 className="mt-0 w-full lg:w-[574px] h-auto lg:h-[50px] text-[20px] md:text-[24px] lg:text-[28px] font-normal lg:font-light leading-tight md:leading-[50px] tracking-[-0.04em] text-slate-950">
+  Dokumenti niso več samo priponke
+</h3>
 
           <p className="mt-4 text-base md:text-[18px] leading-7 md:leading-[28px] tracking-[-0.48px] font-light text-slate-600">
             Namesto tega:
@@ -175,7 +180,7 @@ export function NewFunctionalities() {
 
         {/* Industry examples pill */}
         <Link
-          href="/primeri-iz-prakse"
+          href="/primeri"
           className="lg:absolute lg:bottom-[96px] lg:left-[406px] inline-flex items-center justify-center gap-[8px] rounded-full border bg-[#EFF6FF] border-[#DBEAFE] w-[225px] h-[50px] px-3 py-1.5 text-[16px] leading-[16.5px] font-normal text-[#3B82F6] hover:bg-blue-100 transition-colors whitespace-nowrap self-center lg:self-auto mt-4 lg:mt-0"
           style={{ fontFamily: "'Inter', sans-serif" }}
         >

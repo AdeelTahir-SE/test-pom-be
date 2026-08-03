@@ -242,7 +242,7 @@ export function DashboardPreview() {
         <p className="font-['Inter',sans-serif] text-[10px] md:text-xs font-semibold tracking-[-0.04em] text-blue-500 mb-4 uppercase">
           {"ZA PISARNO"}
         </p>
-        <h2 className="text-3xl md:text-5xl font-normal md:font-light tracking-tight text-slate-950 max-w-3xl mx-auto">
+        <h2 className="text-3xl md:text-[40px] lg:text-5xl font-normal md:font-light tracking-tight text-slate-950 max-w-3xl mx-auto">
           {"Komandni center"}
         </h2>
         <p className="mt-4 text-sm md:text-base text-slate-500 max-w-xl mx-auto font-light leading-relaxed">

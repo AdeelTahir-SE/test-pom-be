@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useCallback, useEffect, useRef } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Logo } from "@/components/Logo";
-import { useLanguage } from "@/lib/useLanguage";
-import { useCurrentUser } from "@/lib/useCurrentUser";
-import { api } from "@/lib/api-client";
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { Logo } from '@/components/Logo';
+import { Footer } from '@/components/landing/Footer';
+import { useLanguage } from '@/lib/useLanguage';
+import { useCurrentUser } from '@/lib/useCurrentUser';
+import { api } from '@/lib/api-client';
 import {
   ApiJob,
   ApiChecklistItem,
@@ -17,9 +18,9 @@ import {
   communicationToMessage,
   jobNumber,
   formatTime,
-} from "@/lib/dashboardMappers";
-import type { Worker, Order, Message } from "@/lib/mockData";
-import { LIMITS } from "@/config/constants";
+} from '@/lib/dashboardMappers';
+import type { Worker, Order, Message } from '@/lib/mockData';
+import { LIMITS } from '@/config/constants';
 import {
   LogOut,
   Send,
@@ -29,33 +30,33 @@ import {
   Settings,
   Database,
   Paperclip,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import {
   SummaryCard,
   OverviewRow,
   UrgentRow,
-} from "@/components/dashboard/SummaryCard";
-import { DailySummaryPanel } from "@/components/dashboard/DailySummaryPanel";
-import { WorkerCard } from "@/components/dashboard/WorkerCard";
-import { OfficeCard } from "@/components/dashboard/OfficeCard";
-import { CommunicationCard } from "@/components/dashboard/CommunicationCard";
-import { WorkerDetailModal } from "@/components/dashboard/WorkerDetailModal";
-import { AddTaskModal } from "@/components/dashboard/AddTaskModal";
-import { AddReminderModal } from "@/components/dashboard/AddReminderModal";
-import { AddWorkerCard } from "@/components/dashboard/AddWorkerCard";
-import { TeamManagementModal } from "@/components/dashboard/TeamManagementModal";
-import { SearchModal } from "@/components/dashboard/SearchModal";
-import { CompanySettingsModal } from "@/components/dashboard/CompanySettingsModal";
-import { SortableItem } from "@/components/dashboard/SortableItem";
-import { OfficeDayHeader } from "@/components/dashboard/OfficeDayHeader";
-import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
+} from '@/components/dashboard/SummaryCard';
+import { DailySummaryPanel } from '@/components/dashboard/DailySummaryPanel';
+import { WorkerCard } from '@/components/dashboard/WorkerCard';
+import { OfficeCard } from '@/components/dashboard/OfficeCard';
+import { CommunicationCard } from '@/components/dashboard/CommunicationCard';
+import { WorkerDetailModal } from '@/components/dashboard/WorkerDetailModal';
+import { AddTaskModal } from '@/components/dashboard/AddTaskModal';
+import { AddReminderModal } from '@/components/dashboard/AddReminderModal';
+import { AddWorkerCard } from '@/components/dashboard/AddWorkerCard';
+import { TeamManagementModal } from '@/components/dashboard/TeamManagementModal';
+import { SearchModal } from '@/components/dashboard/SearchModal';
+import { CompanySettingsModal } from '@/components/dashboard/CompanySettingsModal';
+import { SortableItem } from '@/components/dashboard/SortableItem';
+import { OfficeDayHeader } from '@/components/dashboard/OfficeDayHeader';
+import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import {
   SortableContext,
   verticalListSortingStrategy,
   arrayMove,
-} from "@dnd-kit/sortable";
+} from '@dnd-kit/sortable';
 import {
   formatSiDate,
   formatSiDateFromDayKey,
@@ -66,9 +67,9 @@ import {
   parseFlexibleDate,
   startOfLocalDay,
   toIsoDate,
-} from "@/lib/officeDate";
-import { useOfficeBoard } from "@/hooks/useOfficeBoard";
-import { isOptimisticId, newOptimisticId } from "@/lib/optimisticId";
+} from '@/lib/officeDate';
+import { useOfficeBoard } from '@/hooks/useOfficeBoard';
+import { isOptimisticId, newOptimisticId } from '@/lib/optimisticId';
 
 interface ApiJobMessage {
   id: string;
@@ -147,8 +148,8 @@ export default function OfficeDashboard() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!authLoading && user && user.role === "worker") {
-      router.replace("/dashboard/worker");
+    if (!authLoading && user && user.role === 'worker') {
+      router.replace('/dashboard/worker');
     }
   }, [authLoading, user, router]);
 
@@ -172,10 +173,14 @@ export default function OfficeDashboard() {
   } = useOfficeBoard(selectedDayKey, !authLoading && !!user);
 
   // Optimistic checklist rows for jobs not yet confirmed by the API (temp ids).
-  const [checklistOverrides, setChecklistOverrides] = useState<Record<string, ApiChecklistItem[]>>({});
+  const [checklistOverrides, setChecklistOverrides] = useState<
+    Record<string, ApiChecklistItem[]>
+  >({});
   const mergedChecklistsByJob = { ...checklistsByJob, ...checklistOverrides };
 
-  const [selectedWorkerJobId, setSelectedWorkerJobId] = useState<string | null>(null);
+  const [selectedWorkerJobId, setSelectedWorkerJobId] = useState<string | null>(
+    null,
+  );
   const [detailKey, setDetailKey] = useState(0);
   const [isWorkerDetailOpen, setIsWorkerDetailOpen] = useState(false);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -195,7 +200,9 @@ export default function OfficeDashboard() {
   const [isRecordingReply, setIsRecordingReply] = useState(false);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeWorkerId, setComposeWorkerId] = useState('');
-  const [pendingDeleteJobId, setPendingDeleteJobId] = useState<string | null>(null);
+  const [pendingDeleteJobId, setPendingDeleteJobId] = useState<string | null>(
+    null,
+  );
   const [pendingConfirmTask, setPendingConfirmTask] = useState<{
     workerId: string;
     taskId: string;
@@ -216,7 +223,9 @@ export default function OfficeDashboard() {
   }, []);
 
   const cardAttachInputRef = useRef<HTMLInputElement | null>(null);
-  const cardAttachTargetRef = useRef<{ jobId: string; taskId: string } | null>(null);
+  const cardAttachTargetRef = useRef<{ jobId: string; taskId: string } | null>(
+    null,
+  );
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const autoStopTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -234,7 +243,7 @@ export default function OfficeDashboard() {
         // Prevent onstop from uploading after unmount.
         recorder.ondataavailable = null;
         recorder.onstop = null;
-        if (recorder.state === "recording") {
+        if (recorder.state === 'recording') {
           try {
             recorder.stop();
           } catch {
@@ -354,14 +363,16 @@ export default function OfficeDashboard() {
     return [...byJob.entries()]
       .map(([jobId, msgs]) => {
         const ordered = [...msgs].sort(
-          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          (a, b) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
         );
         const latest = ordered[ordered.length - 1]!;
         return { jobId, messages: ordered, latest };
       })
       .sort(
         (a, b) =>
-          new Date(b.latest.created_at).getTime() - new Date(a.latest.created_at).getTime()
+          new Date(b.latest.created_at).getTime() -
+          new Date(a.latest.created_at).getTime(),
       );
   })();
 
@@ -376,18 +387,20 @@ export default function OfficeDashboard() {
         selectedJob,
         mergedChecklistsByJob[selectedJob.id] ?? [],
         workerById.get(selectedJob.worker_id!),
-        t
+        t,
       )
     : null;
 
   const handleToggleTask = async (_workerId: string, taskId: string) => {
-    const item = Object.values(mergedChecklistsByJob).flat().find((i) => i.id === taskId);
+    const item = Object.values(mergedChecklistsByJob)
+      .flat()
+      .find((i) => i.id === taskId);
     if (!item || isOptimisticId(item.id) || isOptimisticId(item.job_id)) return;
     // Completed steps stay permanently done (Mark a2).
     if (item.is_completed) return;
 
     const siblings = [...(mergedChecklistsByJob[item.job_id] ?? [])].sort(
-      (a, b) => a.order_index - b.order_index
+      (a, b) => a.order_index - b.order_index,
     );
     const next = siblings.find((i) => !i.is_completed);
     if (!next || next.id !== item.id) return;
@@ -406,7 +419,9 @@ export default function OfficeDashboard() {
       }>(`/api/jobs/${item.job_id}/files`);
       if (filesRes.status === 200 && filesRes.data?.files?.length) {
         // Only a file linked to this exact step counts (Mark: no orphans / guessing).
-        const linked = filesRes.data.files.find((f) => f.checklist_item_id === item.id);
+        const linked = filesRes.data.files.find(
+          (f) => f.checklist_item_id === item.id,
+        );
         if (linked) {
           attachmentName = linked.file_name;
           attachmentUrl = linked.signed_url;
@@ -447,7 +462,7 @@ export default function OfficeDashboard() {
               completed_at: new Date().toISOString(),
               has_attachment: true,
             }
-          : i
+          : i,
       );
 
     setChecklistsByJob((prev) => ({
@@ -457,23 +472,25 @@ export default function OfficeDashboard() {
     setChecklistOverrides((prev) =>
       prev[item.job_id]
         ? { ...prev, [item.job_id]: patchLocal(prev[item.job_id] ?? []) }
-        : prev
+        : prev,
     );
 
     const res = await api.patch<{ item: ApiChecklistItem }>(
       `/api/checklist-items/${pending.taskId}`,
-      { is_completed: true }
+      { is_completed: true },
     );
     if (res.status === 200 && res.data?.item) {
       setChecklistsByJob((prev) => ({
         ...prev,
         [item.job_id]: (prev[item.job_id] ?? []).map((i) =>
-          i.id === pending.taskId ? { ...res.data!.item, has_attachment: true } : i
+          i.id === pending.taskId
+            ? { ...res.data!.item, has_attachment: true }
+            : i,
         ),
       }));
     } else {
       void refreshBoard();
-      showToast(res.error?.message ?? "Koraka ni bilo mogoče potrditi.");
+      showToast(res.error?.message ?? 'Koraka ni bilo mogoče potrditi.');
     }
   };
 
@@ -485,12 +502,14 @@ export default function OfficeDashboard() {
       [jobId]: patch(prev[jobId] ?? []),
     }));
     setChecklistOverrides((prev) =>
-      prev[jobId] ? { ...prev, [jobId]: patch(prev[jobId] ?? []) } : prev
+      prev[jobId] ? { ...prev, [jobId]: patch(prev[jobId] ?? []) } : prev,
     );
   };
 
   const handleCardAttachmentClick = (_workerId: string, taskId: string) => {
-    const item = Object.values(mergedChecklistsByJob).flat().find((i) => i.id === taskId);
+    const item = Object.values(mergedChecklistsByJob)
+      .flat()
+      .find((i) => i.id === taskId);
     if (!item || isOptimisticId(item.job_id)) return;
     cardAttachTargetRef.current = { jobId: item.job_id, taskId: item.id };
     cardAttachInputRef.current?.click();
@@ -501,8 +520,8 @@ export default function OfficeDashboard() {
     cardAttachTargetRef.current = null;
     if (!file || !target) return;
     const formData = new FormData();
-    formData.append("files", file);
-    formData.append("checklist_item_id", target.taskId);
+    formData.append('files', file);
+    formData.append('checklist_item_id', target.taskId);
     const res = await api.post(`/api/jobs/${target.jobId}/files`, formData);
     if (res.status === 201) {
       markChecklistHasAttachment(target.jobId, target.taskId);
@@ -514,25 +533,31 @@ export default function OfficeDashboard() {
               attachmentName: file.name,
               attachmentUrl: null,
             }
-          : prev
+          : prev,
       );
-      showToast(t("modalAttachSuccess"));
+      showToast(t('modalAttachSuccess'));
       void refreshBoard();
     } else {
-      showToast(res.error?.message ?? t("modalAttachFailed"));
+      showToast(res.error?.message ?? t('modalAttachFailed'));
     }
   };
 
   const handleChangeJobStatus = async (jobId: string, status: string) => {
     if (isOptimisticId(jobId)) return;
-    setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, status: status as ApiJob["status"] } : j)));
-    const res = await api.patch<{ job: ApiJob }>(`/api/jobs/${jobId}`, { status });
+    setJobs((prev) =>
+      prev.map((j) =>
+        j.id === jobId ? { ...j, status: status as ApiJob['status'] } : j,
+      ),
+    );
+    const res = await api.patch<{ job: ApiJob }>(`/api/jobs/${jobId}`, {
+      status,
+    });
     if (res.status === 200 && res.data) {
       setJobs((prev) => prev.map((j) => (j.id === jobId ? res.data!.job : j)));
       void refreshBoard();
     } else {
       void refreshBoard();
-      showToast(res.error?.message ?? "Posodobitev se ni izvedla.");
+      showToast(res.error?.message ?? 'Posodobitev se ni izvedla.');
     }
   };
 
@@ -546,7 +571,7 @@ export default function OfficeDashboard() {
   }) => {
     const parsed = parseFlexibleDate(taskData.datum) ?? selectedDate;
     if (parsed.getTime() < startOfLocalDay().getTime()) {
-      showToast("Datum ne sme biti v preteklosti.");
+      showToast('Datum ne sme biti v preteklosti.');
       return;
     }
     const scheduledAt = localDayToScheduledAt(parsed);
@@ -557,7 +582,7 @@ export default function OfficeDashboard() {
     const optimisticJob: ApiJob = {
       id: tempId,
       company_seq: nextSeq,
-      status: "pending",
+      status: 'pending',
       title: taskData.opravilo,
       description: null,
       priority: null,
@@ -570,23 +595,28 @@ export default function OfficeDashboard() {
       created_at: now,
     };
 
-    const optimisticChecklist: ApiChecklistItem[] = taskData.steps.map((step, index) => ({
-      id: newOptimisticId("opt-step"),
-      job_id: tempId,
-      label: step.text,
-      order_index: index,
-      is_completed: false,
-      completed_at: null,
-      requires_attachment: step.requiresAttachment,
-      has_attachment: false,
-    }));
+    const optimisticChecklist: ApiChecklistItem[] = taskData.steps.map(
+      (step, index) => ({
+        id: newOptimisticId('opt-step'),
+        job_id: tempId,
+        label: step.text,
+        order_index: index,
+        is_completed: false,
+        completed_at: null,
+        requires_attachment: step.requiresAttachment,
+        has_attachment: false,
+      }),
+    );
 
     // Show the card immediately, persist in parallel.
     setJobs((prev) => [optimisticJob, ...prev]);
-    setChecklistOverrides((prev) => ({ ...prev, [tempId]: optimisticChecklist }));
+    setChecklistOverrides((prev) => ({
+      ...prev,
+      [tempId]: optimisticChecklist,
+    }));
 
     void (async () => {
-      const res = await api.post<{ job: ApiJob }>("/api/jobs", {
+      const res = await api.post<{ job: ApiJob }>('/api/jobs', {
         title: taskData.opravilo,
         location: taskData.kraj || undefined,
         customer: taskData.narocnik || undefined,
@@ -601,17 +631,20 @@ export default function OfficeDashboard() {
           delete next[tempId];
           return next;
         });
-        showToast(res.error?.message ?? "Prišlo je do napake. Ni bilo dodano.");
+        showToast(res.error?.message ?? 'Prišlo je do napake. Ni bilo dodano.');
         return;
       }
 
       const realJob = res.data.job;
       const createdSteps: ApiChecklistItem[] = [];
       for (const step of taskData.steps) {
-        const stepRes = await api.post<{ item?: ApiChecklistItem; checklist?: ApiChecklistItem }>(
-          `/api/jobs/${realJob.id}/checklist`,
-          { label: step.text, requires_attachment: step.requiresAttachment }
-        );
+        const stepRes = await api.post<{
+          item?: ApiChecklistItem;
+          checklist?: ApiChecklistItem;
+        }>(`/api/jobs/${realJob.id}/checklist`, {
+          label: step.text,
+          requires_attachment: step.requiresAttachment,
+        });
         const item = stepRes.data?.item ?? stepRes.data?.checklist;
         if (stepRes.status === 201 && item) createdSteps.push(item);
       }
@@ -634,7 +667,9 @@ export default function OfficeDashboard() {
 
       // Functional update — don't use the stale selectedWorkerJobId from create start
       // (user may have opened Details on the optimistic card while POST was in flight).
-      setSelectedWorkerJobId((current) => (current === tempId ? realJob.id : current));
+      setSelectedWorkerJobId((current) =>
+        current === tempId ? realJob.id : current,
+      );
       void refreshBoard();
     })();
   };
@@ -658,7 +693,8 @@ export default function OfficeDashboard() {
     if (reminderData.hasConfirm) actions.push('confirm');
     if (reminderData.hasDecline) actions.push('reject');
 
-    const remindDay = parseFlexibleDate(reminderData.date ?? "") ?? selectedDate;
+    const remindDay =
+      parseFlexibleDate(reminderData.date ?? '') ?? selectedDate;
     const remindTime = normalizeRemindTime(reminderData.time);
     const tempId = newOptimisticId();
     const now = new Date().toISOString();
@@ -681,21 +717,26 @@ export default function OfficeDashboard() {
     setReminders((prev) => [optimistic, ...prev]);
 
     void (async () => {
-      const res = await api.post<{ reminder: ApiOfficeReminder }>("/api/office-reminders", {
-        title: reminderData.title,
-        description: reminderData.description || undefined,
-        is_urgent: reminderData.isUrgent,
-        actions,
-        phone: reminderData.phoneNumber || undefined,
-        remind_on: toIsoDate(remindDay),
-        remind_time: remindTime || undefined,
-      });
+      const res = await api.post<{ reminder: ApiOfficeReminder }>(
+        '/api/office-reminders',
+        {
+          title: reminderData.title,
+          description: reminderData.description || undefined,
+          is_urgent: reminderData.isUrgent,
+          actions,
+          phone: reminderData.phoneNumber || undefined,
+          remind_on: toIsoDate(remindDay),
+          remind_time: remindTime || undefined,
+        },
+      );
       if (res.status === 201 && res.data) {
-        setReminders((prev) => prev.map((r) => (r.id === tempId ? res.data!.reminder : r)));
+        setReminders((prev) =>
+          prev.map((r) => (r.id === tempId ? res.data!.reminder : r)),
+        );
         void refreshBoard();
       } else {
         setReminders((prev) => prev.filter((r) => r.id !== tempId));
-        showToast(res.error?.message ?? "Opomnika ni bilo mogoče ustvariti.");
+        showToast(res.error?.message ?? 'Opomnika ni bilo mogoče ustvariti.');
       }
     })();
   };
@@ -728,7 +769,9 @@ export default function OfficeDashboard() {
       }
       void refreshBoard();
     } else {
-      showToast(res.error?.message ?? 'Prišlo je do napake. Račun ni bil ustvarjen.');
+      showToast(
+        res.error?.message ?? 'Prišlo je do napake. Račun ni bil ustvarjen.',
+      );
     }
   };
 
@@ -736,12 +779,19 @@ export default function OfficeDashboard() {
     if (isOptimisticId(id)) return;
     setReminders((prev) =>
       prev.map((r) =>
-        r.id === id ? { ...r, action_state: { ...r.action_state, confirmed: true } } : r
-      )
+        r.id === id
+          ? { ...r, action_state: { ...r.action_state, confirmed: true } }
+          : r,
+      ),
     );
-    const res = await api.patch<{ reminder: ApiOfficeReminder }>(`/api/office-reminders/${id}`, { confirm: true });
+    const res = await api.patch<{ reminder: ApiOfficeReminder }>(
+      `/api/office-reminders/${id}`,
+      { confirm: true },
+    );
     if (res.status === 200 && res.data) {
-      setReminders((prev) => prev.map((r) => (r.id === id ? res.data!.reminder : r)));
+      setReminders((prev) =>
+        prev.map((r) => (r.id === id ? res.data!.reminder : r)),
+      );
     } else {
       void refreshBoard();
     }
@@ -750,12 +800,19 @@ export default function OfficeDashboard() {
     if (isOptimisticId(id)) return;
     setReminders((prev) =>
       prev.map((r) =>
-        r.id === id ? { ...r, action_state: { ...r.action_state, rejected: true } } : r
-      )
+        r.id === id
+          ? { ...r, action_state: { ...r.action_state, rejected: true } }
+          : r,
+      ),
     );
-    const res = await api.patch<{ reminder: ApiOfficeReminder }>(`/api/office-reminders/${id}`, { reject: true });
+    const res = await api.patch<{ reminder: ApiOfficeReminder }>(
+      `/api/office-reminders/${id}`,
+      { reject: true },
+    );
     if (res.status === 200 && res.data) {
-      setReminders((prev) => prev.map((r) => (r.id === id ? res.data!.reminder : r)));
+      setReminders((prev) =>
+        prev.map((r) => (r.id === id ? res.data!.reminder : r)),
+      );
     } else {
       void refreshBoard();
     }
@@ -767,10 +824,14 @@ export default function OfficeDashboard() {
     }
     const snapshot = reminders;
     setReminders((prev) => prev.filter((r) => r.id !== id));
-    const res = await api.patch(`/api/office-reminders/${id}`, { hidden: true });
+    const res = await api.patch(`/api/office-reminders/${id}`, {
+      hidden: true,
+    });
     if (res.status !== 200) {
       setReminders(snapshot);
-      showToast(res.error?.message ?? "Napaka. Opomnika ni bilo mogoče izbrisati.");
+      showToast(
+        res.error?.message ?? 'Napaka. Opomnika ni bilo mogoče izbrisati.',
+      );
     }
   };
   const handleReminderDragEnd = (event: DragEndEvent) => {
@@ -784,8 +845,10 @@ export default function OfficeDashboard() {
       reordered
         .filter((r) => !isOptimisticId(r.id))
         .map((r, index) =>
-          api.patch(`/api/office-reminders/${r.id}`, { order_index: index }).catch(() => {})
-        )
+          api
+            .patch(`/api/office-reminders/${r.id}`, { order_index: index })
+            .catch(() => {}),
+        ),
     );
   };
   const handleDismissConversation = async (messageIds: string[]) => {
@@ -794,7 +857,9 @@ export default function OfficeDashboard() {
     const snapshot = communications;
     setCommunications((prev) => prev.filter((m) => !idSet.has(m.id)));
     const results = await Promise.all(
-      messageIds.map((id) => api.patch(`/api/office/communications/${id}`, { hidden: true }))
+      messageIds.map((id) =>
+        api.patch(`/api/office/communications/${id}`, { hidden: true }),
+      ),
     );
     if (results.some((r) => r.status !== 200)) setCommunications(snapshot);
   };
@@ -812,7 +877,7 @@ export default function OfficeDashboard() {
     const res = await api.patch(`/api/jobs/${id}`, { hidden: true });
     if (res.status !== 200) {
       setJobs(snapshot);
-      showToast(res.error?.message ?? "Kartice ni bilo mogoče skriti.");
+      showToast(res.error?.message ?? 'Kartice ni bilo mogoče skriti.');
     }
   };
 
@@ -834,8 +899,10 @@ export default function OfficeDashboard() {
       reordered
         .filter((j) => !isOptimisticId(j.id))
         .map((j, index) =>
-          api.patch(`/api/jobs/${j.id}`, { display_order: index }).catch(() => {})
-        )
+          api
+            .patch(`/api/jobs/${j.id}`, { display_order: index })
+            .catch(() => {}),
+        ),
     );
   };
 
@@ -888,11 +955,14 @@ export default function OfficeDashboard() {
             void refreshBoard();
           } else {
             console.error(res.error);
-            showToast(res.error?.message ?? "Glasovnega sporočila ni bilo mogoče poslati.");
+            showToast(
+              res.error?.message ??
+                'Glasovnega sporočila ni bilo mogoče poslati.',
+            );
           }
         } catch (err) {
           console.error(err);
-          showToast("Glasovnega sporočila ni bilo mogoče poslati.");
+          showToast('Glasovnega sporočila ni bilo mogoče poslati.');
         }
       };
       recorder.start();
@@ -923,8 +993,7 @@ export default function OfficeDashboard() {
   }
 
   return (
-
-    <div className="min-h-screen text-slate-800 dark:text-slate-100 overflow-x-hidden selection:bg-[#1B3A6B]/10 selection:text-[#1B3A6B] relative bg-[#f8fafc] dark:bg-[#0b0f19]">
+    <div className="min-h-screen text-slate-800 dark:text-slate-100 overflow-x-hidden selection:bg-[#1B3A6B]/10 selection:text-[#1B3A6B] relative bg-[#f3f5f8] dark:bg-[#0b0f19]">
       <style>{`
         @media (max-width: 1023px) {
           .office-grid {
@@ -964,15 +1033,16 @@ export default function OfficeDashboard() {
           <div
             className="relative overflow-hidden w-full max-w-[1232px] mx-auto flex flex-col justify-center"
             style={{
-              boxSizing: "border-box",
-              padding: "12px 16px",
-              height: "60px",
-              background: "rgba(255, 255, 255, 0.002)",
-              border: "1px solid rgba(255, 255, 255, 0.9)",
-              boxShadow: "0px 14px 38px -22px rgba(15, 23, 42, 0.42), inset 0px 1px 0px 1px #FFFFFF",
-              backdropFilter: "blur(20px)",
-              WebkitBackdropFilter: "blur(20px)",
-              borderRadius: "9999px",
+              boxSizing: 'border-box',
+              padding: '12px 16px',
+              height: '60px',
+              background: 'rgba(255, 255, 255, 0.002)',
+              border: '1px solid rgba(255, 255, 255, 0.9)',
+              boxShadow:
+                '0px 14px 38px -22px rgba(15, 23, 42, 0.42), inset 0px 1px 0px 1px #FFFFFF',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+              borderRadius: '9999px',
             }}
           >
             <div className="absolute inset-0 rounded-full bg-white/36 pointer-events-none" />
@@ -980,8 +1050,8 @@ export default function OfficeDashboard() {
             <div
               className="relative z-10 flex flex-row justify-between items-center w-full"
               style={{
-                height: "34px",
-                alignSelf: "stretch",
+                height: '34px',
+                alignSelf: 'stretch',
               }}
             >
               <div className="flex items-center gap-3">
@@ -989,29 +1059,30 @@ export default function OfficeDashboard() {
                   href="/dashboard/office"
                   className="flex items-center justify-center rounded-full hover:-translate-y-0.5 transition-all duration-300"
                   style={{
-                    boxSizing: "border-box",
-                    padding: "8px 16px",
-                    width: "111px",
-                    height: "34px",
-                    background: "linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)",
-                    border: "none",
-                    boxShadow: "0px 1px 2px rgba(15,23,42,0.04)",
+                    boxSizing: 'border-box',
+                    padding: '8px 16px',
+                    width: '111px',
+                    height: '34px',
+                    background:
+                      'linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)',
+                    border: 'none',
+                    boxShadow: '0px 1px 2px rgba(15,23,42,0.04)',
                   }}
                 >
                   <span
                     style={{
-                      width: "77px",
-                      height: "16px",
+                      width: '77px',
+                      height: '16px',
                       fontFamily: "'Inter', sans-serif",
-                      fontStyle: "normal",
+                      fontStyle: 'normal',
                       fontWeight: 400,
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      textAlign: "center",
-                      color: "#FFFFFF",
+                      fontSize: '12px',
+                      lineHeight: '16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      textAlign: 'center',
+                      color: '#FFFFFF',
                     }}
                   >
                     pomocnik.net
@@ -1034,22 +1105,30 @@ export default function OfficeDashboard() {
                     </span>
                   </div>
                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-semibold">
-                    {user?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
+                    {user?.full_name
+                      ?.split(' ')
+                      .map((n) => n[0])
+                      .join('')
+                      .toUpperCase() || 'U'}
                   </div>
                 </div>
                 <button
                   onClick={() => setIsSearchOpen(true)}
                   title="Išči"
-                  className="hidden sm:block p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  className="block sm:block p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
                 >
                   <SearchIcon className="h-5 w-5" />
                 </button>
                 <button
                   onClick={() => setIsTeamOpen(true)}
                   title={t('teamTitle')}
-                  className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  className="hidden sm:block p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
                 >
-                  <img src="/adduser.png" alt="Dodaj uporabnika" className="h-5 w-5" />
+                  <img
+                    src="/adduser.png"
+                    alt="Dodaj uporabnika"
+                    className="h-5 w-5"
+                  />
                 </button>
                 <Link
                   href="/dashboard/office/db"
@@ -1081,146 +1160,196 @@ export default function OfficeDashboard() {
           todayLabel={t('officeJumpToday')}
         />
 
-        <div
-          className="flex items-center gap-3 px-4 py-2 rounded-full mb-12 mx-auto sm:mx-0 sm:ml-auto"
-          style={{
-            width: "351px",
-            background: "rgba(255, 255, 255, 0.002)",
-            border: "1px solid rgba(255, 255, 255, 0.9)",
-            boxShadow: "0px 14px 38px -22px rgba(15, 23, 42, 0.42), inset 0px 1px 0px 1px #FFFFFF",
-            backdropFilter: "blur(20px)",
-            WebkitBackdropFilter: "blur(20px)",
-          }}
-        >
+        <div className="flex justify-center sm:justify-end mb-12 relative">
           <div
-            className="w-12 h-12 rounded-full flex items-center justify-center text-white text-sm font-bold"
+            className="inline-flex w-fit items-center gap-3 px-4 py-2 rounded-full"
             style={{
-              background: "linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)",
+              background: 'rgba(255, 255, 255, 0.002)',
+              border: '1px solid rgba(255, 255, 255, 0.9)',
+              boxShadow:
+                '0px 14px 38px -22px rgba(15, 23, 42, 0.42), inset 0px 1px 0px 1px #FFFFFF',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
             }}
           >
-            AI
-          </div>
-          <div className="flex flex-col">
-            <span
+            <div
+              className="w-12 h-12 rounded-full flex items-center justify-center text-white text-[24px] font-bold"
               style={{
-                fontFamily: "Inter, sans-serif",
-                fontWeight: 400,
-                fontSize: "24px",
-                lineHeight: "36px",
-                letterSpacing: "-0.75px",
-                color: "rgba(15, 23, 42, 1)",
+                background: 'linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)',
               }}
             >
-              Povzetek dneva za šefa
-            </span>
-            <span
-              style={{
-                fontFamily: "Inter, sans-serif",
-                fontWeight: 400,
-                fontSize: "14px",
-                lineHeight: "100%",
-                letterSpacing: "-0.75px",
-                color: "rgba(148, 163, 184, 1)",
-                textAlign: 'right'
-              }}
-            >
-              v eni minuti
-            </span>
+              AI
+            </div>
+            <div className="flex flex-col">
+              <span
+                className="text-[24px] font-normal"
+                style={{
+                  fontFamily: 'Inter, sans-serif',
+                  lineHeight: '36px',
+                  letterSpacing: '-0.75px',
+                  color: 'rgba(15, 23, 42, 1)',
+                }}
+              >
+                <span className="hidden sm:inline">Povzetek dneva za šefa</span>
+                <span className="sm:hidden">Povzetek za šefa</span>
+              </span>
+              <span
+                style={{
+                  fontFamily: 'Inter, sans-serif',
+                  fontWeight: 400,
+                  fontSize: '14px',
+                  lineHeight: '100%',
+                  letterSpacing: '-0.75px',
+                  color: 'rgba(148, 163, 184, 1)',
+                  textAlign: 'right',
+                }}
+              >
+                v eni minuti
+              </span>
+            </div>
           </div>
+
+          {/* <div
+            className="hidden sm:flex items-center gap-3 px-5 py-3 z-10 pointer-events-none absolute"
+            style={{
+              width: "180.42px",
+              height: "58px",
+              top: "261px",
+              left: "1152px",
+              transform: "rotate(3deg)",
+              opacity: 1,
+              borderRadius: "16px",
+              background: "rgba(255, 255, 255, 1)",
+              boxShadow: "0 18px 38px -20px rgba(15,23,42,0.45), inset 0 1px 0 white",
+              animation: "aura-float-soft 4.5s ease-in-out infinite",
+            }}
+          >
+            <div className="flex flex-col">
+              <span
+                style={{
+                  fontFamily: "Inter, sans-serif",
+                  fontWeight: 400,
+                  fontSize: "12px",
+                  lineHeight: "16px",
+                  letterSpacing: "0px",
+                  color: "rgba(15, 23, 42, 1)",
+                }}
+              >
+                V pripravi
+              </span>
+              <span
+                style={{
+                  fontFamily: "Inter, sans-serif",
+                  fontWeight: 300,
+                  fontSize: "12px",
+                  lineHeight: "16px",
+                  letterSpacing: "0px",
+                  color: "rgba(148, 163, 184, 1)",
+                }}
+              >
+                Dodano bo v avgustu
+              </span>
+            </div>
+          </div> */}
         </div>
 
-        <div className="relative" style={{ marginBottom: "32px" }}>
+        {/* <style>{`
+          @keyframes aura-float-soft {
+            0%, 100% { transform: translateY(0) rotate(3deg); }
+            50% { transform: translateY(-8px) rotate(3deg); }
+          }
+        `}</style> */}
+
+        <div className="relative" style={{ marginBottom: '32px' }}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <SummaryCard title={t("officeQuickOverview")}>
-            <div className="flex flex-col gap-[4px]">
-              {dayFieldOverview.length === 0 ? (
-                <p
-                  style={{
-                    fontFamily: "'PT Sans', sans-serif",
-                    fontWeight: 400,
-                    fontSize: '14px',
-                    lineHeight: '18px',
-                    color: '#64748B',
-                  }}
-                >
-                  {t('officeQuickOverviewEmpty')}
-                </p>
-              ) : (
-                dayFieldOverview.map((f) => (
-                  <OverviewRow
-                    key={f.job_id}
-                    progress={`${f.checklist_completed}/${f.checklist_total}`}
-                    task={f.job_title}
-                    location={f.location ?? ''}
-                    name={f.worker_name ?? 'Unassigned'}
-                  />
-                ))
-              )}
-            </div>
-          </SummaryCard>
+            <SummaryCard title={t('officeQuickOverview')}>
+              <div className="flex flex-col gap-[4px]">
+                {dayFieldOverview.length === 0 ? (
+                  <p
+                    style={{
+                      fontFamily: "'PT Sans', sans-serif",
+                      fontWeight: 400,
+                      fontSize: '14px',
+                      lineHeight: '18px',
+                      color: '#64748B',
+                    }}
+                  >
+                    {t('officeQuickOverviewEmpty')}
+                  </p>
+                ) : (
+                  dayFieldOverview.map((f) => (
+                    <OverviewRow
+                      key={f.job_id}
+                      progress={`${f.checklist_completed}/${f.checklist_total}`}
+                      task={f.job_title}
+                      location={f.location ?? ''}
+                      name={f.worker_name ?? 'Unassigned'}
+                    />
+                  ))
+                )}
+              </div>
+            </SummaryCard>
 
-          <SummaryCard title={t('officeUrgentMatters')} dark>
-            <div className="flex flex-col gap-[6px]">
-              {!dayUrgent ? (
-                <p
-                  style={{
-                    fontFamily: "'PT Sans', sans-serif",
-                    fontWeight: 400,
-                    fontSize: '14px',
-                    lineHeight: '18px',
-                    color: '#94A3B8',
-                  }}
-                >
-                  {t('officeEmptyUrgent')}
-                </p>
-              ) : (
-                <UrgentRow
-                  time={dayUrgent.remind_time?.trim() || "—"}
-                  title={dayUrgent.title}
-                  subtitle={dayUrgent.description ?? undefined}
-                />
-              )}
-            </div>
-          </SummaryCard>
-        </div>
+            <SummaryCard title={t('officeUrgentMatters')} dark>
+              <div className="flex flex-col gap-[6px]">
+                {!dayUrgent ? (
+                  <p
+                    style={{
+                      fontFamily: "'PT Sans', sans-serif",
+                      fontWeight: 400,
+                      fontSize: '14px',
+                      lineHeight: '18px',
+                      color: '#94A3B8',
+                    }}
+                  >
+                    {t('officeEmptyUrgent')}
+                  </p>
+                ) : (
+                  <UrgentRow
+                    time={dayUrgent.remind_time?.trim() || '—'}
+                    title={dayUrgent.title}
+                    subtitle={dayUrgent.description ?? undefined}
+                  />
+                )}
+              </div>
+            </SummaryCard>
+          </div>
         </div>
 
         <div
-          className="hidden sm:flex items-center gap-3 px-5 py-3 z-10 pointer-events-none absolute"
+          className="absolute z-10 pointer-events-none flex items-center gap-3 px-5 py-3 top-[540px] md:top-[261px] right-4 md:right-8 lg:right-24"
           style={{
-            width: "180.42px",
-            height: "58px",
-            top: "261px",
-            left: "1152px",
-            transform: "rotate(3deg)",
-            opacity: 1,
-            borderRadius: "16px",
-            background: "rgba(255, 255, 255, 1)",
-            boxShadow: "0 18px 38px -20px rgba(15,23,42,0.45), inset 0 1px 0 white",
-            animation: "aura-float-soft 4.5s ease-in-out infinite",
+            width: '180.42px',
+            height: '58px',
+            transform: 'rotate(3deg)',
+            borderRadius: '16px',
+            background: 'rgba(255, 255, 255, 1)',
+            boxShadow:
+              '0 18px 38px -20px rgba(15,23,42,0.45), inset 0 1px 0 white',
+            animation: 'aura-float-soft 4.5s ease-in-out infinite',
           }}
         >
           <div className="flex flex-col">
             <span
               style={{
-                fontFamily: "Inter, sans-serif",
+                fontFamily: 'Inter, sans-serif',
                 fontWeight: 400,
-                fontSize: "12px",
-                lineHeight: "16px",
-                letterSpacing: "0px",
-                color: "rgba(15, 23, 42, 1)",
+                fontSize: '12px',
+                lineHeight: '16px',
+                letterSpacing: '0px',
+                color: 'rgba(15, 23, 42, 1)',
               }}
             >
               V pripravi
             </span>
             <span
               style={{
-                fontFamily: "Inter, sans-serif",
+                fontFamily: 'Inter, sans-serif',
                 fontWeight: 300,
-                fontSize: "12px",
-                lineHeight: "16px",
-                letterSpacing: "0px",
-                color: "rgba(148, 163, 184, 1)",
+                fontSize: '12px',
+                lineHeight: '16px',
+                letterSpacing: '0px',
+                color: 'rgba(148, 163, 184, 1)',
               }}
             >
               Dodano bo v avgustu
@@ -1238,7 +1367,7 @@ export default function OfficeDashboard() {
         <div
           ref={containerRef}
           onScroll={handleScroll}
-          className="office-grid grid grid-cols-1 lg:grid-cols-3 gap-6"
+          className="office-grid grid grid-cols-1 lg:grid-cols-3 gap-6 pb-0 lg:pb-20"
         >
           {/* COLUMN 1 — DANES TEREN */}
           <div className="flex flex-col gap-3 office-column-cell">
@@ -1297,8 +1426,15 @@ export default function OfficeDashboard() {
                   strategy={verticalListSortingStrategy}
                 >
                   {activeJobs.map((job) => {
-                    const worker = job.worker_id ? workerById.get(job.worker_id) : undefined;
-                    const workerCard = jobToWorkerCard(job, mergedChecklistsByJob[job.id] ?? [], worker, t);
+                    const worker = job.worker_id
+                      ? workerById.get(job.worker_id)
+                      : undefined;
+                    const workerCard = jobToWorkerCard(
+                      job,
+                      mergedChecklistsByJob[job.id] ?? [],
+                      worker,
+                      t,
+                    );
                     return (
                       <SortableItem key={job.id} id={job.id}>
                         <WorkerCard
@@ -1308,7 +1444,7 @@ export default function OfficeDashboard() {
                           date={
                             formatSiDateFromDayKey(
                               isoToLocalDayKey(job.scheduled_at) ??
-                                isoToLocalDayKey(job.created_at)
+                                isoToLocalDayKey(job.created_at),
                             ) || formatSiDate(new Date(job.created_at))
                           }
                           orderId={jobNumber(job)}
@@ -1450,17 +1586,24 @@ export default function OfficeDashboard() {
                     message={card}
                     thread={thread.messages.map((m) => ({
                       id: m.id,
-                      senderLabel: m.sender_name || m.worker_name || t("cardUnknownSender"),
+                      senderLabel:
+                        m.sender_name ||
+                        m.worker_name ||
+                        t('cardUnknownSender'),
                       text: m.content,
                       time: formatTime(m.created_at),
-                      type: m.message_type === "voice" ? "glasovno" : "tekst",
+                      type: m.message_type === 'voice' ? 'glasovno' : 'tekst',
                     }))}
                     iconType="mic"
                     onResolve={() =>
-                      void handleDismissConversation(thread.messages.map((m) => m.id))
+                      void handleDismissConversation(
+                        thread.messages.map((m) => m.id),
+                      )
                     }
                     onDismiss={() =>
-                      void handleDismissConversation(thread.messages.map((m) => m.id))
+                      void handleDismissConversation(
+                        thread.messages.map((m) => m.id),
+                      )
                     }
                     onReply={() => handleOpenReply(thread.jobId)}
                   />
@@ -1471,7 +1614,7 @@ export default function OfficeDashboard() {
         </div>
 
         {/* Column navigation arrows (mobile/tablet only) */}
-        <div className="flex items-center justify-center gap-8 mt-5 lg:hidden">
+        <div className="flex items-center justify-center gap-8 mt-5 mb-12 lg:hidden">
           <button
             onClick={() => goToColumn(activeTab - 1)}
             disabled={activeTab === 0}
@@ -1556,7 +1699,8 @@ export default function OfficeDashboard() {
         customerName={selectedJob?.customer ?? null}
         onRefresh={() => void refreshBoard()}
         onChecklistReorder={(orderedIds) => {
-          if (!selectedWorkerJobId || isOptimisticId(selectedWorkerJobId)) return;
+          if (!selectedWorkerJobId || isOptimisticId(selectedWorkerJobId))
+            return;
           const jobId = selectedWorkerJobId;
           const reorder = (list: ApiChecklistItem[]) => {
             const byId = new Map(list.map((i) => [i.id, i]));
@@ -1600,7 +1744,7 @@ export default function OfficeDashboard() {
         accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
         onChange={(e) => {
           const file = e.target.files?.[0] ?? null;
-          e.target.value = "";
+          e.target.value = '';
           void handleCardAttachmentFile(file);
         }}
       />
@@ -1613,10 +1757,10 @@ export default function OfficeDashboard() {
       >
         <DialogContent className="max-w-sm w-[90vw]">
           <h3 className="text-lg font-semibold text-slate-900 text-center">
-            {t("modalDeleteCardConfirmTitle")}
+            {t('modalDeleteCardConfirmTitle')}
           </h3>
           <p className="text-sm text-slate-600 text-center mt-2">
-            {t("modalDeleteCardConfirmBody")}
+            {t('modalDeleteCardConfirmBody')}
           </p>
           <div className="flex gap-2 mt-4">
             <button
@@ -1624,7 +1768,7 @@ export default function OfficeDashboard() {
               onClick={() => setPendingDeleteJobId(null)}
               className="flex-1 h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500"
             >
-              {t("modalCancel")}
+              {t('modalCancel')}
             </button>
             <button
               type="button"
@@ -1635,7 +1779,7 @@ export default function OfficeDashboard() {
               }}
               className="flex-1 h-10 rounded-xl bg-red-600 text-white text-xs font-semibold"
             >
-              {t("modalDeleteCardSubmit")}
+              {t('modalDeleteCardSubmit')}
             </button>
           </div>
         </DialogContent>
@@ -1651,9 +1795,10 @@ export default function OfficeDashboard() {
           {pendingConfirmTask && (
             <>
               <h3 className="text-lg font-semibold text-slate-900 text-center">
-                {pendingConfirmTask.requiresAttachment && !pendingConfirmTask.hasAttachment
-                  ? t("modalConfirmStepMissingTitle")
-                  : t("modalConfirmStepTitle")}
+                {pendingConfirmTask.requiresAttachment &&
+                !pendingConfirmTask.hasAttachment
+                  ? t('modalConfirmStepMissingTitle')
+                  : t('modalConfirmStepTitle')}
               </h3>
               <p className="text-sm text-slate-600 text-center mt-2">
                 <strong>{pendingConfirmTask.label}</strong>
@@ -1677,10 +1822,11 @@ export default function OfficeDashboard() {
                   )}
                 </div>
               )}
-              {pendingConfirmTask.requiresAttachment && !pendingConfirmTask.hasAttachment ? (
+              {pendingConfirmTask.requiresAttachment &&
+              !pendingConfirmTask.hasAttachment ? (
                 <div className="flex flex-col gap-2 mt-4">
                   <p className="text-xs text-slate-500 text-center">
-                    {t("modalConfirmStepMissingDesc")}
+                    {t('modalConfirmStepMissingDesc')}
                   </p>
                   <button
                     type="button"
@@ -1688,7 +1834,10 @@ export default function OfficeDashboard() {
                       const p = pendingConfirmTask;
                       if (!p) return;
                       // Keep dialog open; upload updates hasAttachment then shows Confirm.
-                      cardAttachTargetRef.current = { jobId: p.jobId, taskId: p.taskId };
+                      cardAttachTargetRef.current = {
+                        jobId: p.jobId,
+                        taskId: p.taskId,
+                      };
                       cardAttachInputRef.current?.click();
                     }}
                     className="w-full h-10 rounded-xl bg-[#1B3A6B] text-white text-xs font-semibold"
@@ -1700,14 +1849,14 @@ export default function OfficeDashboard() {
                     onClick={() => void completeConfirmedTask()}
                     className="w-full h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700"
                   >
-                    {t("modalConfirmStepSubmit")}
+                    {t('modalConfirmStepSubmit')}
                   </button>
                   <button
                     type="button"
                     onClick={() => setPendingConfirmTask(null)}
                     className="w-full h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500"
                   >
-                    {t("modalCancel")}
+                    {t('modalCancel')}
                   </button>
                 </div>
               ) : (
@@ -1717,14 +1866,14 @@ export default function OfficeDashboard() {
                     onClick={() => setPendingConfirmTask(null)}
                     className="flex-1 h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500"
                   >
-                    {t("modalCancel")}
+                    {t('modalCancel')}
                   </button>
                   <button
                     type="button"
                     onClick={() => void completeConfirmedTask()}
                     className="flex-1 h-10 rounded-xl bg-[#1B3A6B] text-white text-xs font-semibold"
                   >
-                    {t("modalConfirmStepSubmit")}
+                    {t('modalConfirmStepSubmit')}
                   </button>
                 </div>
               )}
@@ -1757,7 +1906,7 @@ export default function OfficeDashboard() {
         onOpenChange={setIsTeamOpen}
         currentUserId={user?.id}
         onChanged={() => void refreshBoard()}
-        isOwner={user?.role === "owner"}
+        isOwner={user?.role === 'owner'}
         onAddMember={() => {
           setIsTeamOpen(false);
           setIsAddWorkerOpen(true);
@@ -1785,7 +1934,13 @@ export default function OfficeDashboard() {
         onSaved={setCompanyNameOverride}
       />
 
-      <Dialog open={isComposeOpen} onOpenChange={(open) => { setIsComposeOpen(open); if (!open) setComposeWorkerId(''); }}>
+      <Dialog
+        open={isComposeOpen}
+        onOpenChange={(open) => {
+          setIsComposeOpen(open);
+          if (!open) setComposeWorkerId('');
+        }}
+      >
         <DialogContent className="max-w-sm w-[90vw] p-0 overflow-hidden">
           <div className="px-6 py-6 flex flex-col items-center gap-6">
             <h3 className="text-xl font-semibold text-slate-800 text-center">
@@ -1813,19 +1968,45 @@ export default function OfficeDashboard() {
                 type="button"
                 disabled={!composeWorkerId}
                 onClick={() => {
-                  const job = activeJobs.find((j) => j.worker_id === composeWorkerId);
+                  const job = activeJobs.find(
+                    (j) => j.worker_id === composeWorkerId,
+                  );
                   if (!job) return;
                   setIsComposeOpen(false);
                   void handleOpenReply(job.id);
                 }}
                 className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-40"
               >
-                <span style={{ width: '72px', height: '72px', borderRadius: '20px', border: '0.7px solid rgba(96, 165, 250, 0.5)', boxShadow: '0px 8px 18px -12px rgba(15, 23, 42, 0.35), inset 0px 1px 0px 1px #FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.9)' }}>
-                  <svg width="22" height="25" viewBox="0 0 32 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M20.8542 17.1124C19.2762 18.3754 8.94271 26.6494 6.55021 28.5664L2.50471 24.5209L14.0067 10.2649L20.8542 17.1124ZM28.8177 2.31188C25.7352 -0.770625 20.7357 -0.770625 17.6532 2.31188C15.6207 4.34588 15.4482 6.57487 15.3492 7.36538L23.7642 15.7804C24.4902 15.6994 26.7672 15.5269 28.8177 13.4764C31.9017 10.3939 31.9017 5.39438 28.8177 2.31188ZM14.0667 29.2219C10.6287 29.2219 9.05821 31.3624 6.84271 32.7544C5.27371 33.7384 3.78871 33.2389 3.07471 32.3554C2.81521 32.0389 2.07421 30.8989 3.33571 29.5924L3.14821 29.4049L1.45921 27.7684C-0.598793 29.8924 -0.234293 32.4304 1.04071 34.0039C2.50321 35.8099 5.44471 36.7219 8.23321 34.9714C10.6107 33.4789 11.6637 31.8394 14.0667 29.2219Z" fill="#6D778E"/>
+                <span
+                  style={{
+                    width: '72px',
+                    height: '72px',
+                    borderRadius: '20px',
+                    border: '0.7px solid rgba(96, 165, 250, 0.5)',
+                    boxShadow:
+                      '0px 8px 18px -12px rgba(15, 23, 42, 0.35), inset 0px 1px 0px 1px #FFFFFF',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'rgba(255,255,255,0.9)',
+                  }}
+                >
+                  <svg
+                    width="22"
+                    height="25"
+                    viewBox="0 0 32 36"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M20.8542 17.1124C19.2762 18.3754 8.94271 26.6494 6.55021 28.5664L2.50471 24.5209L14.0067 10.2649L20.8542 17.1124ZM28.8177 2.31188C25.7352 -0.770625 20.7357 -0.770625 17.6532 2.31188C15.6207 4.34588 15.4482 6.57487 15.3492 7.36538L23.7642 15.7804C24.4902 15.6994 26.7672 15.5269 28.8177 13.4764C31.9017 10.3939 31.9017 5.39438 28.8177 2.31188ZM14.0667 29.2219C10.6287 29.2219 9.05821 31.3624 6.84271 32.7544C5.27371 33.7384 3.78871 33.2389 3.07471 32.3554C2.81521 32.0389 2.07421 30.8989 3.33571 29.5924L3.14821 29.4049L1.45921 27.7684C-0.598793 29.8924 -0.234293 32.4304 1.04071 34.0039C2.50321 35.8099 5.44471 36.7219 8.23321 34.9714C10.6107 33.4789 11.6637 31.8394 14.0667 29.2219Z"
+                      fill="#6D778E"
+                    />
                   </svg>
                 </span>
-                <span className="text-[11px] font-medium text-slate-600 uppercase tracking-wide">GLASOVNO</span>
+                <span className="text-[11px] font-medium text-slate-600 uppercase tracking-wide">
+                  GLASOVNO
+                </span>
               </button>
 
               <span className="text-xs text-slate-500 uppercase"></span>
@@ -1834,19 +2015,45 @@ export default function OfficeDashboard() {
                 type="button"
                 disabled={!composeWorkerId}
                 onClick={() => {
-                  const job = activeJobs.find((j) => j.worker_id === composeWorkerId);
+                  const job = activeJobs.find(
+                    (j) => j.worker_id === composeWorkerId,
+                  );
                   if (!job) return;
                   setIsComposeOpen(false);
                   void handleOpenReply(job.id);
                 }}
                 className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-40"
               >
-                <span style={{ width: '72px', height: '72px', borderRadius: '20px', border: '0.7px solid rgba(96, 165, 250, 0.5)', boxShadow: '0px 8px 18px -12px rgba(15, 23, 42, 0.35), inset 0px 1px 0px 1px #FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.9)' }}>
-                  <svg width="26" height="24" viewBox="0 0 40 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M18.478 25.9492C16.388 32.7082 16.002 33.714 16.002 34.5892C16.002 35.5815 16.772 36 17.256 36C17.8 36 19.472 35.3228 24.914 33.1898L18.478 25.9492ZM20.254 23.9513L26.694 31.1962L39.51 16.794C39.836 16.4272 40 15.948 40 15.4643C40 14.985 39.836 14.5035 39.51 14.1345C38.35 12.8317 36.594 10.8563 35.432 9.5535C35.106 9.18675 34.678 9.00225 34.25 9.00225C33.824 9.00225 33.394 9.18675 33.066 9.5535L20.254 23.9513ZM14 21.9375C14 21.033 13.288 20.25 12.5 20.25C7.378 20.25 6.622 20.25 1.5 20.25C0.712 20.25 0 21.033 0 21.9375C0 22.842 0.712 23.625 1.5 23.625H12.5C13.288 23.625 14 22.842 14 21.9375ZM24 15.1875C24 14.283 23.288 13.5 22.5 13.5C17.378 13.5 6.622 13.5 1.5 13.5C0.712 13.5 0 14.283 0 15.1875C0 16.092 0.712 16.875 1.5 16.875H22.5C23.288 16.875 24 16.092 24 15.1875ZM24 8.4375C24 7.533 23.288 6.75 22.5 6.75C17.378 6.75 6.622 6.75 1.5 6.75C0.712 6.75 0 7.533 0 8.4375C0 9.342 0.712 10.125 1.5 10.125H22.5C23.288 10.125 24 9.342 24 8.4375ZM24 1.6875C24 0.783 23.288 0 22.5 0C17.378 0 6.622 0 1.5 0C0.712 0 0 0.783 0 1.6875C0 2.592 0.712 3.375 1.5 3.375H22.5C23.288 3.375 24 2.592 24 1.6875Z" fill="#6D778E"/>
+                <span
+                  style={{
+                    width: '72px',
+                    height: '72px',
+                    borderRadius: '20px',
+                    border: '0.7px solid rgba(96, 165, 250, 0.5)',
+                    boxShadow:
+                      '0px 8px 18px -12px rgba(15, 23, 42, 0.35), inset 0px 1px 0px 1px #FFFFFF',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'rgba(255,255,255,0.9)',
+                  }}
+                >
+                  <svg
+                    width="26"
+                    height="24"
+                    viewBox="0 0 40 36"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M18.478 25.9492C16.388 32.7082 16.002 33.714 16.002 34.5892C16.002 35.5815 16.772 36 17.256 36C17.8 36 19.472 35.3228 24.914 33.1898L18.478 25.9492ZM20.254 23.9513L26.694 31.1962L39.51 16.794C39.836 16.4272 40 15.948 40 15.4643C40 14.985 39.836 14.5035 39.51 14.1345C38.35 12.8317 36.594 10.8563 35.432 9.5535C35.106 9.18675 34.678 9.00225 34.25 9.00225C33.824 9.00225 33.394 9.18675 33.066 9.5535L20.254 23.9513ZM14 21.9375C14 21.033 13.288 20.25 12.5 20.25C7.378 20.25 6.622 20.25 1.5 20.25C0.712 20.25 0 21.033 0 21.9375C0 22.842 0.712 23.625 1.5 23.625H12.5C13.288 23.625 14 22.842 14 21.9375ZM24 15.1875C24 14.283 23.288 13.5 22.5 13.5C17.378 13.5 6.622 13.5 1.5 13.5C0.712 13.5 0 14.283 0 15.1875C0 16.092 0.712 16.875 1.5 16.875H22.5C23.288 16.875 24 16.092 24 15.1875ZM24 8.4375C24 7.533 23.288 6.75 22.5 6.75C17.378 6.75 6.622 6.75 1.5 6.75C0.712 6.75 0 7.533 0 8.4375C0 9.342 0.712 10.125 1.5 10.125H22.5C23.288 10.125 24 9.342 24 8.4375ZM24 1.6875C24 0.783 23.288 0 22.5 0C17.378 0 6.622 0 1.5 0C0.712 0 0 0.783 0 1.6875C0 2.592 0.712 3.375 1.5 3.375H22.5C23.288 3.375 24 2.592 24 1.6875Z"
+                      fill="#6D778E"
+                    />
                   </svg>
                 </span>
-                <span className="text-[11px] font-medium text-slate-600 uppercase tracking-wide">TEKSTOVNO</span>
+                <span className="text-[11px] font-medium text-slate-600 uppercase tracking-wide">
+                  TEKSTOVNO
+                </span>
               </button>
             </div>
           </div>
@@ -1949,6 +2156,7 @@ export default function OfficeDashboard() {
           </div>
         </DialogContent>
       </Dialog>
+      <Footer />
     </div>
   );
 }
