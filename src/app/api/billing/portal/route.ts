@@ -27,13 +27,21 @@ export const POST = withAuth(
       throw new ApiError("internal", "Stripe is not configured on this server.");
     }
 
-    const portal = await stripe.billingPortal.sessions.create({
-      customer: company.stripe_customer_id,
-      return_url: `${appBaseUrl()}/dashboard/office`,
-      locale: "sl",
-    });
-
-    return ok({ url: portal.url });
+    try {
+      const portal = await stripe.billingPortal.sessions.create({
+        customer: company.stripe_customer_id,
+        return_url: `${appBaseUrl()}/dashboard/office`,
+        locale: "sl",
+      });
+      return ok({ url: portal.url });
+    } catch (err) {
+      console.error("[billing.portal]", err);
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : "Failed to open Stripe billing portal.";
+      throw new ApiError("internal", message);
+    }
   },
   { roles: ["owner"] }
 );
