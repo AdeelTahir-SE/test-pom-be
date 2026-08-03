@@ -25,14 +25,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { AddTaskModal } from '@/components/dashboard/AddTaskModal';
 import { TeamManagementModal } from '@/components/dashboard/TeamManagementModal';
 import { AddWorkerCard } from '@/components/dashboard/AddWorkerCard';
-import { AuraPhoneInput } from '@/components/dashboard/PhoneInput';
 import { AuraFileInput } from '@/components/dashboard/AuraForm';
 
 interface TeamUser {
   id: string;
   email: string;
   full_name: string;
-  role: 'owner' | 'manager' | 'worker';
+  role: 'owner' | 'director' | 'manager' | 'worker';
   phone: string | null;
   is_active: boolean;
   created_at: string;
@@ -42,14 +41,6 @@ interface DbJobRow {
   id: string;
   date: string;
   customer: string;
-  project: string;
-  notes: string;
-}
-
-interface DbCustomerRow {
-  id: string;
-  date: string;
-  name: string;
   project: string;
   notes: string;
 }
@@ -86,15 +77,6 @@ interface ApiFileRow {
   signed_url: string | null;
 }
 
-interface ApiCustomerRow {
-  id: string;
-  name: string;
-  created_at: string;
-  latest_note: string | null;
-  jobs: { id: string; title: string }[];
-  job_count: number;
-}
-
 export default function DatabaseDashboard() {
   const router = useRouter();
   const { t } = useLanguage();
@@ -112,8 +94,6 @@ export default function DatabaseDashboard() {
   const [staffLoading, setStaffLoading] = useState(true);
   const [jobsList, setJobsList] = useState<DbJobRow[]>([]);
   const [jobsLoading, setJobsLoading] = useState(false);
-  const [customersList, setCustomersList] = useState<DbCustomerRow[]>([]);
-  const [customersLoading, setCustomersLoading] = useState(false);
   const [attachmentsList, setAttachmentsList] = useState<DbAttachmentRow[]>([]);
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
   const [officeNotes, setOfficeNotes] = useState<DbOfficeNoteRow[]>([]);
@@ -139,7 +119,7 @@ export default function DatabaseDashboard() {
     2: '',
     4: '',
   });
-  const [staffRoleFilter, setStaffRoleFilter] = useState<'all' | 'owner' | 'manager' | 'worker'>(
+  const [staffRoleFilter, setStaffRoleFilter] = useState<'all' | 'owner' | 'director' | 'manager' | 'worker'>(
     'all'
   );
   const [showFilterPanel, setShowFilterPanel] = useState(false);
@@ -155,20 +135,13 @@ export default function DatabaseDashboard() {
   const [deletingUser, setDeletingUser] = useState(false);
 
   // Phone state for company profile
-  const [companyPhone, setCompanyPhone] = useState(officeContact?.phone || user?.phone || '');
+  const [companyPhone, setCompanyPhone] = useState('');
   const [phoneSaving, setPhoneSaving] = useState(false);
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [billingBusy, setBillingBusy] = useState(false);
-  const phoneSyncedRef = useRef(false);
-
   useEffect(() => {
-    if (phoneSyncedRef.current) return;
-    const next = officeContact?.phone || user?.phone || '';
-    if (next || officeContact || user) {
-      setCompanyPhone(next);
-      phoneSyncedRef.current = true;
-    }
-  }, [officeContact, user]);
+    setCompanyPhone(user?.phone || '');
+  }, [user?.phone]);
 
   // Format Date helper to match DD.MM.YY (e.g. 24.07.26)
   const formatDate = (dateStr: string) => {
@@ -237,36 +210,6 @@ export default function DatabaseDashboard() {
     }
   }, []);
 
-  const loadCustomers = useCallback(async () => {
-    setCustomersLoading(true);
-    try {
-      const res = await api.get<{ customers: ApiCustomerRow[] }>('/api/customers');
-      if (res.status !== 200) {
-        setCustomersList([]);
-        return;
-      }
-      setCustomersList(
-        (res.data?.customers ?? []).map((c) => ({
-          id: c.id,
-          date: c.created_at,
-          name: c.name,
-          project:
-            c.jobs.length > 0
-              ? c.jobs.map((j) => j.title).join(', ')
-              : c.job_count > 0
-                ? `${c.job_count} del`
-                : '—',
-          notes: c.latest_note?.trim() || '',
-        }))
-      );
-    } catch (err) {
-      console.error(err);
-      setCustomersList([]);
-    } finally {
-      setCustomersLoading(false);
-    }
-  }, []);
-
   const loadAttachments = useCallback(async () => {
     setAttachmentsLoading(true);
     try {
@@ -303,6 +246,7 @@ export default function DatabaseDashboard() {
   }, []);
 
   const loadOfficeNotes = useCallback(async () => {
+    if (staffList.length === 0) return;
     setNotesLoading(true);
     try {
       const [remindersRes] = await Promise.all([
@@ -343,7 +287,6 @@ export default function DatabaseDashboard() {
   useEffect(() => {
     if (authLoading || !user) return;
     if (activeTab === 1) void loadJobs();
-    if (activeTab === 2) void loadCustomers();
     if (activeTab === 3) void loadAttachments();
     if (activeTab === 4) void loadOfficeNotes();
   }, [
@@ -351,7 +294,6 @@ export default function DatabaseDashboard() {
     authLoading,
     user,
     loadJobs,
-    loadCustomers,
     loadAttachments,
     loadOfficeNotes,
   ]);
@@ -362,17 +304,11 @@ export default function DatabaseDashboard() {
     setShowFilterPanel(false);
     if (activeTab === 0) {
       setSortField('created_at');
-      setSortOrder('desc');
+      setSortOrder('asc');
     } else if (activeTab === 1) {
       setSortField('date');
       setSortOrder('desc');
-    } else if (activeTab === 2) {
-      setSortField('date');
-      setSortOrder('desc');
-    } else if (activeTab === 3) {
-      setSortField('date');
-      setSortOrder('desc');
-    } else if (activeTab === 4) {
+    } else if (activeTab === 3 || activeTab === 4) {
       setSortField('date');
       setSortOrder('desc');
     }
@@ -396,6 +332,34 @@ export default function DatabaseDashboard() {
 
       if (valA === null || valA === undefined) valA = '';
       if (valB === null || valB === undefined) valB = '';
+
+      // Proper date sort for both DD.MM.YY and ISO strings
+      if (
+        (sortField === 'date' || sortField === 'created_at') &&
+        typeof valA === 'string' &&
+        typeof valB === 'string'
+      ) {
+        const parseDate = (s: string) => {
+          // ISO format: 2026-08-03T12:30:00Z
+          if (s.includes('T') || s.includes('-')) {
+            const t = new Date(s).getTime();
+            return Number.isNaN(t) ? 0 : t;
+          }
+          // DD.MM.YY format: 24.07.26
+          const parts = s.split('.');
+          if (parts.length === 3) {
+            const d = Number(parts[0]);
+            const m = Number(parts[1]);
+            const y = Number(parts[2]);
+            const fullYear = y < 50 ? 2000 + y : 1900 + y;
+            return new Date(fullYear, m - 1, d).getTime();
+          }
+          return 0;
+        };
+        const timeA = parseDate(valA);
+        const timeB = parseDate(valB);
+        return sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
+      }
 
       if (typeof valA === 'string') {
         return sortOrder === 'asc'
@@ -442,20 +406,6 @@ export default function DatabaseDashboard() {
     return getSortedData(result);
   };
 
-  const getFilteredCustomers = () => {
-    let result = [...customersList];
-    const query = searchQueries[2]?.toLowerCase() || '';
-    if (query) {
-      result = result.filter(
-        (c) =>
-          c.name.toLowerCase().includes(query) ||
-          c.project.toLowerCase().includes(query) ||
-          c.notes.toLowerCase().includes(query)
-      );
-    }
-    return getSortedData(result);
-  };
-
   // Attachments filtering & sorting — category from saved DB fields
   const getFilteredAttachments = () => {
     let result =
@@ -494,8 +444,6 @@ export default function DatabaseDashboard() {
         return getFilteredStaff();
       case 1:
         return getFilteredJobs();
-      case 2:
-        return getFilteredCustomers();
       case 3:
         return getFilteredAttachments();
       case 4:
@@ -507,12 +455,18 @@ export default function DatabaseDashboard() {
 
   const activeDataset = getActiveDataset();
   const totalPages = Math.max(1, Math.ceil(activeDataset.length / rowsPerPage));
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   const startIndex = (currentPage - 1) * rowsPerPage;
   const paginatedDataset = activeDataset.slice(startIndex, startIndex + rowsPerPage);
   const tableLoading =
     (activeTab === 0 && staffLoading) ||
     (activeTab === 1 && jobsLoading) ||
-    (activeTab === 2 && customersLoading) ||
     (activeTab === 3 && attachmentsLoading) ||
     (activeTab === 4 && notesLoading);
 
@@ -546,6 +500,8 @@ export default function DatabaseDashboard() {
         phone: companyPhone.trim() ? companyPhone.trim() : null,
       });
       if (res.status === 200) {
+        const saved = companyPhone.trim() || '';
+        setCompanyPhone(saved);
         alert('Telefon shranjen.');
       } else {
         alert(res.error?.message || 'Telefona ni bilo mogoče shraniti.');
@@ -580,7 +536,7 @@ export default function DatabaseDashboard() {
     setBillingBusy(true);
     try {
       const path =
-        company?.stripe_customer_id && company.subscription_active
+        company?.stripe_customer_id && company?.subscription_active
           ? '/api/billing/portal'
           : '/api/billing/checkout';
       const res = await api.post<{ url: string }>(path, {});
@@ -597,12 +553,23 @@ export default function DatabaseDashboard() {
     }
   };
 
+  const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
+
   const handleDeleteOfficeNote = async (noteId: string) => {
-    const res = await api.patch(`/api/office-reminders/${noteId}`, { hidden: true });
-    if (res.status === 200) {
-      setOfficeNotes((prev) => prev.filter((n) => n.id !== noteId));
-    } else {
-      alert(res.error?.message || 'Zapiska ni bilo mogoče izbrisati.');
+    if (deletingNoteId) return;
+    setDeletingNoteId(noteId);
+    try {
+      const res = await api.patch(`/api/office-reminders/${noteId}`, { hidden: true });
+      if (res.status === 200) {
+        setOfficeNotes((prev) => prev.filter((n) => n.id !== noteId));
+      } else {
+        alert(res.error?.message || 'Zapiska ni bilo mogoče izbrisati.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Težava pri povezavi z strežnikom.');
+    } finally {
+      setDeletingNoteId(null);
     }
   };
 
@@ -742,7 +709,7 @@ export default function DatabaseDashboard() {
                   : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
-              <Columns3 className="h-4.5 w-4.5 shrink-0 text-slate-500" />
+              <Columns3 className="h-[18px] w-[18px] shrink-0 text-slate-500" />
               <span className='font-inter font-medium text-base leading-6 align-middle'>Zaposleni</span>
             </button>
 
@@ -754,7 +721,7 @@ export default function DatabaseDashboard() {
                   : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
-              <Folder className="h-4.5 w-4.5 shrink-0 text-slate-500" />
+              <Folder className="h-[18px] w-[18px] shrink-0 text-slate-500" />
               <span className='font-inter font-medium text-base leading-6 align-middle'>Dela</span>
             </button>
 
@@ -762,7 +729,7 @@ export default function DatabaseDashboard() {
               onClick={() => setActiveTab(2)}
               className="hidden"
             >
-              <Folder className="h-4.5 w-4.5 shrink-0 text-slate-500" />
+              <Folder className="h-[18px] w-[18px] shrink-0 text-slate-500" />
               <span className='font-inter font-medium text-base leading-6 align-middle'>Naročniki</span>
             </button>
 
@@ -774,7 +741,7 @@ export default function DatabaseDashboard() {
                   : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
-              <Folder className="h-4.5 w-4.5 shrink-0 text-slate-500" />
+              <Folder className="h-[18px] w-[18px] shrink-0 text-slate-500" />
               <span className='font-inter font-medium text-base leading-6 align-middle'>Priponke</span>
             </button>
 
@@ -786,7 +753,7 @@ export default function DatabaseDashboard() {
                   : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
-              <Folder className="h-4.5 w-4.5 shrink-0 text-slate-500" />
+              <Folder className="h-[18px] w-[18px] shrink-0 text-slate-500" />
               <span className='font-inter font-medium text-base leading-6 align-middle'>Pisarna</span>
             </button>
 
@@ -802,7 +769,7 @@ export default function DatabaseDashboard() {
                   : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
-              <Folder className="h-4.5 w-4.5 shrink-0 text-slate-500" />
+              <Folder className="h-[18px] w-[18px] shrink-0 text-slate-500" />
               <span className='font-inter font-medium text-base leading-6 align-middle'>Podatki podjetja</span>
             </button>
 
@@ -810,7 +777,7 @@ export default function DatabaseDashboard() {
               onClick={() => setIsTeamOpen(true)}
               className="flex items-center gap-3 px-3 py-2.5 rounded-[8px] text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer text-left w-full"
             >
-              <Folder className="h-4.5 w-4.5 shrink-0 text-slate-500" />
+              <Folder className="h-[18px] w-[18px] shrink-0 text-slate-500" />
               <span className='font-inter font-medium text-base leading-6 align-middle'>Dodaj sodelavca</span>
             </button>
 
@@ -818,7 +785,7 @@ export default function DatabaseDashboard() {
               onClick={() => setIsAddTaskOpen(true)}
               className="flex items-center gap-3 px-3 py-2.5 rounded-[8px] text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer text-left w-full"
             >
-              <Folder className="h-4.5 w-4.5 shrink-0 text-slate-500" />
+              <Folder className="h-[18px] w-[18px] shrink-0 text-slate-500" />
               <span className='font-inter font-medium text-base leading-6 align-middle'>Terenska kartica</span>
             </button>
 
@@ -828,7 +795,7 @@ export default function DatabaseDashboard() {
               disabled={billingBusy || user?.role !== 'owner'}
               className="flex items-center gap-3 px-3 py-2.5 rounded-[8px] text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer w-full disabled:opacity-50"
             >
-              <Folder className="h-4.5 w-4.5 shrink-0 text-slate-500" />
+              <Folder className="h-[18px] w-[18px] shrink-0 text-slate-500" />
               <span className='font-inter font-medium text-base leading-6 align-middle'>
                 {billingBusy ? '…' : 'Naročilo'}
               </span>
@@ -844,7 +811,7 @@ export default function DatabaseDashboard() {
           <div className="flex items-center gap-3">
             <div className="flex flex-col items-end">
               <span className="text-xs font-semibold text-slate-900">{user?.full_name}</span>
-              <span className="text-[10px] text-slate-400 font-mono">{user?.email}</span>
+              <span className="text-[10px] text-slate-400">{user?.email}</span>
             </div>
             <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center font-bold text-xs">
               {user ? user.full_name.slice(0, 2).toUpperCase() : 'U'}
@@ -854,7 +821,7 @@ export default function DatabaseDashboard() {
               title="Odjava"
               className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
             >
-              <LogOut className="h-4.5 w-4.5" />
+              <LogOut className="h-[18px] w-[18px]" />
             </button>
           </div>
         </header>
@@ -875,14 +842,13 @@ export default function DatabaseDashboard() {
           >
             {activeTab === 0 && 'Zaposleni'}
             {activeTab === 1 && 'Dela'}
-            {activeTab === 2 && 'Naročniki'}
             {activeTab === 3 && 'Priponke'}
             {activeTab === 4 && 'Pisarna'}
             {activeTab === 5 && 'Podatki podjetja'}
           </h1>
 
           {/* Search Bar for Tabs 0, 1, 2, 4 */}
-          {(activeTab === 0 || activeTab === 1 || activeTab === 2 || activeTab === 4) && (
+          {(activeTab === 0 || activeTab === 1 || activeTab === 4) && (
             <div className="flex flex-col gap-3 mb-6">
               <div className="flex items-center gap-4">
               <div className="flex-1 relative">
@@ -927,6 +893,7 @@ export default function DatabaseDashboard() {
                   >
                     <option value="all">Vsi</option>
                     <option value="owner">Vodja</option>
+                    <option value="director">Direktor</option>
                     <option value="manager">Pisarna</option>
                     <option value="worker">Teren</option>
                   </select>
@@ -950,25 +917,32 @@ export default function DatabaseDashboard() {
               {/* Panoga row */}
               <div className="flex gap-12 py-2 border-b border-slate-100">
                 <span className="w-32 text-[#8A94A6] text-sm">Panoga</span>
-                <span className="text-[#242731] text-sm font-medium">{company?.business_module || '—'}</span>
+                <span className="text-[#242731] text-sm font-medium">{company?.business_module || 'Whatever they write'}</span>
               </div>
               
               {/* Telefon row */}
-              <div className="flex gap-12 py-2 border-b border-slate-100">
-                <span className="w-32 text-[#8A94A6] text-sm">Telefon</span>
-                <div className="flex-1 flex flex-col gap-2">
-                  <AuraPhoneInput
-                    value={companyPhone}
-                    onChange={setCompanyPhone}
-                    placeholder="30 123 456"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void handleSaveCompanyPhone()}
-                    disabled={phoneSaving || user?.role !== 'owner'}
-                    className="self-start text-[#3B82F6] hover:underline text-sm font-medium cursor-pointer disabled:opacity-50"
-                  >
-                    {phoneSaving ? 'Shranjujem…' : 'Shrani telefon'}
+              <div className="flex flex-col gap-2 py-2 border-b border-slate-100">
+                <div className="flex gap-12 items-center">
+                  <span className="w-32 text-[#8A94A6] text-sm">Telefon</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[#242731] text-sm font-medium">+386</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="30 123 456"
+                      maxLength={11}
+                      value={companyPhone}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^0-9\s]/g, '');
+                        setCompanyPhone(value);
+                      }}
+                      className="w-32 h-8 px-2 rounded border border-slate-200 text-sm text-[#242731] focus:outline-none focus:border-blue-400"
+                    />
+                  </div>
+                </div>
+                <div className="pl-44">
+                  <button onClick={() => void handleSaveCompanyPhone()} className="text-[#3B82F6] hover:underline text-xs font-medium cursor-pointer">
+                    Shrani številko
                   </button>
                 </div>
               </div>
@@ -1039,9 +1013,11 @@ export default function DatabaseDashboard() {
                                 <td className="px-6 py-4 text-slate-800" style={tdStyle14}>
                                   {member.role === 'owner'
                                     ? 'Vodja'
-                                    : member.role === 'manager'
-                                      ? 'Pisarna'
-                                      : 'Teren'}
+                                    : member.role === 'director'
+                                      ? 'Direktor'
+                                      : member.role === 'manager'
+                                        ? 'Pisarna'
+                                        : 'Teren'}
                                 </td>
                                 <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
                                   {formatDate(member.created_at)}
@@ -1049,11 +1025,11 @@ export default function DatabaseDashboard() {
                                 <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
                                   {member.phone || '—'}
                                 </td>
-                                <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle12}>
+                                <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
                                   {member.email}
                                 </td>
                                 <td className="px-6 py-4 text-right" style={tdStyle10}>
-                                  {member.role !== 'owner' ? (
+                                  {member.role !== 'owner' && member.role !== 'director' ? (
                                     <button
                                       onClick={() => setUserToDelete(member)}
                                       className="hover:underline cursor-pointer"
@@ -1103,7 +1079,7 @@ export default function DatabaseDashboard() {
                           ) : (
                             paginatedDataset.map((job: DbJobRow) => (
                               <tr key={job.id} className="hover:bg-slate-50/50 transition-colors">
-                                <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle12}>
+                                <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
                                   {formatDate(job.date)}
                                 </td>
                                 <td className="px-6 py-4 text-slate-800 font-medium" style={tdStyle12}>
@@ -1119,56 +1095,6 @@ export default function DatabaseDashboard() {
                                 </td>
                                 <td className="px-6 py-4 text-slate-800 max-w-[300px] break-words whitespace-pre-line" style={tdStyle12}>
                                   {job.notes || '—'}
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB 2: STRANKE (CUSTOMERS) */}
-                {activeTab === 2 && (
-                  <div>
-                    <div className="overflow-x-auto w-full">
-                      <table className="w-full text-left border-collapse text-xs">
-                        <thead>
-                          <tr className="border-b border-slate-200 bg-slate-50/60">
-                            {renderHeaderCell('Datum', 'date', true)}
-                            {renderHeaderCell('Stranka', 'name', true)}
-                            {renderHeaderCell('Dela', undefined, false)}
-                            {renderHeaderCell('Zaznamki', undefined, false)}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {tableLoading ? (
-                            <tr>
-                              <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
-                                Nalaganje…
-                              </td>
-                            </tr>
-                          ) : paginatedDataset.length === 0 ? (
-                            <tr>
-                              <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
-                                Ni najdenih strank.
-                              </td>
-                            </tr>
-                          ) : (
-                            paginatedDataset.map((cust: DbCustomerRow) => (
-                              <tr key={cust.id} className="hover:bg-slate-50/50 transition-colors">
-                                <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle12}>
-                                  {formatDate(cust.date)}
-                                </td>
-                                <td className="px-6 py-4 text-slate-800 font-medium" style={tdStyle12}>
-                                  {cust.name}
-                                </td>
-                                <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
-                                  {cust.project}
-                                </td>
-                                <td className="px-6 py-4 text-slate-800 max-w-[300px] break-words whitespace-pre-line" style={tdStyle12}>
-                                  {cust.notes || '—'}
                                 </td>
                               </tr>
                             ))
@@ -1208,7 +1134,7 @@ export default function DatabaseDashboard() {
                           if (jobsList.length === 0) void loadJobs();
                           setIsAddAttachmentOpen(true);
                         }}
-                        className="text-sm text-slate-400 hover:text-slate-[#242731] cursor-pointer font-medium hover:underline"
+                        className="text-sm text-slate-400 hover:text-[#242731] cursor-pointer font-medium hover:underline"
                       >
                         Dodaj
                       </button>
@@ -1240,10 +1166,10 @@ export default function DatabaseDashboard() {
                           ) : (
                             paginatedDataset.map((item: DbAttachmentRow) => (
                               <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                                <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle12}>
+                                <td className="px-6 py-2 align-top text-slate-800" style={tdStyle12}>
                                   {formatDate(item.date)}
                                 </td>
-                                <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
+                                <td className="px-6 py-2 align-top text-slate-800" style={tdStyle12}>
                                   <button
                                     onClick={() => router.push(`/dashboard/office?job=${item.jobId}`)}
                                     className="text-left hover:underline cursor-pointer bg-transparent border-none p-0 outline-none"
@@ -1251,7 +1177,7 @@ export default function DatabaseDashboard() {
                                     {item.project}
                                   </button>
                                 </td>
-                                <td className="px-6 py-4 text-blue-600 font-medium" style={tdStyle12}>
+                                <td className="px-6 py-2 align-top text-blue-600 font-medium" style={tdStyle12}>
                                   {item.signedUrl ? (
                                     <a
                                       href={item.signedUrl}
@@ -1265,7 +1191,7 @@ export default function DatabaseDashboard() {
                                     item.name
                                   )}
                                 </td>
-                                <td className="px-6 py-4 text-slate-800 whitespace-pre-line leading-relaxed" style={tdStyle12}>
+                                <td className="px-6 py-2 align-top text-slate-800 whitespace-pre-line break-words leading-relaxed" style={tdStyle12}>
                                   {item.aiDetails}
                                 </td>
                               </tr>
@@ -1307,8 +1233,8 @@ export default function DatabaseDashboard() {
                           ) : (
                             paginatedDataset.map((note: DbOfficeNoteRow) => (
                               <tr key={note.id} className="hover:bg-slate-50/50 transition-colors">
-                                <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle12}>
-                                  {formatDate(note.date)}{note.time ? ` | ${note.time}` : ''}
+                                <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
+                                  {formatDate(note.date)} | {note.time}
                                 </td>
                                 <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
                                   {note.who}
@@ -1322,8 +1248,9 @@ export default function DatabaseDashboard() {
                                 <td className="px-6 py-4 text-right" style={tdStyle10}>
                                   <button
                                     type="button"
+                                    disabled={deletingNoteId === note.id}
                                     onClick={() => void handleDeleteOfficeNote(note.id)}
-                                    className="hover:text-red-600 cursor-pointer transition-colors"
+                                    className="hover:text-red-600 cursor-pointer transition-colors disabled:opacity-40"
                                     style={{ color: '#24273166' }}
                                   >
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1475,7 +1402,7 @@ export default function DatabaseDashboard() {
           try {
             const res = await api.post('/api/jobs', taskData);
             if (res.status === 201 || res.status === 200) {
-              await Promise.all([loadJobs(), loadCustomers()]);
+              await loadJobs();
               setActiveTab(1);
               alert('Naloga uspešno dodana.');
             } else {

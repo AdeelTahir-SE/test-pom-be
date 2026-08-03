@@ -15,6 +15,7 @@ import {
   auraButton,
 } from "./AuraForm";
 import { isValidPhone, normalizePhone, toTelHref } from "@/lib/phone";
+import { AuraPhoneInput } from "./PhoneInput";
 
 interface AddReminderModalProps {
   isOpen: boolean;
@@ -344,50 +345,15 @@ const finalPhone = normalizePhone(fullPhone) ?? "";
       </div>
     </a>
 
-    <select
-  value={countryCode}
-  onChange={(e) => {
-    const newCountryCode = e.target.value;
-    setCountryCode(newCountryCode);
-
-    const fullPhone = `${newCountryCode}${phoneNumber}`;
-
-    if (phoneNumber && !isValidPhone(fullPhone)) {
-      setPhoneError(t("modalPhoneInvalid"));
-    } else {
-      setPhoneError(null);
-    }
-  }}
-  className="w-20 h-10 px-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:border-blue-400"
->
-  <option value="+386">SLO +386</option>
-<option value="+385">HR +385</option>
-<option value="+387">BIH +387</option>
-<option value="+381">SRB +381</option>
-<option value="+382">MNE +382</option>
-<option value="+40">RO +40</option>
-<option value="+359">BG +359</option>
-<option value="+43">A +43</option>
-<option value="+49">DE +49</option>
-<option value="+39">IT +39</option>
-<option value="+48">PL +48</option>
-</select>
-
-    <AuraInput
-      type="tel"
-      inputMode="tel"
-      placeholder="30 123 456"
-      value={phoneNumber}
-      onChange={(e) => handlePhoneChange(e.target.value)}
-      className="flex-1"
-    />
+    <div className="flex-1">
+      <AuraPhoneInput
+        value={phoneNumber}
+        onChange={handlePhoneChange}
+        error={phoneError}
+        placeholder="30 123 456"
+      />
+    </div>
   </div>
-
-  {phoneError && (
-    <span className="text-[11px] text-red-500">
-      {phoneError}
-    </span>
-  )}
 </div>
 
                 {/* Row 3: Potrdi & Zavrni */}

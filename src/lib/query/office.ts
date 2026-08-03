@@ -238,7 +238,6 @@ export async function fetchChecklistsForJobs(jobIds: string[]) {
   for (const id of jobIds) {
     if (!map[id]) map[id] = [];
   }
-
   return map;
 }
 

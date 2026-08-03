@@ -147,14 +147,14 @@ export const translations = {
     priceSec1Item2: "Platforma za terenske ekipe",
     priceSec1Item3: "Neomejeno uporabnikov / terenskih ekip",
     priceSec2Title: "KOMUNIKACIJA",
-    priceSec2Item1: "1000x glasovnih sporočil mesečno (AI pretvorba govora v besedilo)",
+    priceSec2Item1: "1000 glasovnih sporočil mesečno (AI pretvorba govora v besedilo)",
     priceSec2Item2: "Neomejeno internih sporočil med zaposlenimi",
     priceSec2Item3: "Neomejeno dodanih opravil, zabeležk in opomnikov",
     priceSec3Title: "DOKUMENTACIJA",
     priceSec3Item1: "Neomejeno fotografij in dokumentov",
     priceSec3Item2: "Samodejno skeniranje in optično prepoznavanje besedila",
     priceSec3Item3: "Celotna zgodovina dela in komunikacije",
-    priceSec3Item4: "500x AI pretvorba dokumentov v uporabne podatke in analize",
+    priceSec3Item4: "500 AI obdelav dokumentov v uporabne podatke in analize",
     priceCancelAnytime: "Brez vezave. Odpoved kadarkoli.",
     priceTrust1: "Brez doplačil",
     priceTrust2: "Brez vezave",
@@ -181,7 +181,7 @@ export const translations = {
     authRoleWorker: "Terenski delavec",
     authLoginBtn: "Registracija",
     authNoAccount: "Še nimate računa?",
-    authCreateAccount: "Registracija za podjetje",
+    authCreateAccount: "Registracija podjetja",
     authLoginFailed: "Prijava ni uspela. Preverite e-pošto in geslo.",
     authLoginSuccessReset: "Geslo je bilo uspešno posodobljeno. Prijavite se z novim geslom.",
     authGoogleBtn: "Prijava z Googlom",
@@ -207,7 +207,7 @@ export const translations = {
     authResetLinkInvalid: "Povezava za ponastavitev je neveljavna ali je potekla.",
     authResetError: "Gesla ni bilo mogoče posodobiti.",
 
-    authRegisterTitle: "Registracija za podjetja",
+    authRegisterTitle: "Registracija podjetja",
     authRegisterSubtitle: "Podjetje se registrira in nato znotraj računa dodaja svoje zaposlene in jim določa dostop (teren, pisarna).",
     authCompanyName: "Naziv podjetja",
     authCompanyNamePlaceholder: "npr. Elektro storitve d.o.o.",
@@ -216,7 +216,7 @@ export const translations = {
     authEmailPlaceholder: "janez@podjetje.si",
     authPassPlaceholder: "Najmanj 8 znakov",
     authAgreeTerms: "Strinjam se s splošnimi pogoji uporabe in varovanjem zasebnosti.",
-    authRegisterBtn: "Registracija",
+    authRegisterBtn: "Sign Up",
     authHasAccount: "Že imate račun?",
 
     // Office Dashboard (live)
@@ -686,7 +686,7 @@ export const translations = {
     footerContact: "Contact",
 
     // Auth Pages
-    authLoginTitle: " In",
+    authLoginTitle: "Sign In",
     authLoginSubtitle: "Connect your office and field into a unified workday.",
     authEmailLabel: "Email Address",
     authPasswordLabel: "Password",
@@ -731,7 +731,7 @@ export const translations = {
     authEmailPlaceholder: "john@company.com",
     authPassPlaceholder: "At least 8 characters",
     authAgreeTerms: "I agree to the terms of service and privacy policy.",
-    authRegisterBtn: " Up",
+    authRegisterBtn: "Sign Up",
     authHasAccount: "Already have an account?",
 
     // Office Dashboard (live)

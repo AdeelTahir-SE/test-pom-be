@@ -1106,7 +1106,7 @@ export default function OfficeDashboard() {
             >
               <div className="flex items-center gap-3">
                 <Link
-                  href="/dashboard/office"
+                  href="/"
                   className="flex items-center justify-center rounded-full hover:-translate-y-0.5 transition-all duration-300"
                   style={{
                     boxSizing: 'border-box',
@@ -1119,40 +1119,34 @@ export default function OfficeDashboard() {
                     boxShadow: '0px 1px 2px rgba(15,23,42,0.04)',
                   }}
                 >
-                  <span
-                    style={{
-                      width: '77px',
-                      height: '16px',
-                      fontFamily: "'Inter', sans-serif",
-                      fontStyle: 'normal',
-                      fontWeight: 400,
-                      fontSize: '12px',
-                      lineHeight: '16px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      textAlign: 'center',
-                      color: '#FFFFFF',
-                    }}
-                  >
+                  <span className="text-sm font-bold tracking-tight text-white" style={{ fontFamily: "'Inter', sans-serif" }}>
                     pomocnik.net
                   </span>
                 </Link>
-                <span className="h-4 w-px bg-slate-200 hidden sm:inline" />
-                <span className="text-xs font-semibold text-slate-600 hidden sm:inline">
+              <span className="h-4 w-px bg-slate-200 hidden sm:inline" />
+              <div
+                className="hidden sm:inline-flex items-center px-4 py-2 rounded-full hover:-translate-y-0.5 transition-all duration-300"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.002)',
+                  border: '1px solid #E2E8F0',
+                  boxShadow: '0px 1px 2px rgba(15, 23, 42, 0.04), inset 0px 1px 0px 1px #FFFFFF',
+                }}
+              >
+                <span className="text-xs font-semibold text-slate-600">
                   {companyNameOverride ?? company?.name}
                 </span>
               </div>
+            </div>
 
-              <div className="flex items-center gap-2">
-                <div className="hidden sm:flex items-center gap-2 mr-2 pr-2 border-r border-slate-200">
-                  <div className="flex flex-col text-right">
-                    <span className="text-xs font-bold text-slate-700">
-                      {user?.full_name?.split(' ')[0] || 'Uporabnik'}
-                    </span>
-                    <span className="text-xs font-normal text-slate-500 capitalize">
-                      {user?.role || ''}
-                    </span>
+            <div className="flex items-center gap-2">
+              <div className="hidden sm:flex items-center gap-2 mr-2 pr-2 border-r border-slate-200">
+                <div className="flex flex-col text-right">
+                  <span className="text-xs font-bold text-slate-700">
+                    {user?.full_name?.split(' ')[0] || 'Uporabnik'}
+                  </span>
+                  <span className="text-xs font-normal text-slate-500 capitalize">
+                    {user?.role === 'owner' ? 'Vodja' : user?.role === 'manager' ? 'Pisarna' : user?.role === 'worker' ? 'Teren' : ''}
+                  </span>
                   </div>
                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-semibold">
                     {user?.full_name
@@ -1212,8 +1206,9 @@ export default function OfficeDashboard() {
 
         <div className="flex justify-center sm:justify-end mb-12 relative">
           <div
-            className="inline-flex w-fit items-center gap-3 px-4 py-2 rounded-full"
+            className="inline-flex items-center gap-4 px-5 py-3 rounded-full"
             style={{
+              width: '370px',
               background: 'rgba(255, 255, 255, 0.002)',
               border: '1px solid rgba(255, 255, 255, 0.9)',
               boxShadow:
@@ -1223,7 +1218,7 @@ export default function OfficeDashboard() {
             }}
           >
             <div
-              className="w-12 h-12 rounded-full flex items-center justify-center text-white text-[24px] font-bold"
+              className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[20px] font-bold"
               style={{
                 background: 'linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)',
               }}
@@ -1232,11 +1227,11 @@ export default function OfficeDashboard() {
             </div>
             <div className="flex flex-col">
               <span
-                className="text-[24px] font-normal"
+                className="text-[20px] font-normal"
                 style={{
                   fontFamily: 'Inter, sans-serif',
-                  lineHeight: '36px',
-                  letterSpacing: '-0.75px',
+                  lineHeight: '28px',
+                  letterSpacing: '-0.5px',
                   color: 'rgba(15, 23, 42, 1)',
                 }}
               >
@@ -1247,11 +1242,10 @@ export default function OfficeDashboard() {
                 style={{
                   fontFamily: 'Inter, sans-serif',
                   fontWeight: 400,
-                  fontSize: '14px',
-                  lineHeight: '100%',
-                  letterSpacing: '-0.75px',
+                  fontSize: '13px',
+                  lineHeight: '16px',
+                  letterSpacing: '-0.3px',
                   color: 'rgba(148, 163, 184, 1)',
-                  textAlign: 'right',
                 }}
               >
                 v eni minuti
@@ -1367,7 +1361,7 @@ export default function OfficeDashboard() {
         </div>
 
         <div
-          className="absolute z-10 pointer-events-none flex items-center gap-3 px-5 py-3 top-[540px] md:top-[261px] right-4 md:right-8 lg:right-24"
+          className="absolute z-10 pointer-events-none flex items-center gap-3 px-5 py-3 top-[360px] md:top-[261px] right-4 md:right-8 lg:right-24"
           style={{
             width: '180.42px',
             height: '58px',

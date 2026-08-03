@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useLanguage } from "@/lib/useLanguage";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { api } from "@/lib/api-client";
@@ -482,9 +483,11 @@ export default function WorkerDashboard() {
           }}
           className="shrink-0"
         >
-          <h2 style={{ fontFamily: "'Source Sans 3', sans-serif", fontWeight: 300, fontSize: "24px", lineHeight: "32px", letterSpacing: "-0.5px", color: "#0F172A" }}>
-            pomocnik.net
-          </h2>
+          <Link href="/">
+            <h2 style={{ fontFamily: "'Source Sans 3', sans-serif", fontWeight: 300, fontSize: "24px", lineHeight: "32px", letterSpacing: "-0.5px", color: "#0F172A", cursor: "pointer" }}>
+              pomocnik.net
+            </h2>
+          </Link>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsSearchOpen(true)}

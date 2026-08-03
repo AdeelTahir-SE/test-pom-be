@@ -95,17 +95,17 @@ export function OfficeDayHeader({
       style={{ fontFamily: "'PT Sans', sans-serif" }}
     >
       {/* 1 — popravljeno: odstranjen redundant lg:text-[32px], ki je duplikat md:text-[32px] */}
-      <h1 className="text-[30px] md:text-[32px] font-medium md:font-light tracking-tight text-slate-800 shrink-0 text-center sm:text-left w-full sm:w-auto">
+      <h1 className="text-[30px] md:text-[32px] font-medium md:font-light tracking-tight text-slate-800 shrink-0 text-center sm:text-left w-full sm:w-auto mt-2">
         {title}
       </h1>
 
-      <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto justify-center sm:justify-start">
+      <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto justify-center sm:justify-start mt-2">
         <button
           type="button"
           onClick={() => onDateChange(addDays(day, -1))}
           aria-label={prevDayLabel}
           title={prevDayLabel}
-          className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-white/80 hover:text-slate-800"
+          className="flex h-9 w-9 items-center justify-center rounded-xl text-blue-600 transition-colors hover:bg-white/80 hover:text-blue-700"
         >
           <AngelLeftIcon />
         </button>
@@ -113,7 +113,7 @@ export function OfficeDayHeader({
         {/* 2 — popravljeno: dateTime je zdaj lokalni ISO datum (YYYY-MM-DD), ne UTC toISOString() */}
         <time
           dateTime={toISODateLocal(day)}
-          className="min-w-[7.5rem] text-center text-[30px] md:text-[32px] font-medium md:font-light tabular-nums text-slate-700"
+          className="min-w-[7.5rem] text-center text-[30px] md:text-[32px] font-medium md:font-light tabular-nums text-blue-600"
         >
           {formatSiDate(day)}
         </time>
@@ -123,7 +123,7 @@ export function OfficeDayHeader({
           onClick={() => onDateChange(addDays(day, 1))}
           aria-label={nextDayLabel}
           title={nextDayLabel}
-          className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-white/80 hover:text-slate-800"
+          className="flex h-9 w-9 items-center justify-center rounded-xl text-blue-600 transition-colors hover:bg-white/80 hover:text-blue-700"
         >
           <AngelRightIcon />
         </button>

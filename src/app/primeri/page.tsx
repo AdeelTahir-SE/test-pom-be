@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Footer } from '@/components/landing/Footer';
+import { PrimeriNavbar } from '@/components/landing/PrimeriNavbar';
 import { useLanguage } from '@/lib/useLanguage';
 import {
   Mic,
@@ -365,6 +366,7 @@ Nič se ne izgubi med klici, elektronsko pošto in sporočili.`,
 
   return (
     <div className="min-h-screen text-slate-800 dark:text-slate-100 overflow-x-hidden selection:bg-[#1B3A6B]/10 selection:text-[#1B3A6B] relative bg-transparent flex flex-col justify-between">
+      <PrimeriNavbar />
       {/* Solid background base */}
       <div className="fixed inset-0 -z-20 bg-[#f3f5f8] dark:bg-[#0b0f19] pointer-events-none" />
 
@@ -403,7 +405,7 @@ Nič se ne izgubi med klici, elektronsko pošto in sporočili.`,
 
       {/* Back Button */}
       <div className="relative z-10 w-full max-w-7xl mx-auto px-6">
-        <div className='pt-6'>
+        <div className='absolute top-32 hidden lg:block'>
           <Link
             href="/"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-slate-200 bg-white/80 backdrop-blur-sm hover:bg-white transition-all duration-200 shadow-sm"
@@ -412,10 +414,9 @@ Nič se ne izgubi med klici, elektronsko pošto in sporočili.`,
             <span className="text-sm text-slate-600 font-medium">Nazaj na prvo stran</span>
           </Link>
         </div>
-      
 
       {/* Main Container */}
-      <main className="lg:pt-44 pt-36 pb-20 flex-grow flex items-start">
+      <main className="lg:pt-32 pt-24 pb-20 flex-grow flex items-start">
         <div className="grid lg:grid-cols-[1.05fr_0.95fr] gap-12 lg:gap-16 items-center w-full">
           {/* Left Column - Normal Content */}
           <div className="flex flex-col items-center lg:items-start text-center lg:text-left gap-5 max-w-[596px] w-full mx-auto lg:mx-0 min-w-0">

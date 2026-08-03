@@ -11,6 +11,14 @@ export interface OfficeCardThreadItem {
   type: "glasovno" | "tekst";
 }
 
+export interface OfficeCardThreadItem {
+  id: string;
+  senderLabel: string;
+  text: string;
+  time: string;
+  type: "glasovno" | "tekst";
+}
+
 interface OfficeCardProps {
   message: Message;
   onDismiss: () => void;

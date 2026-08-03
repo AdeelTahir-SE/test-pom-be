@@ -1,12 +1,15 @@
-"use client";
+'use client';
 
-import React from "react";
-import { Paperclip } from "lucide-react";
-import Link from "next/link";
+import React from 'react';
+import { Paperclip } from 'lucide-react';
+import Link from 'next/link';
 
 export function NewFunctionalities() {
   return (
-    <section id="nove-funkcionalnosti" className="max-w-7xl mx-auto px-3 md:px-6 py-12 md:py-20">
+    <section
+      id="nove-funkcionalnosti"
+      className="max-w-7xl mx-auto px-3 md:px-6 py-12 md:py-20"
+    >
       {/* Section Header */}
       <div className="text-center mb-8 md:mb-14">
         <span
@@ -17,30 +20,31 @@ export function NewFunctionalities() {
         </span>
 
         <h2
-  className="text-[30px] md:text-[40px] lg:text-5xl font-light text-slate-950"
-  style={{
-    fontFamily: "'Inter', sans-serif",
-    lineHeight: "1.2",
-    letterSpacing: "-0.04em",
-  }}
->
-  Novi funkcionalnosti
-</h2>
+          className="text-[30px] md:text-[40px] lg:text-5xl font-light text-slate-950"
+          style={{
+            fontFamily: "'Inter', sans-serif",
+            lineHeight: '1.2',
+            letterSpacing: '-0.04em',
+          }}
+        >
+          Novi funkcionalnosti
+        </h2>
 
         <h3
-  className="mt-2 text-[20px] md:text-[28px] font-normal md:font-light leading-tight md:leading-[50px] tracking-[-0.04em] text-slate-950"
-  style={{ fontFamily: "'Inter', sans-serif" }}
->
-  Za boljšo organizacijo dela
-</h3>
+          className="mt-2 text-[20px] md:text-[28px] font-normal md:font-light leading-tight md:leading-[50px] tracking-[-0.04em] text-slate-950"
+          style={{ fontFamily: "'Inter', sans-serif" }}
+        >
+          Za boljšo organizacijo dela
+        </h3>
 
         <div
           className="mt-4 max-w-3xl mx-auto text-base md:text-[18px] leading-7 md:leading-[28px] font-light text-slate-600"
           style={{ fontFamily: "'Inter', sans-serif" }}
         >
-<p className="text-left pl-7 md:pl-0 md:text-center">
-  AI pomočnik pomaga urediti dokumente, aplikacija pa poskrbi, da:
-</p>          <ul className="mt-2 text-left w-full max-w-[315px] mx-auto block pl-5 md:pl-0 md:inline-block md:max-w-none md:w-auto md:mx-0 list-disc md:list-inside">
+          <p className="text-left pl-7 md:pl-0 md:text-center">
+            AI pomočnik pomaga urediti dokumente, aplikacija pa poskrbi, da:
+          </p>{' '}
+          <ul className="mt-2 text-left w-full max-w-[315px] mx-auto block pl-5 md:pl-0 md:inline-block md:max-w-none md:w-auto md:mx-0 list-disc md:list-inside">
             <li>pomembni detajli o naročnikih ostajajo v podjetju,</li>
             <li>poenostavijo delo,</li>
             <li>omogočijo boljšo izkušnjo strank in lahko povečajo prodajo.</li>
@@ -59,8 +63,8 @@ export function NewFunctionalities() {
           className="absolute inset-0 opacity-[0.16] pointer-events-none"
           style={{
             backgroundImage:
-              "radial-gradient(circle at 1px 1px, rgba(15,23,42,0.10) 1px, transparent 0)",
-            backgroundSize: "2rem 2rem",
+              'radial-gradient(circle at 1px 1px, rgba(15,23,42,0.10) 1px, transparent 0)',
+            backgroundSize: '2rem 2rem',
           }}
         />
 
@@ -74,8 +78,8 @@ export function NewFunctionalities() {
           </p>
 
           <h3 className="mt-0 w-full lg:w-[574px] h-auto lg:h-[50px] text-[20px] md:text-[24px] lg:text-[28px] font-normal lg:font-light leading-tight md:leading-[50px] tracking-[-0.04em] text-slate-950">
-  Naročniki niso več samo imena v seznamu
-</h3>
+            Naročniki niso več samo imena v seznamu
+          </h3>
 
           <div className="mt-4 w-full lg:w-[574px] text-base md:text-[18px] leading-7 md:leading-[28px] font-light text-slate-600">
             Vsak obisk prinese nove informacije.
@@ -86,7 +90,9 @@ export function NewFunctionalities() {
             <br />
             <span className="inline-flex items-center gap-1">
               <span className="hidden md:inline text-light-500">⚠</span>
-              <span className="font-light">Pomembni detajli za naslednji obisk</span>
+              <span className="font-light">
+                Pomembni detajli za naslednji obisk
+              </span>
             </span>
             <ul className="list-disc ml-5 mt-1 marker:text-light-500">
               <li>Ključ prevzameš na recepciji.</li>
@@ -96,9 +102,9 @@ export function NewFunctionalities() {
             </ul>
           </div>
 
-          <h4 className="mt-7 md:mt-5 w-full lg:w-[574px] h-auto lg:h-[60px] text-lg md:text-[20px] leading-tight md:leading-[60px] font-normal text-slate-950">
-  Manj vprašanj. Manj napak. Bolj profesionalno delo.
-</h4>
+          <h4 className="mt-7 md:mt-5 w-full lg:w-[574px] h-auto lg:h-[60px] text-[16px] lg:text-[20px] leading-tight lg:leading-[60px] font-normal text-slate-950">
+            Manj vprašanj. Manj napak. Bolj profesionalno delo.
+          </h4>
 
           <p className="mt-4 w-full lg:w-[574px] h-auto lg:h-[168px] text-base md:text-[18px] leading-7 md:leading-[28px] font-light text-slate-600">
             Tako podjetje ne gradi le zgodovine opravljenega dela, ampak tudi
@@ -120,8 +126,8 @@ export function NewFunctionalities() {
           </p>
 
           <h3 className="mt-0 w-full lg:w-[574px] h-auto lg:h-[50px] text-[20px] md:text-[24px] lg:text-[28px] font-normal lg:font-light leading-tight md:leading-[50px] tracking-[-0.04em] text-slate-950">
-  Dokumenti niso več samo priponke
-</h3>
+            Dokumenti niso več samo priponke
+          </h3>
 
           <p className="mt-4 text-base md:text-[18px] leading-7 md:leading-[28px] tracking-[-0.48px] font-light text-slate-600">
             Namesto tega:
@@ -145,7 +151,7 @@ export function NewFunctionalities() {
           <div className="mt-2 space-y-4">
             <div
               className="text-base md:text-[18px] leading-7 md:leading-[28px] font-light italic"
-              style={{ color: "rgba(14, 74, 123, 1)" }}
+              style={{ color: 'rgba(14, 74, 123, 1)' }}
             >
               <p className="pl-6">Račun</p>
               <p className="pl-6">Hotel ABX d.o.o.</p>
@@ -155,14 +161,14 @@ export function NewFunctionalities() {
 
             <p
               className="text-base md:text-[18px] leading-7 md:leading-[28px] font-light italic"
-              style={{ color: "rgba(14, 74, 123, 1)" }}
+              style={{ color: 'rgba(14, 74, 123, 1)' }}
             >
               in
             </p>
 
             <div
               className="text-base md:text-[18px] leading-7 md:leading-[28px] font-light italic"
-              style={{ color: "rgba(14, 74, 123, 1)" }}
+              style={{ color: 'rgba(14, 74, 123, 1)' }}
             >
               <p className="pl-6">Servisni zapisnik</p>
               <p className="pl-6">Hotel ABC</p>

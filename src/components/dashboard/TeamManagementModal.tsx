@@ -155,7 +155,7 @@ const payload =
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
-                        {u.role}
+                        {u.role === "owner" ? "Vodja" : u.role === "manager" ? "Pisarna" : "Teren"}
                       </span>
                       {!u.is_active && (
                         <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-red-50 text-red-500">

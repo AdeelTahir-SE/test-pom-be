@@ -161,7 +161,7 @@ const handleLogin = async (e: React.FormEvent) => {
             </div>
             <div className="text-right mt-1 mb-5">
               <Link href="/forgot-password" className="text-xs text-slate-500 hover:text-slate-700">
-                {t("authForgotPassword")}
+                Pozabljeno geslo?
               </Link>
             </div>
           </div>
@@ -171,7 +171,7 @@ const handleLogin = async (e: React.FormEvent) => {
             disabled={submitting || googleLoading}
             className="w-full h-[52px] rounded-[8px] bg-[#4A6FBF] text-white text-sm font-semibold hover:bg-[#3d5ea6] disabled:opacity-60"
           >
-            {submitting ? "…" : t("authLoginBtn")}
+            {submitting ? "…" : 'Prijava'}
           </button>
         </form>
 

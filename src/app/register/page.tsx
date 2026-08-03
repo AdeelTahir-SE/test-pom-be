@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/lib/useLanguage";
 import { api, setSession } from "@/lib/api-client";
@@ -239,7 +239,7 @@ export default function RegisterPage() {
             disabled={submitting || googleLoading}
             className="w-full h-[52px] rounded-[8px] bg-[#4A6FBF] text-white text-sm font-semibold hover:bg-[#3d5ea6] disabled:opacity-60"
           >
-            {submitting ? "…" : t("authRegisterBtn")}
+            {submitting ? "…" : "Registracija"}
           </button>
         </form>
 
@@ -247,7 +247,7 @@ export default function RegisterPage() {
           href="/login"
           className="mt-4 w-full h-[52px] rounded-[8px] border-2 border-[#4A6FBF] bg-white text-[#4A6FBF] text-sm font-semibold hover:bg-[#f0f4ff] flex items-center justify-center"
         >
-          {t("authLoginBtn")}
+          Prijava
         </Link>
 
         <div className="flex items-center gap-3 py-4">

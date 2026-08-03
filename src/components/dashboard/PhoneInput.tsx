@@ -35,6 +35,7 @@ export function AuraPhoneInput({
           value={value}
           onChange={handleChange}
           placeholder={placeholder}
+          onlyCountries={["si", "hr", "ba", "rs", "me", "ro", "bg", "at", "de", "it", "pl"]}
           inputStyle={{
             width: "100%",
             height: "40px",
