@@ -1,19 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useLanguage } from "@/lib/useLanguage";
 import { normalizeRemindTime } from "@/lib/officeDate";
-import {
-  AuraLabel,
-  AuraInput,
-  AuraTextarea,
-  AuraFileInput,
-  AuraIconButton,
-  AuraCheckbox,
-  auraCard,
-  auraButton,
-} from "./AuraForm";
+import { AuraFileInput } from "./AuraForm";
 import { isValidPhone, normalizePhone, toTelHref } from "@/lib/phone";
 import { AuraPhoneInput } from "./PhoneInput";
 
@@ -46,100 +37,45 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
   const [isUrgent, setIsUrgent] = useState(false);
 
   React.useEffect(() => {
-  if (isOpen) {
-    setDate(defaultDate);
-    setDateError(null);
-  }
-}, [isOpen, defaultDate]);
+    if (isOpen) {
+      setDate(defaultDate);
+      setDateError(null);
+    }
+  }, [isOpen, defaultDate]);
 
   // Dynamic icon selections
   const [hasAttachment, setHasAttachment] = useState(false);
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [hasEmail, setHasEmail] = useState(false);
-  const [countryCode, setCountryCode] = useState("+386");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [dateError, setDateError] = useState<string | null>(null);
   const [hasConfirm, setHasConfirm] = useState(false);
   const [hasDecline, setHasDecline] = useState(false);
 
-  const sanitizePhone = (raw: string) => raw.replace(/[^0-9\s]/g, "");
+  const handlePhoneChange = (raw: string) => {
+    if (!raw || raw === "386" || raw === "+386") {
+      setPhoneNumber("");
+      setPhoneError(null);
+      return;
+    }
+    const fullPhone = raw.startsWith("+") ? raw : `+${raw}`;
+    setPhoneNumber(fullPhone);
 
-const handlePhoneChange = (raw: string) => {
-  const sanitized = sanitizePhone(raw);
-  setPhoneNumber(sanitized);
+    if (!isValidPhone(fullPhone)) {
+      setPhoneError(t("modalPhoneInvalid"));
+    } else {
+      setPhoneError(null);
+    }
+  };
 
-  const fullPhone = `${countryCode}${sanitized}`;
-
-  if (sanitized && !isValidPhone(fullPhone)) {
-    setPhoneError(t("modalPhoneInvalid"));
-  } else {
-    setPhoneError(null);
-  }
-};
-
-  const handleSubmit = (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!title) return;
-
-  if (date) {
-    const match = date.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-
-    if (!match) {
-  setDateError("Datum mora biti v obliki DD.MM.YYYY.");
-  return;
-}
-
-    const day = Number(match[1]);
-    const month = Number(match[2]);
-    const year = Number(match[3]);
-
-    const parsedDate = new Date(year, month - 1, day);
-
-    if (
-  parsedDate.getFullYear() !== year ||
-  parsedDate.getMonth() !== month - 1 ||
-  parsedDate.getDate() !== day
-) {
-  setDateError("Vnesite veljaven datum.");
-  return;
-}
-  }
-
-  const fullPhone = phoneNumber
-  ? `${countryCode}${phoneNumber}`
-  : "";
-
-if (phoneNumber && !isValidPhone(fullPhone)) {
-  setPhoneError(t("modalPhoneInvalid"));
-  return;
-}
-
-const finalPhone = normalizePhone(fullPhone) ?? "";
-  const normalizedTime = normalizeRemindTime(time) ?? "";
-
-  onAddReminder({
-    title,
-    description,
-    time: normalizedTime,
-    date: date || new Date().toLocaleDateString("sl-SI"),
-    isUrgent,
-    hasAttachment,
-    attachmentFile: hasAttachment ? attachmentFile : null,
-    hasEmail,
-    phoneNumber: finalPhone,
-    hasConfirm,
-    hasDecline,
-  });
-
-    // Reset fields
+  const resetFields = () => {
     setTitle("");
     setDescription("");
     setTime("");
     setDate(defaultDate);
     setIsUrgent(false);
     setPhoneNumber("");
-    setCountryCode("+386");
     setHasAttachment(false);
     setAttachmentFile(null);
     setHasEmail(false);
@@ -147,245 +83,426 @@ const finalPhone = normalizePhone(fullPhone) ?? "";
     setDateError(null);
     setHasConfirm(false);
     setHasDecline(false);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title) return;
+
+    if (date) {
+      const match = date.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+
+      if (!match) {
+        setDateError("Datum mora biti v obliki DD.MM.YYYY.");
+        return;
+      }
+
+      const day = Number(match[1]);
+      const month = Number(match[2]);
+      const year = Number(match[3]);
+
+      const parsedDate = new Date(year, month - 1, day);
+
+      if (
+        parsedDate.getFullYear() !== year ||
+        parsedDate.getMonth() !== month - 1 ||
+        parsedDate.getDate() !== day
+      ) {
+        setDateError("Vnesite veljaven datum.");
+        return;
+      }
+    }
+
+    if (phoneNumber && !isValidPhone(phoneNumber)) {
+      setPhoneError(t("modalPhoneInvalid"));
+      return;
+    }
+
+    const finalPhone = normalizePhone(phoneNumber) ?? "";
+    const normalizedTime = normalizeRemindTime(time) ?? "";
+
+    onAddReminder({
+      title,
+      description,
+      time: normalizedTime,
+      date: date || new Date().toLocaleDateString("sl-SI"),
+      isUrgent,
+      hasAttachment,
+      attachmentFile: hasAttachment ? attachmentFile : null,
+      hasEmail,
+      phoneNumber: finalPhone,
+      hasConfirm,
+      hasDecline,
+    });
+
+    resetFields();
     onOpenChange(false);
   };
 
   const attachmentIcon = (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
     </svg>
   );
 
-  const emailIcon = <span className="text-sm font-semibold">@</span>;
+  const emailIcon = <span className="text-xs font-semibold">@</span>;
 
   const confirmIcon = (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5">
       <path d="M13.3333 4L6 11.3333L2.66667 8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 
   const declineIcon = (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2">
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2">
       <path d="M14.6066 14.6066L7.80336 7.80336M7.80336 7.80336L1 1M7.80336 7.80336L14.6067 1M7.80336 7.80336L1 14.6067" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 
   const phoneIcon = (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92z" />
-  </svg>
-);
-  
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92z" />
+    </svg>
+  );
+
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent
-        style={{
-          background: "transparent",
-          border: "none",
-          boxShadow: "none",
-          padding: 0,
-          maxWidth: "420px",
-          width: "90%",
-        }}
-        className="outline-none"
-      >
-        <div className={auraCard}>
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4 text-slate-800">
-            {/* Header */}
-            <div className="text-center">
-              <h3 className="text-xl font-semibold tracking-tight text-slate-900">
-                {t("modalReminderTitle")}
-              </h3>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              {/* Opomnik — required, stronger styling */}
-              <div>
-                <AuraLabel strong>{t("modalReminderFieldLabel")}</AuraLabel>
-                <AuraInput
-                  type="text"
-                  placeholder={t("modalReminderFieldPlaceholder")}
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  maxLength={28}
-                  required
-                  strong
-                />
-              </div>
-
-              {/* Description */}
-              <div>
-                <AuraLabel>{t("modalReminderDesc")}</AuraLabel>
-                <AuraTextarea
-                  placeholder={t("modalReminderDescPlaceholder")}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  maxLength={60}
-                  rows={2}
-                />
-              </div>
-
-              <hr className="border-[#1B3A6B]/10 my-1" />
-
-              {/* Čas, datum — same line, lighter placeholder */}
-<div className="grid grid-cols-2 gap-3">
-  <div>
-    <AuraLabel>{t("modalReminderTime")}</AuraLabel>
-    <AuraInput
-      type="text"
-      placeholder="16:48"
-      value={time}
-      onChange={(e) => setTime(e.target.value)}
-      maxLength={5}
-      className="text-center placeholder:text-slate-300"
-    />
-  </div>
-
-  <div>
-    <AuraLabel>{t("modalTaskDate")}</AuraLabel>
-    <AuraInput
-      type="text"
-      placeholder="02.02.2026"
-      value={date}
-      onChange={(e) => {
-        setDate(e.target.value);
-        setDateError(null);
-      }}
-      maxLength={10}
-      className="text-center placeholder:text-slate-300"
-    />
-    {dateError && (
-      <span className="text-[11px] text-red-500 mt-1 block">
-        {dateError}
-      </span>
-    )}
-  </div>
-</div>
-
-{/* Nujno */}
-              <div className="pt-1">
-                <AuraCheckbox
-                  checked={isUrgent}
-                  onChange={setIsUrgent}
-                  label={t("modalReminderUrgent")}
-                />
-              </div>
-
-              <hr className="border-[#1B3A6B]/10 my-1" />
-
-              {/* Dodaj ikone section */}
-              <AuraLabel>{t("modalReminderAddIcons")}</AuraLabel>
-
-              <div className="flex flex-col gap-3">
-                {/* Row 1: Priponka & E-posta */}
-                <div className="flex gap-4">
-                  <AuraIconButton
-  active={hasAttachment}
-  onClick={() => {
-    setHasAttachment(!hasAttachment);
-    if (hasAttachment) setAttachmentFile(null);
-  }}
-  icon={attachmentIcon}
-  label={t("modalReminderAttachment")}
-  title={t("modalReminderAttachmentTitle")}
-/>
-                  <AuraIconButton
-                    active={hasEmail}
-                    onClick={() => setHasEmail(!hasEmail)}
-                    icon={emailIcon}
-                    label={t("modalReminderEmail")}
-                    title={t("modalReminderEmailTitle")}
-                  />
-                </div>
-
-                {/* Attachment file input */}
-                {hasAttachment && (
-  <div className="flex flex-col gap-1">
-    <AuraFileInput
-      id="reminder-attachment"
-      onFile={(file) => setAttachmentFile(file)}
-      onReject={(msg) => window.alert(msg)}
-    />
-    {attachmentFile && (
-      <span className="text-[11px] text-slate-500 truncate">
-        {attachmentFile.name}
-      </span>
-    )}
-  </div>
-)}
-
-                {/* Row 2: Telefon */}
-                {/* Row 2: Telefon */}
-<div className="flex flex-col gap-1">
-  <AuraLabel>{t("modalPhoneLabel")}</AuraLabel>
-
-  <div className="flex items-center gap-2">
-    <a
-      href={toTelHref(`${countryCode}${phoneNumber}`) ?? undefined}
-      onClick={(e) => {
-        if (!toTelHref(`${countryCode}${phoneNumber}`)) {
-          e.preventDefault();
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        onOpenChange(open);
+        if (!open) {
+          resetFields();
         }
       }}
-      className="shrink-0"
-      title={
-        phoneNumber
-          ? `${t("workerCall")} ${countryCode}${phoneNumber}`
-          : t("modalPhoneEmptyTitle")
-      }
     >
-      <div
-        className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-all ${
-          phoneNumber && toTelHref(`${countryCode}${phoneNumber}`)
-            ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-[0_4px_10px_-2px_rgba(27,58,107,0.3)]"
-            : "bg-white border-[#1B3A6B]/25 text-slate-500"
-        }`}
+      <DialogContent
+        showCloseButton={false}
+        className="w-full max-w-[calc(100%-2rem)] min-[480px]:w-[480px] outline-none mx-auto p-3 bg-[#f1f5f9] rounded-[24px] min-[480px]:rounded-[32px] border-none shadow-2xl flex flex-col gap-0 animate-in fade-in zoom-in-95 duration-200"
       >
-        {phoneIcon}
-      </div>
-    </a>
+        <DialogTitle className="sr-only">{t("modalReminderTitle")}</DialogTitle>
 
-    <div className="flex-1">
-      <AuraPhoneInput
-        value={phoneNumber}
-        onChange={handlePhoneChange}
-        error={phoneError}
-        placeholder="30 123 456"
-      />
-    </div>
-  </div>
-</div>
+        <style dangerouslySetInnerHTML={{ __html: `
+          .custom-ios-scrollbar::-webkit-scrollbar {
+            width: 5px;
+          }
+          .custom-ios-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          .custom-ios-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(109, 119, 142, 0.45);
+            border-radius: 9999px;
+          }
+          .custom-ios-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(109, 119, 142, 0.65);
+          }
+        `}} />
 
-                {/* Row 3: Potrdi & Zavrni */}
-                <div className="flex gap-4">
-                  <AuraIconButton
-                    active={hasConfirm}
-                    onClick={() => {
-  setHasConfirm(!hasConfirm);
-  setHasDecline(false);
-}}
-                    icon={confirmIcon}
-                    label={t("modalReminderConfirm")}
-                    title={t("modalReminderConfirmTitle")}
+        <div className="relative bg-white rounded-[20px] min-[480px]:rounded-[24px] p-4 sm:p-5 shadow-sm border border-slate-100 flex flex-col">
+          {/* Close Button */}
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="absolute top-4 right-4 w-7 h-7 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 transition-colors border-none"
+          >
+            <svg width="10" height="10" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+
+          <form onSubmit={handleSubmit} className="flex-1 flex flex-col justify-between h-full">
+            <div className="flex flex-col gap-3.5 flex-grow">
+              <div>
+                <h2 className="text-[20px] font-bold text-[#0f172a] mb-0.5">
+                  {t("modalReminderTitle")}
+                </h2>
+                <p className="hidden min-[480px]:block text-slate-500 text-[12px] font-medium">
+                  {t("modalReminderSubtitle") || "Nastavite opomnik ali opozorilo."}
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2.5">
+                {/* Opomnik field */}
+                <div>
+                  <label className="block text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-1">
+                    {t("modalReminderFieldLabel")}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={t("modalReminderFieldPlaceholder")}
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    maxLength={28}
+                    required
+                    className="w-full h-[38px] px-4 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1B3A6B]/20 focus:border-[#1B3A6B] transition-all placeholder:text-slate-400"
                   />
-                  <AuraIconButton
-                    active={hasDecline}
-                    onClick={() => {
-  setHasDecline(!hasDecline);
-  setHasConfirm(false);
-}}
-                    icon={declineIcon}
-                    label={t("modalReminderDecline")}
-                    title={t("modalReminderDeclineTitle")}
+                </div>
+
+                {/* Opis field */}
+                <div>
+                  <label className="block text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-1">
+                    {t("modalReminderDesc")}
+                  </label>
+                  <textarea
+                    placeholder={t("modalReminderDescPlaceholder")}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    maxLength={60}
+                    rows={2}
+                    className="w-full min-h-[50px] p-2.5 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1B3A6B]/20 focus:border-[#1B3A6B] transition-all placeholder:text-slate-400 resize-none"
                   />
+                </div>
+
+                {/* Čas and Datum (distance is now same as between top fields) */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-1">
+                      {t("modalReminderTime")}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="16:48"
+                      value={time}
+                      onChange={(e) => setTime(e.target.value)}
+                      maxLength={5}
+                      className="w-full h-[38px] px-4 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1B3A6B]/20 focus:border-[#1B3A6B] transition-all placeholder:text-slate-300 text-center"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-1">
+                      {t("modalTaskDate")}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="02.02.2026"
+                      value={date}
+                      onChange={(e) => {
+                        setDate(e.target.value);
+                        setDateError(null);
+                      }}
+                      maxLength={10}
+                      className={`w-full h-[38px] px-4 rounded-[8px] border ${
+                        dateError ? "border-red-300 ring-1 ring-red-300 bg-red-50" : "border-slate-300 bg-[#F1F5F9]"
+                      } text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1B3A6B]/20 focus:border-[#1B3A6B] transition-all placeholder:text-slate-300 text-center`}
+                    />
+                    {dateError && (
+                      <p className="mt-0.5 text-[11px] text-red-500 font-medium">{dateError}</p>
+                    )}
+
+                    {/* Nujno Checkbox positioned below Datum input aligned to the right */}
+                    <div className="flex justify-end mt-3.5">
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <div
+                          className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${
+                            isUrgent
+                              ? "bg-[#0a1128] border-[#0a1128]"
+                              : "bg-white border-slate-300 hover:border-[#0a1128]/50"
+                          }`}
+                        >
+                          {isUrgent && (
+                            <svg
+                              width="10"
+                              height="8"
+                              viewBox="0 0 10 8"
+                              fill="none"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <path
+                                d="M1 4L3.5 6.5L9 1"
+                                stroke="white"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          )}
+                        </div>
+                        <span className="text-[11px] font-bold text-[#9CA9BD] uppercase tracking-widest">
+                          {t("modalReminderUrgent") || "NUJNO"}
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={isUrgent}
+                          onChange={(e) => setIsUrgent(e.target.checked)}
+                          className="sr-only"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Divider before icons */}
+                <hr className="border-slate-100 my-0.5" />
+
+                {/* Icons selection section */}
+                <div className="flex flex-col gap-2">
+                  <div className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
+                    {t("modalReminderAddIcons") || "DODAJ IKONE"}
+                  </div>
+
+                  {/* 2x2 Grid of Top/Bottom Icons with labels placed horizontally (14px text) */}
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                    {/* Priponka */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHasAttachment(!hasAttachment);
+                        if (hasAttachment) setAttachmentFile(null);
+                      }}
+                      className="flex items-center gap-3 text-left bg-transparent border-none p-0 outline-none cursor-pointer group"
+                    >
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all shrink-0 ${
+                        hasAttachment
+                          ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-md shadow-[#1B3A6B]/10"
+                          : "bg-white border-[#cbd5e1] text-slate-500 hover:border-[#1B3A6B]/50"
+                      }`}>
+                        {attachmentIcon}
+                      </div>
+                      <span className={`text-[12px] transition-colors ${
+                        hasAttachment ? "text-[#1B3A6B] font-semibold" : "text-slate-600 font-medium"
+                      }`}>
+                        {t("modalReminderAttachment") || "Priponka"}
+                      </span>
+                    </button>
+
+                    {/* E-pošta */}
+                    <button
+                      type="button"
+                      onClick={() => setHasEmail(!hasEmail)}
+                      className="flex items-center gap-3 text-left bg-transparent border-none p-0 outline-none cursor-pointer group"
+                    >
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all shrink-0 ${
+                        hasEmail
+                          ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-md shadow-[#1B3A6B]/10"
+                          : "bg-white border-[#cbd5e1] text-slate-500 hover:border-[#1B3A6B]/50"
+                      }`}>
+                        {emailIcon}
+                      </div>
+                      <span className={`text-[12px] transition-colors ${
+                        hasEmail ? "text-[#1B3A6B] font-semibold" : "text-slate-600 font-medium"
+                      }`}>
+                        {t("modalReminderEmail") || "E-pošta"}
+                      </span>
+                    </button>
+
+                    {/* Potrdi */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHasConfirm(!hasConfirm);
+                        setHasDecline(false);
+                      }}
+                      className="flex items-center gap-3 text-left bg-transparent border-none p-0 outline-none cursor-pointer group"
+                    >
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all shrink-0 ${
+                        hasConfirm
+                          ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-md shadow-[#1B3A6B]/10"
+                          : "bg-white border-[#cbd5e1] text-slate-500 hover:border-[#1B3A6B]/50"
+                      }`}>
+                        {confirmIcon}
+                      </div>
+                      <span className={`text-[12px] transition-colors ${
+                        hasConfirm ? "text-[#1B3A6B] font-semibold" : "text-slate-600 font-medium"
+                      }`}>
+                        {t("modalReminderConfirm") || "Potrdi"}
+                      </span>
+                    </button>
+
+                    {/* Zavrni */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHasDecline(!hasDecline);
+                        setHasConfirm(false);
+                      }}
+                      className="flex items-center gap-3 text-left bg-transparent border-none p-0 outline-none cursor-pointer group"
+                    >
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all shrink-0 ${
+                        hasDecline
+                          ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-md shadow-[#1B3A6B]/10"
+                          : "bg-white border-[#cbd5e1] text-slate-500 hover:border-[#1B3A6B]/50"
+                      }`}>
+                        {declineIcon}
+                      </div>
+                      <span className={`text-[12px] transition-colors ${
+                        hasDecline ? "text-[#1B3A6B] font-semibold" : "text-slate-600 font-medium"
+                      }`}>
+                        {t("modalReminderDecline") || "Zavrni"}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Attachment input line if file upload is active */}
+                  {hasAttachment && (
+                    <div className="w-full flex flex-col gap-1 animate-fade-in">
+                      <AuraFileInput
+                        id="reminder-attachment"
+                        onFile={(file) => setAttachmentFile(file)}
+                        onReject={(msg) => window.alert(msg)}
+                      />
+                      {attachmentFile && (
+                        <span className="text-[11px] text-slate-500 truncate">
+                          {attachmentFile.name}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Phone input line: text is 10px weight 300, and phone line is last */}
+                  <div className="flex flex-col gap-1.5 w-full mt-0.5">
+                    <span className="text-[10px] font-[300] text-[#9CA9BD] uppercase tracking-widest leading-none">
+                      {t("modalPhoneLabel") || "VNESI ŠTEVILKO ZA AVTOMATSKI KLIC"}
+                    </span>
+
+                    <div className="flex items-center gap-2.5 w-full">
+                      <a
+                        href={toTelHref(phoneNumber) ?? undefined}
+                        onClick={(e) => {
+                          if (!toTelHref(phoneNumber)) {
+                            e.preventDefault();
+                          }
+                        }}
+                        className="shrink-0"
+                        title={
+                          phoneNumber
+                            ? `${t("workerCall") || "Pokliči"} ${phoneNumber}`
+                            : t("modalPhoneEmptyTitle") || "Vnesite telefonsko številko"
+                        }
+                      >
+                        <div
+                          className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all ${
+                            phoneNumber && toTelHref(phoneNumber)
+                              ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-md shadow-[#1B3A6B]/10"
+                              : "bg-white border-[#cbd5e1] text-slate-500 hover:border-[#1B3A6B]/50"
+                          }`}
+                        >
+                          {phoneIcon}
+                        </div>
+                      </a>
+
+                      <div className="flex-1">
+                        <AuraPhoneInput
+                          value={phoneNumber}
+                          onChange={handlePhoneChange}
+                          error={phoneError}
+                          placeholder="30 123 456"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Submit */}
-            <button type="submit" className={auraButton}>
-              {t("modalScheduleSubmit")}
-            </button>
+            {/* Action Buttons (Dodaj na urnik only, with tighter spacing on mobile) */}
+            <div className="mt-2.5 pt-2.5 sm:mt-4 sm:pt-3 border-t border-slate-100/50">
+              <button
+                type="submit"
+                className="w-full h-[40px] rounded-[12px] bg-[#2b5493] text-white font-medium text-[13px] uppercase tracking-wider hover:bg-[#1f3f72] transition-colors shadow-lg shadow-blue-900/10"
+              >
+                {t("modalScheduleSubmit") || "Dodaj na urnik"}
+              </button>
+            </div>
           </form>
         </div>
       </DialogContent>

@@ -1738,6 +1738,7 @@ export default function OfficeDashboard() {
         jobId={selectedWorkerJobId}
         cardNumber={selectedJob ? jobNumber(selectedJob) : null}
         customerName={selectedJob?.customer ?? null}
+        scheduledAt={selectedJob?.scheduled_at ?? null}
         onRefresh={() => void refreshBoard()}
         onChecklistReorder={(orderedIds) => {
           if (!selectedWorkerJobId || isOptimisticId(selectedWorkerJobId))
@@ -1832,101 +1833,120 @@ export default function OfficeDashboard() {
           if (!open) setPendingConfirmTask(null);
         }}
       >
-        <DialogContent className="max-w-sm w-[90vw]">
-          {pendingConfirmTask && (
-            <>
-              <h3 className="text-lg font-semibold text-slate-900 text-center">
-                {pendingConfirmTask.requiresAttachment &&
-                !pendingConfirmTask.hasAttachment
-                  ? t('modalConfirmStepMissingTitle')
-                  : t('modalConfirmStepTitle')}
-              </h3>
-              <p className="text-sm text-slate-600 text-center mt-2">
-                <strong>{pendingConfirmTask.label}</strong>
-              </p>
-              {pendingConfirmTask.attachmentName && (
-                <div className="mt-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-                  <Paperclip className="w-4 h-4 text-slate-400 shrink-0" />
-                  {pendingConfirmTask.attachmentUrl ? (
-                    <a
-                      href={pendingConfirmTask.attachmentUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-[#1B3A6B] font-medium truncate hover:underline"
-                    >
-                      {pendingConfirmTask.attachmentName}
-                    </a>
-                  ) : (
-                    <span className="text-xs text-slate-700 font-medium truncate">
-                      {pendingConfirmTask.attachmentName}
-                    </span>
-                  )}
-                </div>
-              )}
-              {pendingConfirmTask.requiresAttachment &&
-              !pendingConfirmTask.hasAttachment ? (
-                <div className="flex flex-col gap-2 mt-4">
-                  <p className="text-xs text-slate-500 text-center">
-                    {t('modalConfirmStepMissingDesc')}
+        <DialogContent
+          showCloseButton={false}
+          className="w-full max-w-[calc(100%-2rem)] sm:max-w-[400px] outline-none mx-auto p-3 bg-[#f1f5f9] rounded-[28px] border-none shadow-2xl flex flex-col gap-0 animate-in fade-in zoom-in-95 duration-200"
+        >
+          <div className="relative bg-white rounded-[20px] p-6 sm:p-8 shadow-sm border border-slate-100 flex flex-col gap-5">
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setPendingConfirmTask(null)}
+              className="absolute top-4 right-4 w-7 h-7 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 transition-colors border-none cursor-pointer"
+            >
+              <svg width="10" height="10" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+
+            {pendingConfirmTask && (
+              <>
+                <div className="text-center">
+                  <h2 className="text-[22px] font-bold text-[#0f172a] mb-1">
+                    {pendingConfirmTask.requiresAttachment &&
+                    !pendingConfirmTask.hasAttachment
+                      ? t('modalConfirmStepMissingTitle')
+                      : t('modalConfirmStepTitle')}
+                  </h2>
+                  <p className="text-slate-500 text-[13px] font-medium leading-relaxed mt-2">
+                    {pendingConfirmTask.label}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const p = pendingConfirmTask;
-                      if (!p) return;
-                      // Keep dialog open; upload updates hasAttachment then shows Confirm.
-                      cardAttachTargetRef.current = {
-                        jobId: p.jobId,
-                        taskId: p.taskId,
-                      };
-                      cardAttachInputRef.current?.click();
-                    }}
-                    className="w-full h-10 rounded-xl bg-[#1B3A6B] text-white text-xs font-semibold"
-                  >
-                    Naloži priponko
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void completeConfirmedTask()}
-                    className="w-full h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700"
-                  >
-                    {t('modalConfirmStepSubmit')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPendingConfirmTask(null)}
-                    className="w-full h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500"
-                  >
-                    {t('modalCancel')}
-                  </button>
                 </div>
-              ) : (
-                <div className="flex gap-2 mt-4">
-                  <button
-                    type="button"
-                    onClick={() => setPendingConfirmTask(null)}
-                    className="flex-1 h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500"
-                  >
-                    {t('modalCancel')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void completeConfirmedTask()}
-                    className="flex-1 h-10 rounded-xl bg-[#1B3A6B] text-white text-xs font-semibold"
-                  >
-                    {t('modalConfirmStepSubmit')}
-                  </button>
-                </div>
-              )}
-            </>
-          )}
+
+                {pendingConfirmTask.attachmentName && (
+                  <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <Paperclip className="w-4 h-4 text-slate-400 shrink-0" />
+                    {pendingConfirmTask.attachmentUrl ? (
+                      <a
+                        href={pendingConfirmTask.attachmentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-[#1B3A6B] font-medium truncate hover:underline"
+                      >
+                        {pendingConfirmTask.attachmentName}
+                      </a>
+                    ) : (
+                      <span className="text-xs text-slate-700 font-medium truncate">
+                        {pendingConfirmTask.attachmentName}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {pendingConfirmTask.requiresAttachment &&
+                !pendingConfirmTask.hasAttachment ? (
+                  <div className="flex flex-col gap-3 mt-1">
+                    <p className="text-xs text-slate-500 text-center leading-normal">
+                      {t('modalConfirmStepMissingDesc')}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const p = pendingConfirmTask;
+                        if (!p) return;
+                        cardAttachTargetRef.current = {
+                          jobId: p.jobId,
+                          taskId: p.taskId,
+                        };
+                        cardAttachInputRef.current?.click();
+                      }}
+                      className="w-full h-11 rounded-[12px] bg-[#1B3A6B] text-white text-xs font-bold uppercase tracking-wider hover:bg-[#152e55] transition-colors shadow-md shadow-[#1B3A6B]/10"
+                    >
+                      Naloži priponko
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void completeConfirmedTask()}
+                      className="w-full h-11 rounded-[12px] border border-slate-300 text-xs font-bold text-slate-700 uppercase tracking-wider hover:bg-slate-50 transition-colors"
+                    >
+                      {t('modalConfirmStepSubmit')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPendingConfirmTask(null)}
+                      className="w-full h-11 rounded-[12px] border border-slate-300 text-xs font-bold text-slate-500 uppercase tracking-wider hover:bg-slate-50 transition-colors"
+                    >
+                      {t('modalCancel')}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-3 mt-4 pt-2 border-t border-slate-100/55">
+                    <button
+                      type="button"
+                      onClick={() => setPendingConfirmTask(null)}
+                      className="flex-1 h-12 rounded-[12px] border border-slate-300 text-slate-700 font-bold text-[13px] uppercase tracking-wider hover:bg-slate-50 transition-colors"
+                    >
+                      {t('modalCancel')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void completeConfirmedTask()}
+                      className="flex-1 h-12 rounded-[12px] bg-[#1B3A6B] text-white font-bold text-[13px] uppercase tracking-wider hover:bg-[#152e55] transition-colors shadow-lg shadow-blue-900/10"
+                    >
+                      {t('modalConfirmStepSubmit')}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
       <AddTaskModal
         isOpen={isAddTaskOpen}
         onOpenChange={setIsAddTaskOpen}
-        workers={workers.map((w) => ({ id: w.id, name: w.full_name }))}
+        workers={workers.map((w) => ({ id: w.id, name: w.full_name, phone: w.phone }))}
         defaultDate={selectedSiDate}
         onAddTask={handleAddTask}
       />
@@ -1982,29 +2002,67 @@ export default function OfficeDashboard() {
           if (!open) setComposeWorkerId('');
         }}
       >
-        <DialogContent className="max-w-sm w-[90vw] p-0 overflow-hidden">
-          <div className="px-6 py-6 flex flex-col items-center gap-6">
-            <h3 className="text-xl font-semibold text-slate-800 text-center">
-              Pošlji sporočilo
-            </h3>
+        <DialogContent
+          showCloseButton={false}
+          className="w-full max-w-[calc(100%-2rem)] sm:max-w-[400px] outline-none mx-auto p-3 bg-[#f1f5f9] rounded-[28px] border-none shadow-2xl flex flex-col gap-0 animate-in fade-in zoom-in-95 duration-200"
+        >
+          <div className="relative bg-white rounded-[20px] p-6 sm:p-8 shadow-sm border border-slate-100 flex flex-col gap-6">
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setIsComposeOpen(false)}
+              className="absolute top-4 right-4 w-7 h-7 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 transition-colors border-none cursor-pointer"
+            >
+              <svg width="10" height="10" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
 
-            <div className="w-full flex flex-col gap-2">
-              <label className="text-sm text-slate-500">Komu</label>
-              <select
-                value={composeWorkerId}
-                onChange={(e) => setComposeWorkerId(e.target.value)}
-                className="w-full h-10 px-3 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-800 outline-none"
-              >
-                <option value="">Izberite delavca</option>
-                {workers.map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.full_name}
-                  </option>
-                ))}
-              </select>
+            {/* Header */}
+            <div className="text-center">
+              <h2 className="text-[22px] font-bold text-[#0f172a] mb-1">
+                Pošlji sporočilo
+              </h2>
+              <p className="text-slate-500 text-[13px] font-medium">
+                Izberite prejemnika in vrsto sporočila.
+              </p>
             </div>
 
-            <div className="flex items-center gap-4 w-full justify-center">
+            {/* Recipient selection */}
+            <div className="flex flex-col gap-1.5 w-full">
+              <label className="block text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
+                KOMU
+              </label>
+              <div className="relative w-full">
+                <select
+                  value={composeWorkerId}
+                  onChange={(e) => setComposeWorkerId(e.target.value)}
+                  className="w-full h-11 pl-4 pr-10 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all appearance-none cursor-pointer"
+                >
+                  <option value="" disabled>Izberite delavca</option>
+                  {workers.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.full_name}
+                    </option>
+                  ))}
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
+                  <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
+                    <path
+                      d="M1 1L5 5L9 1"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center gap-6 w-full justify-center pt-2">
+              {/* GLASOVNO */}
               <button
                 type="button"
                 disabled={!composeWorkerId}
@@ -2016,21 +2074,14 @@ export default function OfficeDashboard() {
                   setIsComposeOpen(false);
                   void handleOpenReply(job.id);
                 }}
-                className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-40"
+                className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-100 hover:border-blue-200 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed group"
               >
-                <span
-                  style={{
-                    width: '72px',
-                    height: '72px',
-                    borderRadius: '20px',
-                    border: '0.7px solid rgba(96, 165, 250, 0.5)',
-                    boxShadow:
-                      '0px 8px 18px -12px rgba(15, 23, 42, 0.35), inset 0px 1px 0px 1px #FFFFFF',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: 'rgba(255,255,255,0.9)',
-                  }}
+                <div
+                  className={`w-16 h-16 rounded-[20px] flex items-center justify-center border transition-all ${
+                    composeWorkerId
+                      ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-lg shadow-[#1B3A6B]/20"
+                      : "bg-white border-[#cbd5e1] text-slate-400"
+                  }`}
                 >
                   <svg
                     width="22"
@@ -2038,20 +2089,22 @@ export default function OfficeDashboard() {
                     viewBox="0 0 32 36"
                     fill="none"
                     xmlns="http://www.w3.org/2000/svg"
+                    className="transition-transform group-hover:scale-110 duration-200"
                   >
                     <path
                       d="M20.8542 17.1124C19.2762 18.3754 8.94271 26.6494 6.55021 28.5664L2.50471 24.5209L14.0067 10.2649L20.8542 17.1124ZM28.8177 2.31188C25.7352 -0.770625 20.7357 -0.770625 17.6532 2.31188C15.6207 4.34588 15.4482 6.57487 15.3492 7.36538L23.7642 15.7804C24.4902 15.6994 26.7672 15.5269 28.8177 13.4764C31.9017 10.3939 31.9017 5.39438 28.8177 2.31188ZM14.0667 29.2219C10.6287 29.2219 9.05821 31.3624 6.84271 32.7544C5.27371 33.7384 3.78871 33.2389 3.07471 32.3554C2.81521 32.0389 2.07421 30.8989 3.33571 29.5924L3.14821 29.4049L1.45921 27.7684C-0.598793 29.8924 -0.234293 32.4304 1.04071 34.0039C2.50321 35.8099 5.44471 36.7219 8.23321 34.9714C10.6107 33.4789 11.6637 31.8394 14.0667 29.2219Z"
-                      fill="#6D778E"
+                      fill="currentColor"
                     />
                   </svg>
-                </span>
-                <span className="text-[11px] font-medium text-slate-600 uppercase tracking-wide">
+                </div>
+                <span className={`text-[12px] font-bold uppercase tracking-wider transition-colors ${
+                  composeWorkerId ? "text-slate-700" : "text-slate-400"
+                }`}>
                   GLASOVNO
                 </span>
               </button>
 
-              <span className="text-xs text-slate-500 uppercase"></span>
-
+              {/* TEKSTOVNO */}
               <button
                 type="button"
                 disabled={!composeWorkerId}
@@ -2063,21 +2116,14 @@ export default function OfficeDashboard() {
                   setIsComposeOpen(false);
                   void handleOpenReply(job.id);
                 }}
-                className="flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-40"
+                className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-100 hover:border-blue-200 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed group"
               >
-                <span
-                  style={{
-                    width: '72px',
-                    height: '72px',
-                    borderRadius: '20px',
-                    border: '0.7px solid rgba(96, 165, 250, 0.5)',
-                    boxShadow:
-                      '0px 8px 18px -12px rgba(15, 23, 42, 0.35), inset 0px 1px 0px 1px #FFFFFF',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: 'rgba(255,255,255,0.9)',
-                  }}
+                <div
+                  className={`w-16 h-16 rounded-[20px] flex items-center justify-center border transition-all ${
+                    composeWorkerId
+                      ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-lg shadow-[#1B3A6B]/20"
+                      : "bg-white border-[#cbd5e1] text-slate-400"
+                  }`}
                 >
                   <svg
                     width="26"
@@ -2085,14 +2131,17 @@ export default function OfficeDashboard() {
                     viewBox="0 0 40 36"
                     fill="none"
                     xmlns="http://www.w3.org/2000/svg"
+                    className="transition-transform group-hover:scale-110 duration-200"
                   >
                     <path
                       d="M18.478 25.9492C16.388 32.7082 16.002 33.714 16.002 34.5892C16.002 35.5815 16.772 36 17.256 36C17.8 36 19.472 35.3228 24.914 33.1898L18.478 25.9492ZM20.254 23.9513L26.694 31.1962L39.51 16.794C39.836 16.4272 40 15.948 40 15.4643C40 14.985 39.836 14.5035 39.51 14.1345C38.35 12.8317 36.594 10.8563 35.432 9.5535C35.106 9.18675 34.678 9.00225 34.25 9.00225C33.824 9.00225 33.394 9.18675 33.066 9.5535L20.254 23.9513ZM14 21.9375C14 21.033 13.288 20.25 12.5 20.25C7.378 20.25 6.622 20.25 1.5 20.25C0.712 20.25 0 21.033 0 21.9375C0 22.842 0.712 23.625 1.5 23.625H12.5C13.288 23.625 14 22.842 14 21.9375ZM24 15.1875C24 14.283 23.288 13.5 22.5 13.5C17.378 13.5 6.622 13.5 1.5 13.5C0.712 13.5 0 14.283 0 15.1875C0 16.092 0.712 16.875 1.5 16.875H22.5C23.288 16.875 24 16.092 24 15.1875ZM24 8.4375C24 7.533 23.288 6.75 22.5 6.75C17.378 6.75 6.622 6.75 1.5 6.75C0.712 6.75 0 7.533 0 8.4375C0 9.342 0.712 10.125 1.5 10.125H22.5C23.288 10.125 24 9.342 24 8.4375ZM24 1.6875C24 0.783 23.288 0 22.5 0C17.378 0 6.622 0 1.5 0C0.712 0 0 0.783 0 1.6875C0 2.592 0.712 3.375 1.5 3.375H22.5C23.288 3.375 24 2.592 24 1.6875Z"
-                      fill="#6D778E"
+                      fill="currentColor"
                     />
                   </svg>
-                </span>
-                <span className="text-[11px] font-medium text-slate-600 uppercase tracking-wide">
+                </div>
+                <span className={`text-[12px] font-bold uppercase tracking-wider transition-colors ${
+                  composeWorkerId ? "text-slate-700" : "text-slate-400"
+                }`}>
                   TEKSTOVNO
                 </span>
               </button>

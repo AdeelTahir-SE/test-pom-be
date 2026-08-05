@@ -895,6 +895,7 @@ export default function WorkerDashboard() {
             jobId={job?.id ?? null}
             cardNumber={job ? jobNumber(job) : null}
             customerName={job?.customer ?? null}
+            scheduledAt={job?.scheduled_at ?? null}
             onRefresh={loadAll}
             jobStatus={job?.status}
             onChangeJobStatus={handleChangeJobStatus}

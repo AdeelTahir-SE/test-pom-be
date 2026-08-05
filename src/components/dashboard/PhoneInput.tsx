@@ -20,7 +20,7 @@ export function AuraPhoneInput({
   label,
   placeholder = "30 123 456",
   error,
-  className = "",
+  className = "w-full",
 }: PhoneInputProps) {
   const handleChange = (phone: string) => {
   if (!phone) {
@@ -38,7 +38,7 @@ export function AuraPhoneInput({
   return (
     <div className={className}>
       {label && <AuraLabel>{label}</AuraLabel>}
-      <div className="relative rounded-xl ring-1 ring-[#1B3A6B]/15 focus-within:ring-2 focus-within:ring-[#1B3A6B] bg-white">
+      <div className="w-full relative rounded-xl ring-1 ring-[#1B3A6B]/15 focus-within:ring-2 focus-within:ring-[#1B3A6B] bg-white">
         <PhoneInput
           country={"si"}
           value={value}
