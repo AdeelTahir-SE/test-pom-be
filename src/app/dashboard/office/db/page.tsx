@@ -1396,7 +1396,11 @@ export default function DatabaseDashboard() {
       <AddTaskModal
         isOpen={isAddTaskOpen}
         onOpenChange={setIsAddTaskOpen}
-        workers={staffList.map((w) => ({ id: w.id, name: w.full_name }))}
+        workers={staffList.map((w) => ({
+  id: w.id,
+  name: w.full_name,
+  phone: w.phone,
+}))}
         defaultDate={new Date().toLocaleDateString('sl-SI', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\s+/g, '')}
         onAddTask={async (taskData) => {
           try {
