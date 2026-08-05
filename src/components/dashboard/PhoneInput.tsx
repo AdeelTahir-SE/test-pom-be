@@ -23,8 +23,17 @@ export function AuraPhoneInput({
   className = "",
 }: PhoneInputProps) {
   const handleChange = (phone: string) => {
-    onChange(phone);
-  };
+  if (!phone) {
+    onChange("");
+    return;
+  }
+
+  const normalizedPhone = phone.startsWith("+")
+    ? phone
+    : `+${phone}`;
+
+  onChange(normalizedPhone);
+};
 
   return (
     <div className={className}>
