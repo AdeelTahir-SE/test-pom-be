@@ -7,6 +7,7 @@ import { notifyMessageReceived } from "@/lib/services/notifications";
 import { requireOfficeContactUserId } from "@/lib/services/officeContact";
 import { sha256Hex, buildStoragePath, uploadToStorage } from "@/lib/storage/upload";
 import { transcribeAudio } from "@/lib/integrations/deepgram";
+import { structureVoiceTranscript } from "@/lib/integrations/openai";
 import { LIMITS } from "@/config/constants";
 
 export const dynamic = "force-dynamic";
@@ -95,10 +96,15 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     throw new ApiError("internal", "Audio uploaded but could not be recorded.", fileError?.message);
   }
 
+  // Pipeline (Mark): record → Deepgram STT → GPT structure → send.
+  // GPT failure must not block the message — keep raw transcript.
   const transcript = await transcribeAudio(buffer, contentType, {
     requestId: fileRecord.id,
   });
-  const content = transcript ?? UNTRANSCRIBED_FALLBACK;
+  const structured = transcript
+    ? await structureVoiceTranscript(transcript, { requestId: fileRecord.id })
+    : null;
+  const content = structured ?? transcript ?? UNTRANSCRIBED_FALLBACK;
 
   const { data: message, error: messageError } = await db
     .from("job_messages")
@@ -132,6 +138,7 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     userId: auth.userId,
     metadata: {
       transcribed: transcript !== null,
+      structured: structured !== null,
       content,
       job_seq: job.company_seq,
       sender_name: sender?.full_name ?? null,

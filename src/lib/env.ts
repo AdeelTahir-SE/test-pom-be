@@ -38,6 +38,13 @@ export const env = {
   get mistralApiKey() {
     return optional("MISTRAL_API_KEY");
   },
+  /** Optional — voice STT structuring after Deepgram (Mark: GPT-4o mini / 4.1). */
+  get openaiApiKey() {
+    return optional("OPENAI_API_KEY");
+  },
+  get openaiVoiceModel() {
+    return optional("OPENAI_VOICE_MODEL") || "gpt-4o-mini";
+  },
   get resendApiKey() {
     return optional("RESEND_API_KEY");
   },

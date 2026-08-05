@@ -1,5 +1,6 @@
 import { getAdminClient } from "@/lib/supabase/admin";
 import { verifyAccessToken } from "@/lib/supabase/auth";
+import { ApiError } from "@/lib/http/responses";
 import type {
   AuthContext,
   CompanyUserContext,
@@ -11,6 +12,21 @@ function extractBearerToken(request: Request): string | null {
   if (!header) return null;
   const match = /^Bearer\s+(.+)$/i.exec(header.trim());
   return match ? match[1]! : null;
+}
+
+function isTransientDbError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("fetch failed") ||
+    m.includes("timeout") ||
+    m.includes("timed out") ||
+    m.includes("econnrefused") ||
+    m.includes("econnreset") ||
+    m.includes("enotfound") ||
+    m.includes("terminated") ||
+    m.includes("network") ||
+    m.includes("socket")
+  );
 }
 
 // Resolution order (Authorization order, spec §12, step 1-3):
@@ -30,14 +46,45 @@ export async function getAuthContext(request: Request): Promise<AuthContext | nu
 
   const db = getAdminClient();
 
-  const { data: companyUser, error: companyUserError } = await db
-    .from("users")
-    .select("id, company_id, role, email, is_active")
-    .eq("id", authUser.id)
-    .maybeSingle();
+  let companyUser: {
+    id: string;
+    company_id: string;
+    role: CompanyUserContext["role"];
+    email: string;
+    is_active: boolean;
+  } | null = null;
 
-  if (companyUserError) {
-    console.error("[auth_context_company_lookup_failed]", companyUserError.message);
+  try {
+    const { data, error: companyUserError } = await db
+      .from("users")
+      .select("id, company_id, role, email, is_active")
+      .eq("id", authUser.id)
+      .maybeSingle();
+
+    if (companyUserError) {
+      console.error("[auth_context_company_lookup_failed]", companyUserError.message);
+      // Transient Supabase/network failure must not look like "logged out".
+      if (isTransientDbError(companyUserError.message)) {
+        throw new ApiError(
+          "internal",
+          "Temporary connection problem. Please retry in a moment.",
+          companyUserError.message
+        );
+      }
+    }
+    companyUser = data;
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[auth_context_company_lookup_failed]", message);
+    if (isTransientDbError(message)) {
+      throw new ApiError(
+        "internal",
+        "Temporary connection problem. Please retry in a moment.",
+        message
+      );
+    }
+    throw err;
   }
 
   if (companyUser) {
@@ -60,6 +107,13 @@ export async function getAuthContext(request: Request): Promise<AuthContext | nu
 
   if (platformAdminError) {
     console.error("[auth_context_admin_lookup_failed]", platformAdminError.message);
+    if (isTransientDbError(platformAdminError.message)) {
+      throw new ApiError(
+        "internal",
+        "Temporary connection problem. Please retry in a moment.",
+        platformAdminError.message
+      );
+    }
   }
 
   if (platformAdmin) {

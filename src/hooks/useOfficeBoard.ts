@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchChecklistsForJobs,
   fetchJobs,
@@ -19,32 +19,38 @@ import { isOptimisticId } from "@/lib/optimisticId";
 export function useOfficeBoard(dayKey: string, enabled: boolean) {
   const queryClient = useQueryClient();
 
-const jobsQuery = useQuery({
-  queryKey: queryKeys.office.jobs(),
-  queryFn: fetchJobs,
-  enabled,
-  staleTime: 30_000,
-});
+  const jobsQuery = useQuery({
+    queryKey: queryKeys.office.jobs(),
+    queryFn: fetchJobs,
+    enabled,
+    staleTime: 30_000,
+  });
 
   const remindersQuery = useQuery({
     queryKey: queryKeys.office.reminders(dayKey),
     queryFn: () => fetchReminders(dayKey),
     enabled,
     staleTime: 60_000,
+    placeholderData: keepPreviousData,
   });
 
+  // Background poll — must never trip the full-page loader (Mark → Ali).
   const notificationsQuery = useQuery({
     queryKey: queryKeys.office.notifications(),
     queryFn: fetchNotifications,
     enabled,
+    staleTime: 15_000,
     refetchInterval: 30_000,
   });
 
+  // Background poll — must never trip the full-page loader (Mark → Ali).
   const communicationsQuery = useQuery({
     queryKey: queryKeys.office.communications(dayKey),
     queryFn: () => fetchOfficeCommunications(dayKey),
     enabled,
+    staleTime: 15_000,
     refetchInterval: 30_000,
+    placeholderData: keepPreviousData,
   });
 
   const workersQuery = useQuery({
@@ -59,6 +65,7 @@ const jobsQuery = useQuery({
     queryFn: () => fetchSummary(dayKey),
     enabled,
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 
   const jobs = jobsQuery.data ?? [];
@@ -78,21 +85,23 @@ const jobsQuery = useQuery({
   );
   const checklistKey = checklistJobIds.join(",");
 
-const checklistsQuery = useQuery({
-  queryKey: queryKeys.office.checklists(checklistKey || "none"),
-  queryFn: () => fetchChecklistsForJobs(checklistJobIds),
-  staleTime: 30_000,
-  enabled: enabled && checklistJobIds.length > 0,
-});
+  const checklistsQuery = useQuery({
+    queryKey: queryKeys.office.checklists(checklistKey || "none"),
+    queryFn: () => fetchChecklistsForJobs(checklistJobIds),
+    staleTime: 30_000,
+    enabled: enabled && checklistJobIds.length > 0,
+    placeholderData: keepPreviousData,
+  });
 
+  // First paint only. Polled queries (communications / notifications) are
+  // excluded so a 30s refetch or slow/failing poll cannot unmount the board.
   const dataLoading =
     enabled &&
-    (jobsQuery.isLoading ||
-      remindersQuery.isLoading ||
-      notificationsQuery.isLoading ||
-      communicationsQuery.isLoading ||
-      workersQuery.isLoading ||
-      summaryQuery.isLoading);
+    !jobsQuery.data &&
+    (jobsQuery.isPending ||
+      remindersQuery.isPending ||
+      workersQuery.isPending ||
+      summaryQuery.isPending);
 
   const setJobs = (
     updater: ApiJob[] | ((prev: ApiJob[]) => ApiJob[])
@@ -166,10 +175,10 @@ const checklistsQuery = useQuery({
     queryClient.setQueryData<OfficeSummaryData>(
       queryKeys.office.summary(dayKey),
       (prev) => {
-      const current = prev ?? null;
-      const next = typeof updater === "function" ? updater(current) : updater;
-      return next ?? undefined;
-    }
+        const current = prev ?? null;
+        const next = typeof updater === "function" ? updater(current) : updater;
+        return next ?? undefined;
+      }
     );
   };
 

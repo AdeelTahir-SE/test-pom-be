@@ -19,9 +19,19 @@ export function getAuthClient() {
 }
 
 // Verify a Bearer token and return the Supabase auth user (or null).
+// Network blips must not throw — uncaught fetch errors used to bubble as
+// opaque 500s on every API route (e.g. /api/office/communications).
 export async function verifyAccessToken(accessToken: string) {
-  const client = getAuthClient();
-  const { data, error } = await client.auth.getUser(accessToken);
-  if (error || !data.user) return null;
-  return data.user;
+  try {
+    const client = getAuthClient();
+    const { data, error } = await client.auth.getUser(accessToken);
+    if (error || !data.user) return null;
+    return data.user;
+  } catch (err) {
+    console.error(
+      "[auth_verify_access_token_failed]",
+      err instanceof Error ? err.message : String(err)
+    );
+    return null;
+  }
 }
