@@ -95,7 +95,9 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     throw new ApiError("internal", "Audio uploaded but could not be recorded.", fileError?.message);
   }
 
-  const transcript = await transcribeAudio(buffer, contentType);
+  const transcript = await transcribeAudio(buffer, contentType, {
+    requestId: fileRecord.id,
+  });
   const content = transcript ?? UNTRANSCRIBED_FALLBACK;
 
   const { data: message, error: messageError } = await db
