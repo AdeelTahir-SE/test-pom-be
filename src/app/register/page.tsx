@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/lib/useLanguage";
 import { api, setSession } from "@/lib/api-client";
+import { logClientError } from "@/lib/clientError";
 import type { BusinessModule } from "@/config/business-modules";
 import { savePendingGoogleRegister } from "@/lib/pendingGoogleRegister";
 import Link from "next/link";
@@ -31,6 +32,7 @@ const MODULE_LABELS: Record<BusinessModule, string> = {
 interface RegisterResponse {
   access_token: string;
   refresh_token: string;
+  expires_in?: number;
   user: { id: string; role: "owner" };
   company: { id: string };
 }
@@ -48,45 +50,43 @@ export default function RegisterPage() {
   const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleRegister = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setError(null);
-  setSubmitting(true);
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
 
-  if (!businessModule) {
-    setSubmitting(false);
-    setError("Izberite panogo");
-    return;
-  }
-
-  try {
-    const res = await api.post<RegisterResponse>("/api/auth/register", {
-      email,
-      password,
-      company_name: company,
-      business_module: businessModule as BusinessModule,
-      ...(name.trim() ? { full_name: name.trim() } : {}),
-    });
-
-    if (res.status !== 201 || !res.data) {
-      setError(res.error?.message ?? "Registration failed. Please check your details.");
+    if (!businessModule) {
+      setSubmitting(false);
+      setError("Izberite panogo");
       return;
     }
 
-    setSession(res.data.access_token, res.data.refresh_token);
-    router.push("/dashboard/office");
+    try {
+      const res = await api.post<RegisterResponse>("/api/auth/register", {
+        email: email.trim().toLowerCase(),
+        password,
+        company_name: company.trim(),
+        business_module: businessModule as BusinessModule,
+        ...(name.trim() ? { full_name: name.trim() } : {}),
+      });
 
-  } catch {
-    setError("Registracija ni uspela. Poskusite znova.");
-  } finally {
-    setSubmitting(false);
-  }
-};
+      if (res.status !== 201 || !res.data) {
+        setError(res.error?.message ?? "Registration failed. Please check your details.");
+        return;
+      }
+
+      setSession(res.data.access_token, res.data.refresh_token, res.data.expires_in);
+      router.push("/dashboard/office");
+    } catch (err) {
+      logClientError("auth.register", err);
+      setError("Registracija ni uspela. Poskusite znova.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleGoogle = async () => {
     setError(null);
 
-    // Mark a11 #9: Google OAuth only returns identity — company fields must
-    // travel via sessionStorage and be applied after the callback.
     if (!company.trim()) {
       setError("Vnesite ime podjetja");
       return;
@@ -112,7 +112,8 @@ export default function RegisterPage() {
       }
 
       window.location.href = res.data.url;
-    } catch {
+    } catch (err) {
+      logClientError("auth.googleRegisterInit", err);
       setError("Google prijava ni uspela. Poskusite znova.");
     } finally {
       setGoogleLoading(false);
@@ -140,8 +141,8 @@ export default function RegisterPage() {
           {t("authRegisterTitle")}
         </h2>
         <p className="text-center text-[14px] font-light text-slate-600 mb-8">
-  {t("authRegisterSubtitle")}
-</p>
+          {t("authRegisterSubtitle")}
+        </p>
 
         <form onSubmit={handleRegister} className="space-y-4">
           {error && (
@@ -152,7 +153,7 @@ export default function RegisterPage() {
 
           <div className="relative">
             <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden={true}>
                 <path d="M3 21h18M5 21V10l7-3 7 3v11M9 21v-4h6v4" />
               </svg>
             </span>
@@ -169,7 +170,7 @@ export default function RegisterPage() {
 
           <div className="relative">
             <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden={true}>
                 <rect x="2" y="7" width="20" height="14" rx="2" />
                 <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
               </svg>
@@ -191,7 +192,7 @@ export default function RegisterPage() {
               ))}
             </select>
             <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden={true}>
                 <path d="m6 9 6 6 6-6" />
               </svg>
             </span>
@@ -199,7 +200,7 @@ export default function RegisterPage() {
 
           <div className="relative">
             <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden={true}>
                 <rect x="3" y="5" width="18" height="14" rx="2" />
                 <path d="m3 7 9 6 9-6" />
               </svg>
@@ -217,7 +218,7 @@ export default function RegisterPage() {
 
           <div className="relative">
             <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden={true}>
                 <rect x="4" y="10" width="16" height="11" rx="2" />
                 <path d="M8 10V7a4 4 0 0 1 8 0v3" />
               </svg>
@@ -264,7 +265,7 @@ export default function RegisterPage() {
           disabled={googleLoading || submitting}
           className="w-full h-[52px] rounded-[8px] border border-slate-300 bg-white text-[#DB4437] text-sm font-semibold hover:bg-slate-50 disabled:opacity-60 flex items-center justify-center gap-2.5"
         >
-          <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden>
+          <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden={true}>
             <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34.2 6.1 29.4 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.5-.4-3.5z" />
             <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 19 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34.2 6.1 29.4 4 24 4 16.3 4 9.6 8.3 6.3 14.7z" />
             <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.3 35.3 26.8 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z" />

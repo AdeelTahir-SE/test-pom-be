@@ -1644,7 +1644,9 @@ export default function OfficeDashboard() {
                         thread.messages.map((m) => m.id),
                       )
                     }
-                    onReply={() => handleOpenReply(thread.jobId)}
+                    onReply={() => {
+                      void handleOpenReply(thread.jobId);
+                    }}
                   />
                 );
               })}

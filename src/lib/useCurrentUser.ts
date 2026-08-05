@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { api, getToken, getRefreshToken, setSession, tryRefreshSession } from "./api-client";
+import { api, getToken, getRefreshToken, setSession, ensureFreshAccessToken } from "./api-client";
 
 export interface CurrentUser {
   id: string;
@@ -30,9 +30,8 @@ export interface OfficeContact {
 }
 
 async function ensureAccessToken(): Promise<boolean> {
-  if (getToken()) return true;
-  if (!getRefreshToken()) return false;
-  return tryRefreshSession();
+  await ensureFreshAccessToken();
+  return Boolean(getToken());
 }
 
 // Session bootstrap for a protected page: verifies the stored token against
@@ -62,11 +61,15 @@ export function useCurrentUser() {
       }>("/api/auth/me");
       if (cancelled) return;
       if (res.status !== 200 || !res.data) {
-        // api-client already attempted silent refresh on 401; only clear if still failed.
-        if (res.status === 401) {
+        // Confirmed auth death only: api-client keeps tokens on transient
+        // refresh failures, so a 401 with a refresh token still present must
+        // not bounce the user to login (unexpected logoffs).
+        if (res.status === 401 && !getRefreshToken()) {
           setSession(null, null);
+          router.replace("/login");
+          return;
         }
-        router.replace("/login");
+        setLoading(false);
         return;
       }
       setUser(res.data.user);
@@ -81,10 +84,13 @@ export function useCurrentUser() {
   }, [router]);
 
   const logout = useCallback(async () => {
+  try {
     await api.post("/api/auth/logout");
+  } finally {
     setSession(null, null);
     router.replace("/login");
-  }, [router]);
+  }
+}, [router]);
 
   return { user, company, officeContact, loading, logout };
 }

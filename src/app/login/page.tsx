@@ -4,11 +4,13 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/lib/useLanguage";
 import { api, setSession } from "@/lib/api-client";
+import { logClientError } from "@/lib/clientError"; 
 import Link from "next/link";
 
 interface LoginResponse {
   access_token: string;
   refresh_token: string;
+  expires_in?: number;
   user: { id: string; email: string; full_name?: string; role?: "owner" | "manager" | "worker" };
   company_id: string | null;
 }
@@ -24,14 +26,13 @@ export default function LoginPage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (new URLSearchParams(window.location.search).get("reset") === "1") {
-      setInfo(t("authLoginSuccessReset"));
-    }
-  }, [t]);
+  if (new URLSearchParams(window.location.search).get("reset") === "1") {
+    setInfo(t("authLoginSuccessReset"));
+  }
+}, [t]);
 
   const routeAfterLogin = (data: LoginResponse) => {
-    setSession(data.access_token, data.refresh_token);
+    setSession(data.access_token, data.refresh_token, data.expires_in);
     if (!data.user.role) {
       router.push("/admin");
     } else if (data.user.role === "worker") {
@@ -41,53 +42,54 @@ export default function LoginPage() {
     }
   };
 
-const handleLogin = async (e: React.FormEvent) => {
-  e.preventDefault();
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (submitting) return;
 
-  if (submitting) return;
+    setError(null);
+    setInfo(null);
+    setSubmitting(true);
 
-  setError(null);
-  setInfo(null);
-  setSubmitting(true);
+    try {
+      const res = await api.post<LoginResponse>("/api/auth/login", {
+        email: email.trim().toLowerCase(),
+        password,
+      });
 
-  try {
-    const res = await api.post<LoginResponse>("/api/auth/login", {
-  email: email.trim().toLowerCase(),
-  password,
-});
+      if (res.status !== 200 || !res.data) {
+        setError(res.error?.message ?? t("authLoginFailed"));
+        return;
+      }
 
-    if (res.status !== 200 || !res.data) {
-      setError(res.error?.message ?? t("authLoginFailed"));
-      return;
+      routeAfterLogin(res.data);
+    } catch (err) {
+      logClientError("auth.login", err); 
+      setError(t("authLoginFailed"));
+    } finally {
+      setSubmitting(false);
     }
-
-    routeAfterLogin(res.data);
-} catch {
-  setError(t("authLoginFailed"));
-} finally {
-  setSubmitting(false);
-}
-};
+  };
 
   const handleGoogle = async () => {
-  setError(null);
-  setGoogleLoading(true);
+    setError(null);
+    setGoogleLoading(true);
 
-  try {
-    const res = await api.get<{ url: string }>("/api/auth/google");
+    try {
+      const res = await api.get<{ url: string }>("/api/auth/google");
 
-    if (res.status !== 200 || !res.data?.url) {
-      setError(res.error?.message ?? t("authGoogleFailed"));
-      return;
+      if (res.status !== 200 || !res.data?.url) {
+        setError(res.error?.message ?? t("authGoogleFailed"));
+        return;
+      }
+
+      window.location.href = res.data.url;
+    } catch (err) {
+      logClientError("auth.google", err); 
+      setError(t("authGoogleFailed"));
+    } finally {
+      setGoogleLoading(false);
     }
-
-    window.location.href = res.data.url;
-} catch {
-  setError(t("authGoogleFailed"));
-} finally {
-  setGoogleLoading(false);
-}
-};
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-[#0b0f19] px-4 py-12 relative overflow-hidden font-sans text-slate-800 dark:text-slate-100">
@@ -123,41 +125,41 @@ const handleLogin = async (e: React.FormEvent) => {
 
           <div className="relative">
             <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden={true}>
                 <rect x="3" y="5" width="18" height="14" rx="2" />
                 <path d="m3 7 9 6 9-6" />
               </svg>
             </span>
-           <input
-  type="email"
-  autoComplete="email"
-  value={email}
-  onChange={(e) => setEmail(e.target.value)}
-  placeholder={t("authEmailLabel")}
-  aria-label={t("authEmailLabel")}
-  required
-  className="w-full h-[52px] pl-12 pr-4 rounded-[8px] border border-slate-300 bg-[#F5F5F5] text-sm text-slate-900 placeholder-slate-400 focus:outline-none"
-/>
+            <input
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder={t("authEmailLabel")}
+              aria-label={t("authEmailLabel")}
+              required
+              className="w-full h-[52px] pl-12 pr-4 rounded-[8px] border border-slate-300 bg-[#F5F5F5] text-sm text-slate-900 placeholder-slate-400 focus:outline-none"
+            />
           </div>
 
           <div className="relative -mb-2">
             <div className="relative">
               <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden={true}>
                   <rect x="4" y="10" width="16" height="11" rx="2" />
                   <path d="M8 10V7a4 4 0 0 1 8 0v3" />
                 </svg>
               </span>
               <input
-  type="password"
-  autoComplete="current-password"
-  value={password}
-  onChange={(e) => setPassword(e.target.value)}
-  placeholder={t("authPasswordLabel")}
-  aria-label={t("authPasswordLabel")}
-  required
-  className="w-full h-[52px] pl-12 pr-4 rounded-[8px] border border-slate-300 bg-[#F5F5F5] text-sm text-slate-900 placeholder-slate-400 focus:outline-none"
-/>
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={t("authPasswordLabel")}
+                aria-label={t("authPasswordLabel")}
+                required
+                className="w-full h-[52px] pl-12 pr-4 rounded-[8px] border border-slate-300 bg-[#F5F5F5] text-sm text-slate-900 placeholder-slate-400 focus:outline-none"
+              />
             </div>
             <div className="text-right mt-1 mb-5">
               <Link href="/forgot-password" className="text-xs text-slate-500 hover:text-slate-700">
@@ -196,7 +198,7 @@ const handleLogin = async (e: React.FormEvent) => {
           disabled={googleLoading || submitting}
           className="w-full h-[52px] rounded-[8px] border border-slate-200 bg-white text-[#DB4437] text-sm font-semibold hover:bg-slate-50 disabled:opacity-60 flex items-center justify-center gap-2.5"
         >
-          <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden>
+          <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden={true}>
             <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34.2 6.1 29.4 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.5-.4-3.5z" />
             <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 19 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34.2 6.1 29.4 4 24 4 16.3 4 9.6 8.3 6.3 14.7z" />
             <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.3 35.3 26.8 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z" />

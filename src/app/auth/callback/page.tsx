@@ -14,6 +14,7 @@ interface OAuthLoginResponse {
   needs_registration?: boolean;
   access_token?: string;
   refresh_token?: string;
+  expires_in?: number;
   user: {
     id: string;
     email: string;
@@ -24,7 +25,7 @@ interface OAuthLoginResponse {
 }
 
 interface GoogleRegisterResponse {
-  user: { id: string; role: string };
+  user: { id: string; role: "owner" | "manager" | "worker" };
   company: { id: string };
 }
 
@@ -45,11 +46,11 @@ export default function AuthCallbackPage() {
       const errorDescription = params.get("error_description") || params.get("error");
 
       if (errorDescription) {
-        setError(errorDescription);
+        if (!cancelled) setError(errorDescription);
         return;
       }
       if (!code) {
-        setError(t("authGoogleMissingCode"));
+        if (!cancelled) setError(t("authGoogleMissingCode"));
         return;
       }
 
@@ -61,18 +62,21 @@ export default function AuthCallbackPage() {
         if (cancelled) return;
 
         if (res.status !== 200 || !res.data) {
-          setError(res.error?.message ?? t("authGoogleFailed"));
+          if (!cancelled) setError(res.error?.message ?? t("authGoogleFailed"));
           return;
         }
 
         if (res.data.access_token && res.data.refresh_token) {
-          setSession(res.data.access_token, res.data.refresh_token);
+          setSession(
+            res.data.access_token,
+            res.data.refresh_token,
+            res.data.expires_in
+          );
         }
 
         if (res.data.needs_registration || !res.data.user.role) {
           const pending = readPendingGoogleRegister();
 
-          // Happy path (a11 #9): register page already collected company data.
           if (pending) {
             const finishRes = await api.post<GoogleRegisterResponse>(
               "/api/auth/register/google",
@@ -93,22 +97,30 @@ export default function AuthCallbackPage() {
             logClientError("auth.googleRegister", finishRes.error, {
               status: finishRes.status,
             });
-            // Keep pending so complete-profile can prefill; user can retry.
+
+            if (!cancelled) {
+              setError(finishRes.error?.message ?? t("authGoogleFailed"));
+            }
+            return;
           }
 
-          router.replace("/register/complete-profile");
-return;
+          if (!cancelled) {
+            router.replace("/register/complete-profile");
+          }
+          return;
         }
 
-        // Existing Google user — drop any stale pending registration draft.
         clearPendingGoogleRegister();
 
-        if (res.data.user.role === "worker") {
-          router.replace("/dashboard/worker");
-        } else {
-          router.replace("/dashboard/office");
+        if (!cancelled) {
+          if (res.data.user.role === "worker") {
+            router.replace("/dashboard/worker");
+          } else {
+            router.replace("/dashboard/office");
+          }
         }
       } catch (err) {
+        if (cancelled) return;
         processingRef.current = false;
         logClientError("auth.oauthCallback", err);
         if (!cancelled) {

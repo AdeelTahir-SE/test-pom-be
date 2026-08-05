@@ -75,18 +75,54 @@ describe("transcribeAudio (unit, mocked fetch)", () => {
     process.env.DEEPGRAM_API_KEY = "unit-test-fake-key";
   });
 
-  it("sends the locked Deepgram configuration in the query string", async () => {
+  it("returns null immediately when the audio buffer is empty, without calling fetch", async () => {
+    let called = false;
+    const fetchImpl = (async () => {
+      called = true;
+      return jsonResponse({});
+    }) as unknown as typeof fetch;
+
+    const result = await transcribeAudio(Buffer.alloc(0), "audio/webm", { fetchImpl });
+    expect(result).toBeNull();
+    expect(called).toBe(false);
+  });
+
+  it("returns null immediately for a non-audio Content-Type, without calling fetch", async () => {
+    let called = false;
+    const fetchImpl = (async () => {
+      called = true;
+      return jsonResponse({});
+    }) as unknown as typeof fetch;
+
+    const result = await transcribeAudio(Buffer.from("fake-audio"), "text/plain", { fetchImpl });
+    expect(result).toBeNull();
+    expect(called).toBe(false);
+  });
+
+  it("sends the locked Deepgram configuration without cloning the buffer", async () => {
+    const audio = Buffer.from("fake-audio");
     let capturedUrl: string | undefined;
-    const fetchImpl = (async (url: string | URL) => {
+    let capturedInit: RequestInit | undefined;
+    const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
       capturedUrl = url.toString();
+      capturedInit = init;
       return jsonResponse({ results: { channels: [{ alternatives: [{ transcript: "ok" }] }] } });
     }) as unknown as typeof fetch;
 
-    await transcribeAudio(Buffer.from("fake-audio"), "audio/webm", { fetchImpl });
+    await transcribeAudio(audio, "audio/webm", {
+      fetchImpl,
+      requestId: "test-request-id",
+    });
     expect(capturedUrl).toContain("model=nova-3");
-    expect(capturedUrl).toContain("detect_language=true");
+    expect(capturedUrl).toContain("language=sl");
+    expect(capturedUrl).not.toContain("detect_language");
     expect(capturedUrl).toContain("punctuate=true");
     expect(capturedUrl).toContain("smart_format=true");
     expect(capturedUrl).toContain("diarize=false");
+    expect(capturedInit?.signal).toBeInstanceOf(AbortSignal);
+    expect(capturedInit?.body).toBe(audio);
+    expect((capturedInit?.headers as Record<string, string>)["X-Request-Id"]).toBe(
+      "test-request-id"
+    );
   });
 });

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { api, getToken, getRefreshToken, setSession, tryRefreshSession } from "./api-client";
+import { api, getToken, getRefreshToken, setSession, ensureFreshAccessToken } from "./api-client";
 
 export interface CurrentAdmin {
   id: string;
@@ -10,9 +10,8 @@ export interface CurrentAdmin {
 }
 
 async function ensureAccessToken(): Promise<boolean> {
-  if (getToken()) return true;
-  if (!getRefreshToken()) return false;
-  return tryRefreshSession();
+  await ensureFreshAccessToken();
+  return Boolean(getToken());
 }
 
 // Session bootstrap for the platform-admin dashboard: verifies the stored
@@ -36,10 +35,12 @@ export function useCurrentAdmin() {
       const res = await api.get<{ admin: CurrentAdmin }>("/api/admin/me");
       if (cancelled) return;
       if (res.status !== 200 || !res.data) {
-        if (res.status === 401) {
+        if (res.status === 401 && !getRefreshToken()) {
           setSession(null, null);
+          router.replace("/login");
+          return;
         }
-        router.replace("/login");
+        setLoading(false);
         return;
       }
       setAdmin(res.data.admin);
