@@ -42,16 +42,16 @@ export async function unwrapApi<T>(result: Promise<ApiResult<T>>): Promise<T> {
       `Request failed (${res.status})`;
 
     console.error("API ERROR:", {
-      status: res.status,
-      message,
-      response: res,
-    });
+  status: res.status,
+  message,
+  error: res.error,
+});
 
     throw new ApiRequestError(
-  res.status,
-  message,
-  res
-);
+      res.status,
+      message,
+      res
+    );
   }
 
   return res.data;

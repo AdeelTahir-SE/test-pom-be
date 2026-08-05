@@ -17,7 +17,7 @@ interface CommunicationCardProps {
     hasDecline?: boolean;
   };
   onResolve: () => void;
-  onDismiss: () => void;
+  onDismiss?: () => void;
   onAttachmentClick?: (attachmentName?: string) => void;
   onArchive?: () => void;
   onCall?: (phoneNumber?: string) => void;

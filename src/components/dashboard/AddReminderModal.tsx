@@ -4,7 +4,16 @@ import React, { useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useLanguage } from "@/lib/useLanguage";
 import { normalizeRemindTime } from "@/lib/officeDate";
-import { AuraFileInput } from "./AuraForm";
+import {
+  AuraLabel,
+  AuraInput,
+  AuraTextarea,
+  AuraFileInput,
+  AuraIconButton,
+  AuraCheckbox,
+  auraCard,
+  auraButton,
+} from "./AuraForm";
 import { isValidPhone, normalizePhone, toTelHref } from "@/lib/phone";
 import { AuraPhoneInput } from "./PhoneInput";
 
@@ -37,37 +46,37 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
   const [isUrgent, setIsUrgent] = useState(false);
 
   React.useEffect(() => {
-    if (isOpen) {
-      setDate(defaultDate);
-      setDateError(null);
-    }
-  }, [isOpen, defaultDate]);
+  if (isOpen) {
+    setDate(defaultDate);
+    setDateError(null);
+  }
+}, [isOpen, defaultDate]);
 
   // Dynamic icon selections
   const [hasAttachment, setHasAttachment] = useState(false);
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [hasEmail, setHasEmail] = useState(false);
+  const [countryCode, setCountryCode] = useState("+386");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [dateError, setDateError] = useState<string | null>(null);
   const [hasConfirm, setHasConfirm] = useState(false);
   const [hasDecline, setHasDecline] = useState(false);
 
-  const handlePhoneChange = (raw: string) => {
-    if (!raw || raw === "386" || raw === "+386") {
-      setPhoneNumber("");
-      setPhoneError(null);
-      return;
-    }
-    const fullPhone = raw.startsWith("+") ? raw : `+${raw}`;
-    setPhoneNumber(fullPhone);
+  const sanitizePhone = (raw: string) => raw.replace(/[^0-9\s]/g, "");
 
-    if (!isValidPhone(fullPhone)) {
-      setPhoneError(t("modalPhoneInvalid"));
-    } else {
-      setPhoneError(null);
-    }
-  };
+const handlePhoneChange = (raw: string) => {
+  const sanitized = sanitizePhone(raw);
+  setPhoneNumber(sanitized);
+
+  const fullPhone = `${countryCode}${sanitized}`;
+
+  if (sanitized && !isValidPhone(fullPhone)) {
+    setPhoneError(t("modalPhoneInvalid"));
+  } else {
+    setPhoneError(null);
+  }
+};
 
   const resetFields = () => {
     setTitle("");
@@ -86,56 +95,74 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
   };
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title) return;
+  e.preventDefault();
+  if (!title) return;
 
-    if (date) {
-      const match = date.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (date) {
+    const match = date.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
 
-      if (!match) {
-        setDateError("Datum mora biti v obliki DD.MM.YYYY.");
-        return;
-      }
+    if (!match) {
+  setDateError("Datum mora biti v obliki DD.MM.YYYY.");
+  return;
+}
 
-      const day = Number(match[1]);
-      const month = Number(match[2]);
-      const year = Number(match[3]);
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    const year = Number(match[3]);
 
-      const parsedDate = new Date(year, month - 1, day);
+    const parsedDate = new Date(year, month - 1, day);
 
-      if (
-        parsedDate.getFullYear() !== year ||
-        parsedDate.getMonth() !== month - 1 ||
-        parsedDate.getDate() !== day
-      ) {
-        setDateError("Vnesite veljaven datum.");
-        return;
-      }
-    }
+    if (
+  parsedDate.getFullYear() !== year ||
+  parsedDate.getMonth() !== month - 1 ||
+  parsedDate.getDate() !== day
+) {
+  setDateError("Vnesite veljaven datum.");
+  return;
+}
+  }
 
-    if (phoneNumber && !isValidPhone(phoneNumber)) {
-      setPhoneError(t("modalPhoneInvalid"));
-      return;
-    }
+  const fullPhone = phoneNumber
+  ? `${countryCode}${phoneNumber}`
+  : "";
 
-    const finalPhone = normalizePhone(phoneNumber) ?? "";
-    const normalizedTime = normalizeRemindTime(time) ?? "";
+if (phoneNumber && !isValidPhone(fullPhone)) {
+  setPhoneError(t("modalPhoneInvalid"));
+  return;
+}
 
-    onAddReminder({
-      title,
-      description,
-      time: normalizedTime,
-      date: date || new Date().toLocaleDateString("sl-SI"),
-      isUrgent,
-      hasAttachment,
-      attachmentFile: hasAttachment ? attachmentFile : null,
-      hasEmail,
-      phoneNumber: finalPhone,
-      hasConfirm,
-      hasDecline,
-    });
+const finalPhone = normalizePhone(fullPhone) ?? "";
+  const normalizedTime = normalizeRemindTime(time) ?? "";
 
-    resetFields();
+  onAddReminder({
+    title,
+    description,
+    time: normalizedTime,
+    date: date || new Date().toLocaleDateString("sl-SI"),
+    isUrgent,
+    hasAttachment,
+    attachmentFile: hasAttachment ? attachmentFile : null,
+    hasEmail,
+    phoneNumber: finalPhone,
+    hasConfirm,
+    hasDecline,
+  });
+
+    // Reset fields
+    setTitle("");
+    setDescription("");
+    setTime("");
+    setDate(defaultDate);
+    setIsUrgent(false);
+    setPhoneNumber("");
+    setCountryCode("+386");
+    setHasAttachment(false);
+    setAttachmentFile(null);
+    setHasEmail(false);
+    setPhoneError(null);
+    setDateError(null);
+    setHasConfirm(false);
+    setHasDecline(false);
     onOpenChange(false);
   };
 
@@ -145,7 +172,7 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
     </svg>
   );
 
-  const emailIcon = <span className="text-xs font-semibold">@</span>;
+  const emailIcon = <span className="text-sm font-semibold">@</span>;
 
   const confirmIcon = (
     <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -160,10 +187,10 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
   );
 
   const phoneIcon = (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92z" />
-    </svg>
-  );
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92z" />
+  </svg>
+);
 
   return (
     <Dialog
@@ -220,116 +247,148 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
                 </p>
               </div>
 
-              <div className="flex flex-col gap-2.5">
-                {/* Opomnik field */}
-                <div>
-                  <label className="block text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-1">
-                    {t("modalReminderFieldLabel")}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={t("modalReminderFieldPlaceholder")}
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    maxLength={28}
-                    required
-                    className="w-full h-[38px] px-4 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1B3A6B]/20 focus:border-[#1B3A6B] transition-all placeholder:text-slate-400"
+              {/* Description */}
+              <div>
+                <AuraLabel>{t("modalReminderDesc")}</AuraLabel>
+                <AuraTextarea
+                  placeholder={t("modalReminderDescPlaceholder")}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  maxLength={60}
+                  rows={2}
+                />
+              </div>
+
+              <hr className="border-[#1B3A6B]/10 my-1" />
+
+              {/* Čas, datum — same line, lighter placeholder */}
+<div className="grid grid-cols-2 gap-3">
+  <div>
+    <AuraLabel>{t("modalReminderTime")}</AuraLabel>
+    <AuraInput
+      type="text"
+      placeholder="16:48"
+      value={time}
+      onChange={(e) => setTime(e.target.value)}
+      maxLength={5}
+      className="text-center placeholder:text-slate-300"
+    />
+  </div>
+
+  <div>
+    <AuraLabel>{t("modalTaskDate")}</AuraLabel>
+    <AuraInput
+      type="text"
+      placeholder="02.02.2026"
+      value={date}
+      onChange={(e) => {
+        setDate(e.target.value);
+        setDateError(null);
+      }}
+      maxLength={10}
+      className="text-center placeholder:text-slate-300"
+    />
+    {dateError && (
+      <span className="text-[11px] text-red-500 mt-1 block">
+        {dateError}
+      </span>
+    )}
+  </div>
+</div>
+
+{/* Nujno */}
+              <div className="pt-1">
+                <AuraCheckbox
+                  checked={isUrgent}
+                  onChange={setIsUrgent}
+                  label={t("modalReminderUrgent")}
+                />
+              </div>
+
+              <hr className="border-[#1B3A6B]/10 my-1" />
+
+              {/* Dodaj ikone section */}
+              <AuraLabel>{t("modalReminderAddIcons")}</AuraLabel>
+
+              <div className="flex flex-col gap-3">
+                {/* Row 1: Priponka & E-posta */}
+                <div className="flex gap-4">
+                  <AuraIconButton
+  active={hasAttachment}
+  onClick={() => {
+    setHasAttachment(!hasAttachment);
+    if (hasAttachment) setAttachmentFile(null);
+  }}
+  icon={attachmentIcon}
+  label={t("modalReminderAttachment")}
+  title={t("modalReminderAttachmentTitle")}
+/>
+                  <AuraIconButton
+                    active={hasEmail}
+                    onClick={() => setHasEmail(!hasEmail)}
+                    icon={emailIcon}
+                    label={t("modalReminderEmail")}
+                    title={t("modalReminderEmailTitle")}
                   />
                 </div>
 
-                {/* Opis field */}
-                <div>
-                  <label className="block text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-1">
-                    {t("modalReminderDesc")}
-                  </label>
-                  <textarea
-                    placeholder={t("modalReminderDescPlaceholder")}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    maxLength={60}
-                    rows={2}
-                    className="w-full min-h-[50px] p-2.5 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1B3A6B]/20 focus:border-[#1B3A6B] transition-all placeholder:text-slate-400 resize-none"
-                  />
-                </div>
+                {/* Attachment file input */}
+                {hasAttachment && (
+  <div className="flex flex-col gap-1">
+    <AuraFileInput
+      id="reminder-attachment"
+      onFile={(file) => setAttachmentFile(file)}
+      onReject={(msg) => window.alert(msg)}
+    />
+    {attachmentFile && (
+      <span className="text-[11px] text-slate-500 truncate">
+        {attachmentFile.name}
+      </span>
+    )}
+  </div>
+)}
 
-                {/* Čas and Datum (distance is now same as between top fields) */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-1">
-                      {t("modalReminderTime")}
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="16:48"
-                      value={time}
-                      onChange={(e) => setTime(e.target.value)}
-                      maxLength={5}
-                      className="w-full h-[38px] px-4 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1B3A6B]/20 focus:border-[#1B3A6B] transition-all placeholder:text-slate-300 text-center"
-                    />
-                  </div>
+                {/* Row 2: Telefon */}
+                {/* Row 2: Telefon */}
+<div className="flex flex-col gap-1">
+  <AuraLabel>{t("modalPhoneLabel")}</AuraLabel>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-1">
-                      {t("modalTaskDate")}
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="02.02.2026"
-                      value={date}
-                      onChange={(e) => {
-                        setDate(e.target.value);
-                        setDateError(null);
-                      }}
-                      maxLength={10}
-                      className={`w-full h-[38px] px-4 rounded-[8px] border ${
-                        dateError ? "border-red-300 ring-1 ring-red-300 bg-red-50" : "border-slate-300 bg-[#F1F5F9]"
-                      } text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1B3A6B]/20 focus:border-[#1B3A6B] transition-all placeholder:text-slate-300 text-center`}
-                    />
-                    {dateError && (
-                      <p className="mt-0.5 text-[11px] text-red-500 font-medium">{dateError}</p>
-                    )}
+  <div className="flex items-center gap-2">
+    <a
+      href={toTelHref(`${countryCode}${phoneNumber}`) ?? undefined}
+      onClick={(e) => {
+        if (!toTelHref(`${countryCode}${phoneNumber}`)) {
+          e.preventDefault();
+        }
+      }}
+      className="shrink-0"
+      title={
+        phoneNumber
+          ? `${t("workerCall")} ${countryCode}${phoneNumber}`
+          : t("modalPhoneEmptyTitle")
+      }
+    >
+      <div
+        className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-all ${
+          phoneNumber && toTelHref(`${countryCode}${phoneNumber}`)
+            ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-[0_4px_10px_-2px_rgba(27,58,107,0.3)]"
+            : "bg-white border-[#1B3A6B]/25 text-slate-500"
+        }`}
+      >
+        {phoneIcon}
+      </div>
+    </a>
 
-                    {/* Nujno Checkbox positioned below Datum input aligned to the right */}
-                    <div className="flex justify-end mt-3.5">
-                      <label className="flex items-center gap-2 cursor-pointer select-none">
-                        <div
-                          className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${
-                            isUrgent
-                              ? "bg-[#0a1128] border-[#0a1128]"
-                              : "bg-white border-slate-300 hover:border-[#0a1128]/50"
-                          }`}
-                        >
-                          {isUrgent && (
-                            <svg
-                              width="10"
-                              height="8"
-                              viewBox="0 0 10 8"
-                              fill="none"
-                              xmlns="http://www.w3.org/2000/svg"
-                            >
-                              <path
-                                d="M1 4L3.5 6.5L9 1"
-                                stroke="white"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                          )}
-                        </div>
-                        <span className="text-[11px] font-bold text-[#9CA9BD] uppercase tracking-widest">
-                          {t("modalReminderUrgent") || "NUJNO"}
-                        </span>
-                        <input
-                          type="checkbox"
-                          checked={isUrgent}
-                          onChange={(e) => setIsUrgent(e.target.checked)}
-                          className="sr-only"
-                        />
-                      </label>
-                    </div>
-                  </div>
-                </div>
+    <div className="flex-1">
+      <AuraPhoneInput
+        value={phoneNumber}
+        onChange={handlePhoneChange}
+        error={phoneError}
+        placeholder="30 123 456"
+      />
+    </div>
+  </div>
+</div>
 
                 {/* Divider before icons */}
                 <hr className="border-slate-100 my-0.5" />

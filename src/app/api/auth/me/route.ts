@@ -30,7 +30,7 @@ export const GET = withAuth(async (_request, auth) => {
   const { data: company, error: companyError } = await db
     .from("companies")
     .select(
-      "id, name, business_module, subscription_active, stripe_customer_id, stripe_subscription_id, subscription_status"
+      "id, name, business_module, subscription_active, stripe_customer_id, stripe_subscription_id, subscription_status, created_at"
     )
     .eq("id", auth.companyId)
     .single();
