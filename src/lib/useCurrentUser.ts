@@ -2,7 +2,12 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { api, getToken, getRefreshToken, setSession, ensureFreshAccessToken } from "./api-client";
+import {
+  api,
+  hasSessionHint,
+  setSession,
+  ensureFreshAccessToken,
+} from "./api-client";
 
 export interface CurrentUser {
   id: string;
@@ -29,14 +34,13 @@ export interface OfficeContact {
   phone: string | null;
 }
 
-async function ensureAccessToken(): Promise<boolean> {
+async function ensureSession(): Promise<boolean> {
   await ensureFreshAccessToken();
-  return Boolean(getToken());
+  return hasSessionHint();
 }
 
-// Session bootstrap for a protected page: verifies the stored token against
-// GET /api/auth/me, redirects to /login if missing/invalid, and gives the
-// real role so pages route by role instead of a UI toggle (Gap #1).
+// Session bootstrap for a protected page: verifies cookies against
+// GET /api/auth/me, redirects to /login if missing/invalid.
 export function useCurrentUser() {
   const router = useRouter();
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -47,12 +51,10 @@ export function useCurrentUser() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const hasSession = await ensureAccessToken();
+      // Try /me even without a client hint — cookies may still be valid after
+      // a hard refresh (sessionStorage cleared).
+      await ensureFreshAccessToken();
       if (cancelled) return;
-      if (!hasSession) {
-        router.replace("/login");
-        return;
-      }
 
       const res = await api.get<{
         user: CurrentUser;
@@ -61,17 +63,16 @@ export function useCurrentUser() {
       }>("/api/auth/me");
       if (cancelled) return;
       if (res.status !== 200 || !res.data) {
-        // Confirmed auth death only: api-client keeps tokens on transient
-        // refresh failures, so a 401 with a refresh token still present must
-        // not bounce the user to login (unexpected logoffs).
-        if (res.status === 401 && !getRefreshToken()) {
+        if (res.status === 401 || res.status === 403) {
           setSession(null, null);
           router.replace("/login");
           return;
         }
+        // Transient — don't wipe session.
         setLoading(false);
         return;
       }
+      setSession(null, null, 3600);
       setUser(res.data.user);
       setCompany(res.data.company);
       setOfficeContact(res.data.office_contact ?? null);
@@ -84,13 +85,13 @@ export function useCurrentUser() {
   }, [router]);
 
   const logout = useCallback(async () => {
-  try {
-    await api.post("/api/auth/logout");
-  } finally {
-    setSession(null, null);
-    router.replace("/login");
-  }
-}, [router]);
+    try {
+      await api.post("/api/auth/logout");
+    } finally {
+      setSession(null, null);
+      router.replace("/login");
+    }
+  }, [router]);
 
   return { user, company, officeContact, loading, logout };
 }

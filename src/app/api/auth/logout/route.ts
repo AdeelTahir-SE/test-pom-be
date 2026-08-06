@@ -1,31 +1,28 @@
 import { ok, ApiError, toErrorResponse } from "@/lib/http/responses";
+import { clearAuthCookies, readAccessToken } from "@/lib/auth/cookies";
 import { getAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-function extractBearerToken(request: Request): string | null {
-  const header = request.headers.get("authorization");
-  if (!header) return null;
-  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
-  return match ? match[1]! : null;
-}
-
-// POST /api/auth/logout — invalidates the current session (any authenticated
-// identity: company user or platform admin). Not routed through withAuth
-// since it must work for both identity kinds without granting either extra access.
+// POST /api/auth/logout — invalidates the session and clears auth cookies.
 export async function POST(request: Request) {
   try {
-    const token = extractBearerToken(request);
-    if (!token) {
-      throw new ApiError("unauthorized", "Missing bearer token.");
-    }
+    const token = readAccessToken(request);
     const db = getAdminClient();
-    const { error } = await db.auth.admin.signOut(token, "global");
-    if (error) {
-      throw new ApiError("unauthorized", "Invalid or expired session.");
+
+    if (token) {
+      const { error } = await db.auth.admin.signOut(token, "global");
+      if (error) {
+        console.error("[logout_signout_failed]", error.message);
+      }
     }
-    return ok({ success: true });
+
+    const response = ok({ success: true });
+    clearAuthCookies(response);
+    return response;
   } catch (err) {
-    return toErrorResponse(err);
+    const response = toErrorResponse(err);
+    clearAuthCookies(response);
+    return response;
   }
 }

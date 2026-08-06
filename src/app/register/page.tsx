@@ -30,8 +30,6 @@ const MODULE_LABELS: Record<BusinessModule, string> = {
 };
 
 interface RegisterResponse {
-  access_token: string;
-  refresh_token: string;
   expires_in?: number;
   user: { id: string; role: "owner" };
   company: { id: string };
@@ -74,7 +72,7 @@ export default function RegisterPage() {
         return;
       }
 
-      setSession(res.data.access_token, res.data.refresh_token, res.data.expires_in);
+      setSession(null, null, res.data.expires_in ?? 3600);
       router.push("/dashboard/office");
     } catch (err) {
       logClientError("auth.register", err);

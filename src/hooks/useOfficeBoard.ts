@@ -26,12 +26,12 @@ export function useOfficeBoard(dayKey: string, enabled: boolean) {
     staleTime: 30_000,
   });
 
+  // No keepPreviousData — day-scoped lists must not flash the previous day's cards.
   const remindersQuery = useQuery({
     queryKey: queryKeys.office.reminders(dayKey),
     queryFn: () => fetchReminders(dayKey),
     enabled,
-    staleTime: 60_000,
-    placeholderData: keepPreviousData,
+    staleTime: 15_000,
   });
 
   // Background poll — must never trip the full-page loader (Mark → Ali).
@@ -112,11 +112,13 @@ export function useOfficeBoard(dayKey: string, enabled: boolean) {
     });
   };
 
+  /** Write into a specific day's cache (defaults to the board's selected day). */
   const setReminders = (
-    updater: ApiOfficeReminder[] | ((prev: ApiOfficeReminder[]) => ApiOfficeReminder[])
+    updater: ApiOfficeReminder[] | ((prev: ApiOfficeReminder[]) => ApiOfficeReminder[]),
+    forDayKey: string = dayKey
   ) => {
     queryClient.setQueryData<ApiOfficeReminder[]>(
-      queryKeys.office.reminders(dayKey),
+      queryKeys.office.reminders(forDayKey),
       (prev) => {
         const current = prev ?? [];
         return typeof updater === "function" ? updater(current) : updater;
@@ -186,6 +188,7 @@ export function useOfficeBoard(dayKey: string, enabled: boolean) {
   const refreshBoard = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.office.jobs() }),
+      queryClient.invalidateQueries({ queryKey: ["office", "reminders"] }),
       queryClient.invalidateQueries({ queryKey: queryKeys.office.notifications() }),
       queryClient.invalidateQueries({ queryKey: queryKeys.office.communications(dayKey) }),
       queryClient.invalidateQueries({ queryKey: ["office", "checklists"] }),

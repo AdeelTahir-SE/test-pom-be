@@ -2,11 +2,13 @@
 
 // Thin fetch wrapper for the frontend. Same-origin (frontend + backend share
 // one Next.js app now), so paths are plain "/api/..." — no base URL, no CORS.
+// Session tokens live in httpOnly cookies; JS only tracks expiry for proactive refresh.
 
-const TOKEN_KEY = "saas_access_token";
-const REFRESH_TOKEN_KEY = "saas_refresh_token";
 const EXPIRES_AT_KEY = "saas_expires_at";
+const SESSION_HINT_KEY = "saas_session_hint";
 const REFRESH_LOCK_NAME = "saas_auth_refresh";
+const LEGACY_TOKEN_KEY = "saas_access_token";
+const LEGACY_REFRESH_KEY = "saas_refresh_token";
 
 /** Refresh a bit before JWT expiry so polling doesn't all hit 401 at once. */
 const REFRESH_SKEW_MS = 60_000;
@@ -26,31 +28,15 @@ const AUTH_NO_REFRESH_PATHS = new Set([
 
 export type RefreshOutcome = "ok" | "auth_failed" | "transient" | "no_token";
 
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-export function setToken(token: string | null): void {
+function clearLegacyTokenStorage(): void {
   if (typeof window === "undefined") return;
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
-}
-
-export function getRefreshToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(REFRESH_TOKEN_KEY);
-}
-
-export function setRefreshToken(token: string | null): void {
-  if (typeof window === "undefined") return;
-  if (token) localStorage.setItem(REFRESH_TOKEN_KEY, token);
-  else localStorage.removeItem(REFRESH_TOKEN_KEY);
+  localStorage.removeItem(LEGACY_TOKEN_KEY);
+  localStorage.removeItem(LEGACY_REFRESH_KEY);
 }
 
 function getExpiresAt(): number | null {
   if (typeof window === "undefined") return null;
-  const raw = localStorage.getItem(EXPIRES_AT_KEY);
+  const raw = sessionStorage.getItem(EXPIRES_AT_KEY);
   if (!raw) return null;
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
@@ -58,48 +44,69 @@ function getExpiresAt(): number | null {
 
 function setExpiresAt(expiresAtMs: number | null): void {
   if (typeof window === "undefined") return;
-  if (expiresAtMs == null) localStorage.removeItem(EXPIRES_AT_KEY);
-  else localStorage.setItem(EXPIRES_AT_KEY, String(expiresAtMs));
+  if (expiresAtMs == null) sessionStorage.removeItem(EXPIRES_AT_KEY);
+  else sessionStorage.setItem(EXPIRES_AT_KEY, String(expiresAtMs));
 }
 
-/** Best-effort JWT exp (ms) — client hint only, not a security check. */
-function jwtExpiresAtMs(accessToken: string): number | null {
-  try {
-    const payload = accessToken.split(".")[1];
-    if (!payload) return null;
-    const json = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))) as {
-      exp?: number;
-    };
-    return typeof json.exp === "number" ? json.exp * 1000 : null;
-  } catch {
-    return null;
-  }
+function setSessionHint(active: boolean): void {
+  if (typeof window === "undefined") return;
+  if (active) sessionStorage.setItem(SESSION_HINT_KEY, "1");
+  else sessionStorage.removeItem(SESSION_HINT_KEY);
 }
 
-function resolveExpiresAtMs(
-  accessToken: string,
-  expiresInSeconds?: number | null
-): number | null {
-  if (typeof expiresInSeconds === "number" && expiresInSeconds > 0) {
-    return Date.now() + expiresInSeconds * 1000;
-  }
-  return jwtExpiresAtMs(accessToken);
+/** True if we believe cookies may still hold a session (hint only). */
+export function hasSessionHint(): boolean {
+  if (typeof window === "undefined") return false;
+  return sessionStorage.getItem(SESSION_HINT_KEY) === "1" || getExpiresAt() != null;
 }
 
-// Call after login/register with both tokens from the response so an expired
-// access token (1hr TTL) can be silently renewed instead of forcing a re-login.
+/**
+ * @deprecated Tokens are httpOnly cookies — always null from JS.
+ * Kept so older call sites compile; prefer hasSessionHint().
+ */
+export function getToken(): string | null {
+  return null;
+}
+
+/** @deprecated Refresh token is httpOnly — always null from JS. */
+export function getRefreshToken(): string | null {
+  return null;
+}
+
+export function setToken(_token: string | null): void {
+  // no-op — cookies are set by the server
+}
+
+export function setRefreshToken(_token: string | null): void {
+  // no-op — cookies are set by the server
+}
+
+/**
+ * After login/register/oauth/refresh: record expiry hint only.
+ * - setSession(null, null) → clear client hint
+ * - setSession(null, null, expiresIn) → mark logged in (cookies set by server)
+ */
 export function setSession(
-  accessToken: string | null,
-  refreshToken: string | null,
+  _accessToken: string | null,
+  _refreshToken: string | null,
   expiresInSeconds?: number | null
 ): void {
-  setToken(accessToken);
-  setRefreshToken(refreshToken);
-  if (accessToken) {
-    setExpiresAt(resolveExpiresAtMs(accessToken, expiresInSeconds));
-  } else {
+  clearLegacyTokenStorage();
+  if (
+    _accessToken == null &&
+    _refreshToken == null &&
+    (expiresInSeconds === undefined || expiresInSeconds === null)
+  ) {
     setExpiresAt(null);
+    setSessionHint(false);
+    return;
   }
+  const ttl =
+    typeof expiresInSeconds === "number" && expiresInSeconds > 0
+      ? expiresInSeconds
+      : 3600;
+  setExpiresAt(Date.now() + ttl * 1000);
+  setSessionHint(true);
 }
 
 export interface ApiError {
@@ -124,14 +131,12 @@ function shouldAttemptSilentRefresh(path: string): boolean {
 }
 
 function accessTokenNeedsRefresh(): boolean {
-  const token = getToken();
-  if (!token) return Boolean(getRefreshToken());
-  const expiresAt = getExpiresAt() ?? jwtExpiresAtMs(token);
-  if (expiresAt == null) return false;
+  const expiresAt = getExpiresAt();
+  // No client expiry hint (e.g. hard refresh) — ask the server via cookie refresh.
+  if (expiresAt == null) return true;
   return Date.now() >= expiresAt - REFRESH_SKEW_MS;
 }
 
-/** Single-flight refresh so concurrent requests in one tab share one attempt. */
 let refreshInFlight: Promise<RefreshOutcome> | null = null;
 
 async function withRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -143,30 +148,16 @@ async function withRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 async function performRefresh(): Promise<RefreshOutcome> {
-  const refreshTokenBefore = getRefreshToken();
-  if (!refreshTokenBefore) return "no_token";
-
   try {
     const res = await fetch("/api/auth/refresh", {
       method: "POST",
+      credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshTokenBefore }),
+      body: "{}",
     });
 
-    // Another tab may have already rotated the refresh token and written
-    // new access/refresh tokens while we were waiting on the network.
-    const tokenAfter = getToken();
-    const refreshAfter = getRefreshToken();
-    if (
-      refreshAfter &&
-      refreshAfter !== refreshTokenBefore &&
-      tokenAfter &&
-      !accessTokenNeedsRefresh()
-    ) {
-      return "ok";
-    }
-
     if (res.status === 401 || res.status === 403) {
+      setSession(null, null);
       return "auth_failed";
     }
     if (!res.ok) {
@@ -174,43 +165,15 @@ async function performRefresh(): Promise<RefreshOutcome> {
     }
 
     const json = (await res.json()) as {
-      data?: {
-        access_token?: string;
-        refresh_token?: string;
-        expires_in?: number;
-      };
+      data?: { expires_in?: number };
     };
-    const accessToken = json?.data?.access_token;
-    if (!accessToken) return "auth_failed";
-
-    setSession(
-      accessToken,
-      json.data?.refresh_token ?? refreshAfter ?? refreshTokenBefore,
-      json.data?.expires_in
-    );
+    setSession(null, null, json?.data?.expires_in ?? 3600);
     return "ok";
   } catch {
-    // Network blip — keep existing tokens so polling can retry later.
-    const tokenAfter = getToken();
-    const refreshAfter = getRefreshToken();
-    if (
-      refreshAfter &&
-      refreshAfter !== refreshTokenBefore &&
-      tokenAfter
-    ) {
-      return "ok";
-    }
     return "transient";
   }
 }
 
-/**
- * Exchange refresh token for a new access token.
- * - ok: session updated (or another tab already did)
- * - auth_failed: refresh truly dead — safe to force re-login
- * - transient: network/5xx — do NOT wipe the session
- * - no_token: nothing to refresh with
- */
 export async function tryRefreshSession(): Promise<boolean> {
   const outcome = await refreshSession();
   return outcome === "ok";
@@ -230,7 +193,6 @@ export async function refreshSession(): Promise<RefreshOutcome> {
   return refreshInFlight;
 }
 
-/** Proactively refresh if the access token is near expiry. */
 export async function ensureFreshAccessToken(): Promise<void> {
   if (!accessTokenNeedsRefresh()) return;
   await refreshSession();
@@ -253,16 +215,15 @@ async function request<T>(
     await ensureFreshAccessToken();
   }
 
-  const token = getToken();
   const isFormData = body instanceof FormData;
   const headers: Record<string, string> = {};
   if (!isFormData) headers["Content-Type"] = "application/json";
-  if (token) headers.Authorization = `Bearer ${token}`;
 
   let res: Response;
   try {
     res = await fetch(path, {
       method,
+      credentials: "same-origin",
       headers,
       body:
         body === undefined
@@ -288,26 +249,14 @@ async function request<T>(
     }
   }
 
-  // Access token expired or invalid — try one silent refresh-and-retry before
-  // giving up. /api/auth/me MUST refresh (Mark: refresh/new tab was wiping session).
-  // Login/register/refresh themselves stay excluded to avoid loops.
   if (res.status === 401 && shouldAttemptSilentRefresh(path) && retryCount < 2) {
     const outcome = await refreshSession();
     if (outcome === "ok") {
       return request<T>(method, path, body, retryCount + 1);
     }
     if (outcome === "transient") {
-      // Keep tokens; let the caller see the 401 without killing the session.
       return { status: res.status, data: json?.data, error: json?.error };
     }
-
-    // auth_failed / no_token — but another tab may have written fresher tokens.
-    const latest = getToken();
-    if (latest && latest !== token) {
-      return request<T>(method, path, body, retryCount + 1);
-    }
-
-    // Confirmed dead session — only then hard logout.
     forceLogoutToLogin();
   }
 

@@ -1,5 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
+import { ApiError } from "@/lib/http/responses";
+import { isTransientNetworkError } from "@/lib/http/transient";
 
 // Anon client used only to verify a user's Bearer JWT and to perform
 // email/password sign-in. It never has elevated privileges.
@@ -18,16 +20,33 @@ export function getAuthClient() {
   });
 }
 
+function throwIfTransientAuthNetwork(err: unknown): never | void {
+  if (!isTransientNetworkError(err)) return;
+  const message = err instanceof Error ? err.message : String(err);
+  console.error("[auth_supabase_network_failed]", message);
+  throw new ApiError(
+    "internal",
+    "Temporary connection problem. Please retry in a moment.",
+    message
+  );
+}
+
 // Verify a Bearer token and return the Supabase auth user (or null).
-// Network blips must not throw — uncaught fetch errors used to bubble as
-// opaque 500s on every API route (e.g. /api/office/communications).
+// Real invalid tokens → null (401). Network blips → ApiError (500) so clients
+// do not treat connectivity failure as "logged out".
 export async function verifyAccessToken(accessToken: string) {
   try {
     const client = getAuthClient();
     const { data, error } = await client.auth.getUser(accessToken);
-    if (error || !data.user) return null;
+    if (error) {
+      throwIfTransientAuthNetwork(error);
+      return null;
+    }
+    if (!data.user) return null;
     return data.user;
   } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throwIfTransientAuthNetwork(err);
     console.error(
       "[auth_verify_access_token_failed]",
       err instanceof Error ? err.message : String(err)

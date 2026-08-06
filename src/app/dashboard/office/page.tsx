@@ -76,6 +76,7 @@ import {
   localDayToScheduledAt,
   normalizeRemindTime,
   parseFlexibleDate,
+  reminderBelongsToDay,
   startOfLocalDay,
   toIsoDate,
 } from '@/lib/officeDate';
@@ -362,7 +363,10 @@ export default function OfficeDashboard() {
       jobBelongsToDay(j, selectedDayKey, boardTodayKey),
   );
 
-  const dayReminders = reminders;
+  // Same day-matching as column 1 / API — never show a reminder on the wrong day.
+  const dayReminders = reminders.filter((r) =>
+    reminderBelongsToDay(r, selectedDayKey, boardTodayKey),
+  );
   // Shared office channel (a6) — one conversation box per job for all office roles.
   const dayCommunications = communications;
   const communicationThreads = (() => {
@@ -712,6 +716,7 @@ export default function OfficeDashboard() {
 
     const remindDay =
       parseFlexibleDate(reminderData.date ?? '') ?? selectedDate;
+    const remindOnKey = toIsoDate(remindDay);
     const remindTime = normalizeRemindTime(reminderData.time);
     const tempId = newOptimisticId();
     const now = new Date().toISOString();
@@ -720,7 +725,7 @@ export default function OfficeDashboard() {
       title: reminderData.title,
       description: reminderData.description || null,
       is_urgent: reminderData.isUrgent,
-      remind_on: toIsoDate(remindDay),
+      remind_on: remindOnKey,
       remind_time: remindTime,
       actions,
       action_state: {},
@@ -731,7 +736,8 @@ export default function OfficeDashboard() {
       created_at: now,
     };
 
-    setReminders((prev) => [optimistic, ...prev]);
+    // Always write into the remind_on day's cache — not the currently viewed day.
+    setReminders((prev) => [optimistic, ...prev], remindOnKey);
 
     void (async () => {
       const res = await api.post<{ reminder: ApiOfficeReminder }>(
@@ -742,17 +748,18 @@ export default function OfficeDashboard() {
           is_urgent: reminderData.isUrgent,
           actions,
           phone: reminderData.phoneNumber || undefined,
-          remind_on: toIsoDate(remindDay),
+          remind_on: remindOnKey,
           remind_time: remindTime || undefined,
         },
       );
       if (res.status === 201 && res.data) {
-        setReminders((prev) =>
-          prev.map((r) => (r.id === tempId ? res.data!.reminder : r)),
+        setReminders(
+          (prev) => prev.map((r) => (r.id === tempId ? res.data!.reminder : r)),
+          remindOnKey,
         );
         void refreshBoard();
       } else {
-        setReminders((prev) => prev.filter((r) => r.id !== tempId));
+        setReminders((prev) => prev.filter((r) => r.id !== tempId), remindOnKey);
         showToast(res.error?.message ?? 'Opomnika ni bilo mogoče ustvariti.');
       }
     })();

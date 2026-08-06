@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ok, ApiError, toErrorResponse } from "@/lib/http/responses";
+import { applyAuthCookies } from "@/lib/auth/cookies";
 import { parseJsonBody } from "@/lib/validation/schemas";
 import { getAuthClient } from "@/lib/supabase/auth";
 import { getAdminClient } from "@/lib/supabase/admin";
@@ -62,10 +63,8 @@ export async function POST(request: Request) {
 
       if (!admin) {
         // Step 1 of Google registration: auth identity exists, company not yet.
-        return ok({
+        const response = ok({
           needs_registration: true,
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
           expires_in: data.session.expires_in,
           user: {
             id: data.user.id,
@@ -74,13 +73,13 @@ export async function POST(request: Request) {
           },
           company_id: null,
         });
+        applyAuthCookies(response, data.session);
+        return response;
       }
     }
 
-    return ok({
+    const response = ok({
       needs_registration: false,
-      access_token: data.session.access_token,
-      refresh_token: data.session.refresh_token,
       expires_in: data.session.expires_in,
       user: companyUser
         ? {
@@ -92,6 +91,8 @@ export async function POST(request: Request) {
         : { id: data.user.id, email: data.user.email },
       company_id: companyUser?.company_id ?? null,
     });
+    applyAuthCookies(response, data.session);
+    return response;
   } catch (err) {
     return toErrorResponse(err);
   }

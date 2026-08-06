@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/lib/useLanguage";
-import { api, getToken } from "@/lib/api-client";
+import { api, hasSessionHint } from "@/lib/api-client";
 import {
   isValidBusinessModule,
   type BusinessModule,
@@ -63,8 +63,7 @@ export default function CompleteProfilePage() {
       return;
     }
 
-    const token = getToken();
-    if (!token) {
+    if (!hasSessionHint()) {
       setSubmitting(false);
       setError("Manjka overitveni žeton. Prosimo, prijavite se znova.");
       return;

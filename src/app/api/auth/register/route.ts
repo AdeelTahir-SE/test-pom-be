@@ -1,4 +1,5 @@
 import { created, ApiError, toErrorResponse } from "@/lib/http/responses";
+import { applyAuthCookies } from "@/lib/auth/cookies";
 import { parseJsonBody, registerSchema } from "@/lib/validation/schemas";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { getAuthClient } from "@/lib/supabase/auth";
@@ -77,7 +78,7 @@ export async function POST(request: Request) {
       );
     }
 
-    return created({
+    const response = created({
       user: {
         id: userRow.id,
         email: userRow.email,
@@ -89,10 +90,10 @@ export async function POST(request: Request) {
         name: company.name,
         business_module: company.business_module,
       },
-      access_token: session.session.access_token,
-      refresh_token: session.session.refresh_token,
       expires_in: session.session.expires_in,
     });
+    applyAuthCookies(response, session.session);
+    return response;
   } catch (err) {
     return toErrorResponse(err);
   }

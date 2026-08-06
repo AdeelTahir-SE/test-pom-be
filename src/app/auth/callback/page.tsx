@@ -12,8 +12,6 @@ import Link from "next/link";
 
 interface OAuthLoginResponse {
   needs_registration?: boolean;
-  access_token?: string;
-  refresh_token?: string;
   expires_in?: number;
   user: {
     id: string;
@@ -66,13 +64,7 @@ export default function AuthCallbackPage() {
           return;
         }
 
-        if (res.data.access_token && res.data.refresh_token) {
-          setSession(
-            res.data.access_token,
-            res.data.refresh_token,
-            res.data.expires_in
-          );
-        }
+        setSession(null, null, res.data.expires_in ?? 3600);
 
         if (res.data.needs_registration || !res.data.user.role) {
           const pending = readPendingGoogleRegister();

@@ -12,6 +12,7 @@ export type ApiErrorCode =
   | "payload_too_large"
   | "unprocessable"
   | "payment_required"
+  | "too_many_requests"
   | "internal";
 
 const STATUS_BY_CODE: Record<ApiErrorCode, number> = {
@@ -23,6 +24,7 @@ const STATUS_BY_CODE: Record<ApiErrorCode, number> = {
   payload_too_large: 413,
   unprocessable: 422,
   payment_required: 402,
+  too_many_requests: 429,
   internal: 500,
 };
 

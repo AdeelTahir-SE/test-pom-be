@@ -8,8 +8,6 @@ import { logClientError } from "@/lib/clientError";
 import Link from "next/link";
 
 interface LoginResponse {
-  access_token: string;
-  refresh_token: string;
   expires_in?: number;
   user: { id: string; email: string; full_name?: string; role?: "owner" | "manager" | "worker" };
   company_id: string | null;
@@ -32,7 +30,7 @@ export default function LoginPage() {
 }, [t]);
 
   const routeAfterLogin = (data: LoginResponse) => {
-    setSession(data.access_token, data.refresh_token, data.expires_in);
+    setSession(null, null, data.expires_in ?? 3600);
     if (!data.user.role) {
       router.push("/admin");
     } else if (data.user.role === "worker") {

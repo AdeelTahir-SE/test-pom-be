@@ -2,15 +2,9 @@ import { created, ApiError, toErrorResponse } from "@/lib/http/responses";
 import { parseJsonBody, googleRegisterSchema } from "@/lib/validation/schemas";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { verifyAccessToken } from "@/lib/supabase/auth";
+import { readAccessToken } from "@/lib/auth/cookies";
 
 export const dynamic = "force-dynamic";
-
-function extractBearerToken(request: Request): string | null {
-  const header = request.headers.get("authorization") ?? request.headers.get("Authorization");
-  if (!header) return null;
-  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
-  return match ? match[1]! : null;
-}
 
 type CompanyWithOwnerResult = {
   user: { id: string; email: string; full_name: string; role: string };
@@ -18,13 +12,10 @@ type CompanyWithOwnerResult = {
 };
 
 // POST /api/auth/register/google — step 2 after Google OAuth for users who
-// do not yet have a public.users / company row. Requires the Bearer token
-// from /api/auth/oauth/callback (needs_registration: true).
-// Session tokens stay with the client from OAuth step 1 — this endpoint
-// only returns application data (user + company).
+// do not yet have a public.users / company row. Auth from cookie or Bearer.
 export async function POST(request: Request) {
   try {
-    const token = extractBearerToken(request);
+    const token = readAccessToken(request);
     if (!token) {
       throw new ApiError("unauthorized", "Missing or invalid authentication.");
     }
