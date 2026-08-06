@@ -11,9 +11,9 @@ click/type, and what should happen.
   affect functionality either way and will be removed before launch.
 - Voice messages will actually transcribe for real here (unlike when I test
   them myself) — you're running the server on your own machine with real
-  internet access, so it reaches DeepGram normally.
+  internet access, so it reaches Deepgram normally.
 
----
+----
 
 ## 1. Registration (Owner / Office account)
 
