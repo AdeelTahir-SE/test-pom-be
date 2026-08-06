@@ -193,12 +193,12 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
               
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 rounded-[14px] bg-[#2b5493] text-white flex items-center justify-center text-[18px] font-bold shadow-md shadow-blue-900/20 shrink-0">
-                  {workerId ? getInitials(selectedWorkerName) : 'A'}
+                  {workerId ? getInitials(selectedWorkerName) : 'AH'}
                 </div>
                  <div className="flex flex-col overflow-hidden">
-                   <div className="font-bold text-[#0f172a] text-[16px] truncate">{selectedWorkerName || 'Aleks'}</div>
+                   <div className="font-bold text-[#0f172a] text-[16px] truncate">{selectedWorkerName || 'Anthony Hopkins'}</div>
                    <div className="text-[#64748b] text-[13px] font-medium mt-0.5">
-                     Tel. {selectedWorkerPhone || '041-005-478'}
+                     Tel. {selectedWorkerPhone || '041-045-478'}
                    </div>
                  </div>
               </div>
@@ -401,7 +401,7 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                     </svg>
                   </button>
                   <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
-                    {selectedWorkerName || 'Aleks'}
+                    {selectedWorkerName || 'Anthony Hopkins'}
                   </span>
                   <h3 className="text-2xl font-bold tracking-tight text-[#0f172a]">
                     {lang === 'sl' ? 'Dodaj nalogo' : 'Add subtask'}

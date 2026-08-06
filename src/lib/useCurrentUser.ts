@@ -21,7 +21,6 @@ export interface CurrentCompany {
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
   subscription_status?: string | null;
-  created_at: string;
 }
 
 export interface OfficeContact {

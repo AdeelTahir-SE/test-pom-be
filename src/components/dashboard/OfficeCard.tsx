@@ -13,7 +13,7 @@ export interface OfficeCardThreadItem {
 
 interface OfficeCardProps {
   message: Message;
-  onDismiss?: () => void;
+  onDismiss: () => void;
   onReply?: () => void;
   iconType?: "mic" | "document";
   showRedButton?: boolean;
@@ -214,7 +214,7 @@ export function OfficeCard({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              onDismiss?.();
+              onDismiss();
             }}
             type="button"
             style={{

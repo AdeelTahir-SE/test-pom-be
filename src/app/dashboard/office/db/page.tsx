@@ -682,43 +682,11 @@ export default function DatabaseDashboard() {
       className="min-h-screen bg-[#f3f5f8] flex text-slate-800 font-sans selection:bg-blue-500/10 selection:text-blue-600"
     >
       {/* LEFT SIDEBAR */}
-      <aside className="w-64 bg-white border-r border-slate-200 shrink-0 flex flex-col justify-between py-4 px-4">
+      <aside className="w-64 bg-white border-r border-slate-200 shrink-0 flex flex-col justify-between py-6 px-4">
         <div className="flex flex-col gap-6">
           {/* Logo */}
           <div className="px-3 flex items-center gap-2">
-            <Link
-              href="/"
-              className="flex items-center justify-center rounded-full transition-all duration-300 hover:-translate-y-0.5"
-              style={{
-                width: '111px',
-                height: '34px',
-                padding: '8px 16px',
-                boxSizing: 'border-box',
-                background:
-                  'linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)',
-                border: '1px solid #1D4ED8',
-                boxShadow:
-                  '0px 5px 14px rgba(59,130,246,0.28), inset 0px 1px 0px 1px rgba(255,255,255,0.35)',
-                borderRadius: '9999px',
-              }}
-            >
-              <span
-                style={{
-                  fontFamily: 'Inter, sans-serif',
-                  fontWeight: 400,
-                  fontSize: '12px',
-                  lineHeight: '16px',
-                  letterSpacing: '0',
-                  color: '#FFFFFF',
-                  whiteSpace: 'nowrap',
-                  WebkitFontSmoothing: 'antialiased',
-                  MozOsxFontSmoothing: 'grayscale',
-                  textRendering: 'geometricPrecision',
-                }}
-              >
-                pomocnik.net
-              </span>
-            </Link>
+            <Logo className="h-6 w-auto" />
           </div>
 
           {/* User account / Pill Button (8px Border Radius) */}
@@ -842,17 +810,11 @@ export default function DatabaseDashboard() {
         <header className="h-14 bg-transparent flex items-center justify-end px-8 shrink-0">
           <div className="flex items-center gap-3">
             <div className="flex flex-col items-end">
-              <span className="text-xs font-bold text-slate-700">
-                {user?.full_name?.split(' ')[0] || 'Uporabnik'}
-              </span>
+              <span className="text-xs font-semibold text-slate-900">{user?.full_name}</span>
               <span className="text-[10px] text-slate-400">{user?.email}</span>
             </div>
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-semibold">
-              {user?.full_name
-                ?.split(' ')
-                .map((n) => n[0])
-                .join('')
-                .toUpperCase() || 'U'}
+            <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center font-bold text-xs">
+              {user ? user.full_name.slice(0, 2).toUpperCase() : 'U'}
             </div>
             <button
               onClick={logout}
