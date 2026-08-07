@@ -356,6 +356,7 @@ export function WorkerDetailModal({
   }, [worker, tasksSyncNonce]);
 
   const [deleteCardOpen, setDeleteCardOpen] = React.useState(false);
+  const [isDeletingCard, setIsDeletingCard] = React.useState(false);
   const [stepPosition, setStepPosition] = React.useState(tasks.length + 1);
   const queryClient = useQueryClient();
   const jobReady = !!jobId && !isOptimisticId(jobId);
@@ -896,6 +897,13 @@ export function WorkerDetailModal({
     </div>
   );
 
+  const firstIncompleteId = tasks.find((t) => !t.completed)?.id ?? null;
+
+  const taskIds = React.useMemo(() => tasks.map((t) => t.id), [tasks]);
+
+  const canPreviewAttachment = (att: AttachmentItem): boolean =>
+  !!att.documentPreview && !!att.documentType && att.documentType !== "other";
+
   if (!worker) {
     if (!isOpen) return null;
     return (
@@ -918,13 +926,6 @@ export function WorkerDetailModal({
       </Dialog>
     );
   }
-
-  const firstIncompleteId = tasks.find((t) => !t.completed)?.id ?? null;
-
-  const taskIds = React.useMemo(() => tasks.map((t) => t.id), [tasks]);
-
-  const canPreviewAttachment = (att: AttachmentItem): boolean =>
-  !!att.documentPreview && !!att.documentType && att.documentType !== "other";
 
 function TimelineIcon({ type }: { type: TimelineItem["type"] }) {
   switch (type) {
@@ -2011,11 +2012,13 @@ function TimelineIcon({ type }: { type: TimelineItem["type"] }) {
                         </button>
                         <button
                           type="button"
+                          disabled={missingAttachment}
                           onClick={async () => {
+                            if (missingAttachment) return;
                             await handleToggleComplete(task);
                             setConfirmStepId(null);
                           }}
-                          className="flex-1 h-12 rounded-[12px] bg-[#1B3A6B] text-white font-bold text-[13px] uppercase tracking-wider hover:bg-[#152e55] transition-colors shadow-lg shadow-blue-900/10"
+                          className="flex-1 h-12 rounded-[12px] bg-[#1B3A6B] text-white font-bold text-[13px] uppercase tracking-wider hover:bg-[#152e55] disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-lg shadow-blue-900/10"
                         >
                           {t("modalConfirmStepSubmit")}
                         </button>
@@ -2119,7 +2122,6 @@ function TimelineIcon({ type }: { type: TimelineItem["type"] }) {
                   type="button"
                   onClick={() => {
                     setDeleteCardOpen(false);
-                    onOpenChange(false);
                     onDeleteCard?.();
                   }}
                   className="flex-1 h-10 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition-colors"

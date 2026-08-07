@@ -42,9 +42,9 @@ interface TaskRowProps {
   disabled?: boolean;
 }
 
-/** Show clip when a file exists OR the step was marked as requiring one. */
+/** Show clip only when a file actually exists. */
 function showsAttachmentIcon(task: TaskItem): boolean {
-  return !!(task.hasAttachment || task.requiresAttachment);
+  return !!task.hasAttachment;
 }
 
 function TaskRowTrailing({
@@ -246,43 +246,8 @@ export function WorkerCard({
           {worker.name.toUpperCase()} • {date} • {orderId}
         </span>
 
-        {/* Soft-delete (no phone calling on cards — Mark a8) */}
-        {onDismiss ? (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDismiss();
-            }}
-            style={{
-              boxSizing: "border-box",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "0px",
-              width: "36px",
-              height: "36px",
-              background: "rgba(255, 255, 255, 0.9)",
-              border: "1px solid #FFFFFF",
-              borderRadius: "12px",
-              boxShadow:
-                "0px 8px 18px -12px rgba(15, 23, 42, 0.35), inset 0px 1px 0px 1px #FFFFFF",
-              cursor: "pointer",
-            }}
-            className="shrink-0"
-            title={t("modalDeleteCard")}
-            aria-label={t("modalDeleteCard")}
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path
-                d="M14.6066 14.6066L7.80336 7.80336M7.80336 7.80336L1 1M7.80336 7.80336L14.6067 1M7.80336 7.80336L1 14.6067"
-                stroke="#6D778E"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-        ) : (
+        <div className="flex items-center gap-2">
+          {/* Progress indicator - always shown */}
           <div
             style={{
               width: "36px",
@@ -320,7 +285,45 @@ export function WorkerCard({
               /{total}
             </span>
           </div>
-        )}
+
+          {/* Soft-delete (no phone calling on cards — Mark a8) - only for dummy cards */}
+          {onDismiss && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDismiss();
+              }}
+              style={{
+                boxSizing: "border-box",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "0px",
+                width: "36px",
+                height: "36px",
+                background: "rgba(255, 255, 255, 0.9)",
+                border: "1px solid #FFFFFF",
+                borderRadius: "12px",
+                boxShadow:
+                  "0px 8px 18px -12px rgba(15, 23, 42, 0.35), inset 0px 1px 0px 1px #FFFFFF",
+                cursor: "pointer",
+              }}
+              className="shrink-0"
+              title={t("modalDeleteCard")}
+              aria-label={t("modalDeleteCard")}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="M14.6066 14.6066L7.80336 7.80336M7.80336 7.80336L1 1M7.80336 7.80336L14.6067 1M7.80336 7.80336L1 14.6067"
+                  stroke="#6D778E"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Row 2: Task title card + task list ── */}

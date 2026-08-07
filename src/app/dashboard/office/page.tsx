@@ -272,19 +272,20 @@ export default function OfficeDashboard() {
 
   // Template/example cards shown in an otherwise-empty column so first-time
   // users see what a real card looks like, instead of a blank "no items" box.
-  // Dismissing one only hides it for today — it reappears tomorrow if the
-  // column is still empty, so the key includes today's date.
+  // Dummy cards only show on the company creation date.
   const [dismissedDummies, setDismissedDummies] = useState<
     Record<string, boolean>
   >({});
-  const todayKey = () => new Date().toISOString().slice(0, 10);
-  const isTodaySelected = selectedDayKey === todayKey();
+  const companyCreationDate = company?.created_at 
+    ? new Date(company.created_at).toISOString().slice(0, 10) 
+    : null;
+  const isCompanyCreationDateSelected = companyCreationDate && selectedDayKey === companyCreationDate;
   const shouldShowDummy = (column: 'teren' | 'pisarna' | 'komunikacija') => {
-    if (!isTodaySelected) return false;
+    if (!isCompanyCreationDateSelected) return false;
     return !dismissedDummies[column];
   };
   const dismissDummy = (column: 'teren' | 'pisarna' | 'komunikacija') => {
-    const key = `dummy_dismissed_${column}_${todayKey()}`;
+    const key = `dummy_dismissed_${column}_${companyCreationDate}`;
     window.localStorage.setItem(key, '1');
     setDismissedDummies((prev) => ({ ...prev, [column]: true }));
   };
@@ -293,7 +294,7 @@ export default function OfficeDashboard() {
     for (const column of ['teren', 'pisarna', 'komunikacija'] as const) {
       initial[column] =
         window.localStorage.getItem(
-          `dummy_dismissed_${column}_${todayKey()}`,
+          `dummy_dismissed_${column}_${companyCreationDate}`,
         ) === '1';
     }
     setDismissedDummies(initial);
@@ -309,7 +310,7 @@ export default function OfficeDashboard() {
         window.history.replaceState({}, '', window.location.pathname);
       }
     }
-  }, []);
+  }, [companyCreationDate]);
 
   // Mobile/tablet: horizontal snap between the three columns
   const containerRef = useRef<HTMLDivElement>(null);
@@ -890,6 +891,10 @@ export default function OfficeDashboard() {
   const handleDismissJob = async (id: string) => {
     if (isOptimisticId(id)) {
       setJobs((prev) => prev.filter((j) => j.id !== id));
+      if (selectedWorkerJobId === id) {
+        setIsWorkerDetailOpen(false);
+        setSelectedWorkerJobId(null);
+      }
       return;
     }
     const snapshot = jobs;
@@ -1050,7 +1055,7 @@ export default function OfficeDashboard() {
   }
 
   return (
-    <div className="min-h-screen text-slate-800 dark:text-slate-100 overflow-x-hidden selection:bg-[#1B3A6B]/10 selection:text-[#1B3A6B] relative bg-[#f3f5f8] dark:bg-[#0b0f19]">
+    <div className="min-h-screen flex flex-col text-slate-800 dark:text-slate-100 overflow-x-hidden selection:bg-[#1B3A6B]/10 selection:text-[#1B3A6B] relative bg-[#f3f5f8] dark:bg-[#0b0f19]">
       <style>{`
         @media (max-width: 1023px) {
           .office-grid {
@@ -1126,7 +1131,7 @@ export default function OfficeDashboard() {
                     boxShadow: '0px 1px 2px rgba(15,23,42,0.04)',
                   }}
                 >
-                  <span className="text-sm font-bold tracking-tight text-white" style={{ fontFamily: "'Inter', sans-serif" }}>
+                  <span className="text-xs font-normal tracking-tight text-white" style={{ fontFamily: "'Inter', sans-serif" }}>
                     pomocnik.net
                   </span>
                 </Link>
@@ -1139,7 +1144,7 @@ export default function OfficeDashboard() {
                   boxShadow: '0px 1px 2px rgba(15, 23, 42, 0.04), inset 0px 1px 0px 1px #FFFFFF',
                 }}
               >
-                <span className="text-xs font-semibold text-slate-600">
+                <span className="text-xs font-normal text-slate-600">
                   {companyNameOverride ?? company?.name}
                 </span>
               </div>
@@ -1200,7 +1205,7 @@ export default function OfficeDashboard() {
         </nav>
       </header>
 
-      <div className="max-w-7xl mx-auto px-6" style={{ paddingTop: '32px' }}>
+      <div className="w-full max-w-[1232px] mx-auto px-6 flex-1" style={{ paddingTop: '32px' }}>
         <OfficeDayHeader
           title={t('officeHeading')}
           selectedDate={selectedDate}
@@ -1499,7 +1504,6 @@ export default function OfficeDashboard() {
                             ) || formatSiDate(new Date(job.created_at))
                           }
                           orderId={jobNumber(job)}
-                          onDismiss={() => requestDismissJob(job.id)}
                           onClick={() => {
                             setSelectedWorkerJobId(job.id);
                             setIsWorkerDetailOpen(true);

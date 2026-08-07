@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Logo } from '@/components/Logo';
 import { useLanguage } from '@/lib/useLanguage';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { api } from '@/lib/api-client';
@@ -686,7 +685,23 @@ export default function DatabaseDashboard() {
         <div className="flex flex-col gap-6">
           {/* Logo */}
           <div className="px-3 flex items-center gap-2">
-            <Logo className="h-6 w-auto" />
+            <Link
+              href="/"
+              className="flex items-center justify-center rounded-full hover:-translate-y-0.5 transition-all duration-300"
+              style={{
+                boxSizing: 'border-box',
+                padding: '8px 16px',
+                width: '111px',
+                height: '34px',
+                background: 'linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)',
+                border: 'none',
+                boxShadow: '0px 1px 2px rgba(15,23,42,0.04)',
+              }}
+            >
+              <span className="text-sm font-bold tracking-tight text-white" style={{ fontFamily: "'Inter', sans-serif" }}>
+                pomocnik.net
+              </span>
+            </Link>
           </div>
 
           {/* User account / Pill Button (8px Border Radius) */}
@@ -808,13 +823,23 @@ export default function DatabaseDashboard() {
       <div className="flex-1 flex flex-col min-h-screen">
         {/* TOP HEADER */}
         <header className="h-14 bg-transparent flex items-center justify-end px-8 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col items-end">
-              <span className="text-xs font-semibold text-slate-900">{user?.full_name}</span>
-              <span className="text-[10px] text-slate-400">{user?.email}</span>
-            </div>
-            <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center font-bold text-xs">
-              {user ? user.full_name.slice(0, 2).toUpperCase() : 'U'}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mr-2 pr-2 border-r border-slate-200">
+              <div className="flex flex-col text-right">
+                <span className="text-xs font-bold text-slate-700">
+                  {user?.full_name?.split(' ')[0] || 'Uporabnik'}
+                </span>
+                <span className="text-xs font-normal text-slate-500">
+                  {user?.email}
+                </span>
+              </div>
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-semibold">
+                {user?.full_name
+                  ?.split(' ')
+                  .map((n) => n[0])
+                  .join('')
+                  .toUpperCase() || 'U'}
+              </div>
             </div>
             <button
               onClick={logout}
