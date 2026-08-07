@@ -364,6 +364,21 @@ export default function OfficeDashboard() {
       jobBelongsToDay(j, selectedDayKey, boardTodayKey),
   );
 
+  // Compose (col 3): only workers with an open TEREN card on the selected day (Mark).
+  const composeWorkerOptions = (() => {
+    const seen = new Set<string>();
+    const options: { id: string; name: string }[] = [];
+    for (const j of activeJobs) {
+      if (!j.worker_id || seen.has(j.worker_id)) continue;
+      seen.add(j.worker_id);
+      options.push({
+        id: j.worker_id,
+        name: workerById.get(j.worker_id)?.full_name || 'Delavec',
+      });
+    }
+    return options.sort((a, b) => a.name.localeCompare(b.name, 'sl'));
+  })();
+
   // Same day-matching as column 1 / API — never show a reminder on the wrong day.
   const dayReminders = reminders.filter((r) =>
     reminderBelongsToDay(r, selectedDayKey, boardTodayKey),
@@ -943,6 +958,22 @@ export default function OfficeDashboard() {
     );
     setReplyMessages(res.data?.messages ?? []);
     setReplyLoading(false);
+  };
+
+  /** Compose only for workers with a TEREN card on the selected day (Mark). */
+  const findComposeJobForWorker = (workerId: string) =>
+    activeJobs.find((j) => j.worker_id === workerId) ?? null;
+
+  const handleComposeMessage = (workerId: string) => {
+    const job = findComposeJobForWorker(workerId);
+    if (!job) {
+      showToast(
+        'Ta delavec nima odprte kartice za ta dan. Dodajte kartico v stolpec TEREN.',
+      );
+      return;
+    }
+    setIsComposeOpen(false);
+    void handleOpenReply(job.id);
   };
 
   const handleSendReply = async () => {
@@ -2048,12 +2079,17 @@ export default function OfficeDashboard() {
                 <select
                   value={composeWorkerId}
                   onChange={(e) => setComposeWorkerId(e.target.value)}
-                  className="w-full h-11 pl-4 pr-10 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all appearance-none cursor-pointer"
+                  disabled={composeWorkerOptions.length === 0}
+                  className="w-full h-11 pl-4 pr-10 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all appearance-none cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <option value="" disabled>Izberite delavca</option>
-                  {workers.map((w) => (
+                  <option value="" disabled>
+                    {composeWorkerOptions.length === 0
+                      ? 'Ni delavcev z odprto kartico danes'
+                      : 'Izberite delavca'}
+                  </option>
+                  {composeWorkerOptions.map((w) => (
                     <option key={w.id} value={w.id}>
-                      {w.full_name}
+                      {w.name}
                     </option>
                   ))}
                 </select>
@@ -2078,12 +2114,8 @@ export default function OfficeDashboard() {
                 type="button"
                 disabled={!composeWorkerId}
                 onClick={() => {
-                  const job = activeJobs.find(
-                    (j) => j.worker_id === composeWorkerId,
-                  );
-                  if (!job) return;
-                  setIsComposeOpen(false);
-                  void handleOpenReply(job.id);
+                  if (!composeWorkerId) return;
+                  handleComposeMessage(composeWorkerId);
                 }}
                 className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-100 hover:border-blue-200 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed group"
               >
@@ -2120,12 +2152,8 @@ export default function OfficeDashboard() {
                 type="button"
                 disabled={!composeWorkerId}
                 onClick={() => {
-                  const job = activeJobs.find(
-                    (j) => j.worker_id === composeWorkerId,
-                  );
-                  if (!job) return;
-                  setIsComposeOpen(false);
-                  void handleOpenReply(job.id);
+                  if (!composeWorkerId) return;
+                  handleComposeMessage(composeWorkerId);
                 }}
                 className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-100 hover:border-blue-200 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed group"
               >

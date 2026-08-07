@@ -23,6 +23,7 @@ export default function LandingPage() {
       history.replaceState(null, "", window.location.pathname + window.location.search);
     }
     window.scrollTo(0, 0);
+    console.log("build 0.1");
   }, []);
 
   // Lerp Mouse Trail Effect for Liquid Cursor Glow
