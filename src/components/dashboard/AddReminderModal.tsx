@@ -390,6 +390,7 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
                       type="button"
                       onClick={() => {
                         setHasConfirm(!hasConfirm);
+                        setHasDecline(false);
                       }}
                       className="flex items-center gap-3 text-left bg-transparent border-none p-0 outline-none cursor-pointer group"
                     >
@@ -412,6 +413,7 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
                       type="button"
                       onClick={() => {
                         setHasDecline(!hasDecline);
+                        setHasConfirm(false);
                       }}
                       className="flex items-center gap-3 text-left bg-transparent border-none p-0 outline-none cursor-pointer group"
                     >

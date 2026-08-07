@@ -897,13 +897,6 @@ export function WorkerDetailModal({
     </div>
   );
 
-  const firstIncompleteId = tasks.find((t) => !t.completed)?.id ?? null;
-
-  const taskIds = React.useMemo(() => tasks.map((t) => t.id), [tasks]);
-
-  const canPreviewAttachment = (att: AttachmentItem): boolean =>
-  !!att.documentPreview && !!att.documentType && att.documentType !== "other";
-
   if (!worker) {
     if (!isOpen) return null;
     return (
@@ -2018,7 +2011,7 @@ function TimelineIcon({ type }: { type: TimelineItem["type"] }) {
                             await handleToggleComplete(task);
                             setConfirmStepId(null);
                           }}
-                          className="flex-1 h-12 rounded-[12px] bg-[#1B3A6B] text-white font-bold text-[13px] uppercase tracking-wider hover:bg-[#152e55] disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-lg shadow-blue-900/10"
+                          className="flex-1 h-12 rounded-[12px] bg-[#1B3A6B] text-white font-bold text-[13px] uppercase tracking-wider hover:bg-[#152e55] transition-colors shadow-lg shadow-blue-900/10"
                         >
                           {t("modalConfirmStepSubmit")}
                         </button>

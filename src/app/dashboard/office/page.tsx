@@ -1207,7 +1207,7 @@ export default function OfficeDashboard() {
                   <SearchIcon className="h-5 w-5" />
                 </button>
                 <button
-                  onClick={() => setIsTeamOpen(true)}
+                  onClick={() => setIsAddWorkerOpen(true)}
                   title={t('teamTitle')}
                   className="hidden sm:block p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
                 >
@@ -2002,6 +2002,7 @@ export default function OfficeDashboard() {
         isOpen={isAddWorkerOpen}
         onOpenChange={setIsAddWorkerOpen}
         onAddWorker={handleAddWorker}
+        existingUsers={workers}
       />
 
       <TeamManagementModal
@@ -2079,17 +2080,12 @@ export default function OfficeDashboard() {
                 <select
                   value={composeWorkerId}
                   onChange={(e) => setComposeWorkerId(e.target.value)}
-                  disabled={composeWorkerOptions.length === 0}
-                  className="w-full h-11 pl-4 pr-10 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all appearance-none cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full h-11 pl-4 pr-10 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all appearance-none cursor-pointer"
                 >
-                  <option value="" disabled>
-                    {composeWorkerOptions.length === 0
-                      ? 'Ni delavcev z odprto kartico danes'
-                      : 'Izberite delavca'}
-                  </option>
-                  {composeWorkerOptions.map((w) => (
+                  <option value="" disabled>Izberite delavca</option>
+                  {workers.map((w) => (
                     <option key={w.id} value={w.id}>
-                      {w.name}
+                      {w.full_name}
                     </option>
                   ))}
                 </select>
@@ -2117,13 +2113,13 @@ export default function OfficeDashboard() {
                   if (!composeWorkerId) return;
                   handleComposeMessage(composeWorkerId);
                 }}
-                className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-100 hover:border-blue-200 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed group"
+                className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-blue-200 transition-all cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed group"
               >
                 <div
                   className={`w-16 h-16 rounded-[20px] flex items-center justify-center border transition-all ${
                     composeWorkerId
                       ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-lg shadow-[#1B3A6B]/20"
-                      : "bg-white border-[#cbd5e1] text-slate-400"
+                      : "bg-white border-slate-200 text-slate-400"
                   }`}
                 >
                   <svg
@@ -2155,13 +2151,13 @@ export default function OfficeDashboard() {
                   if (!composeWorkerId) return;
                   handleComposeMessage(composeWorkerId);
                 }}
-                className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-100 hover:border-blue-200 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed group"
+                className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-blue-200 transition-all cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed group"
               >
                 <div
                   className={`w-16 h-16 rounded-[20px] flex items-center justify-center border transition-all ${
                     composeWorkerId
                       ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-lg shadow-[#1B3A6B]/20"
-                      : "bg-white border-[#cbd5e1] text-slate-400"
+                      : "bg-white border-slate-200 text-slate-400"
                   }`}
                 >
                   <svg

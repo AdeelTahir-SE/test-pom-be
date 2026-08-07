@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useLanguage } from '@/lib/useLanguage';
 import { isValidPhone, normalizePhone } from '@/lib/phone';
+import { useCurrentUser } from '@/lib/useCurrentUser';
+import { Building2 } from 'lucide-react';
 
 interface AddWorkerCardProps {
   isOpen: boolean;
@@ -15,6 +17,10 @@ interface AddWorkerCardProps {
     role: 'worker' | 'manager';
     password: string;
   }) => void;
+  existingUsers?: {
+    full_name: string;
+    role: string;
+  }[];
 }
 
 function getInitials(name?: string): string {
@@ -33,8 +39,10 @@ export function AddWorkerCard({
   isOpen,
   onOpenChange,
   onAddWorker,
+  existingUsers = [],
 }: AddWorkerCardProps) {
   const { t } = useLanguage();
+  const { user, company } = useCurrentUser();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -85,6 +93,22 @@ export function AddWorkerCard({
         className="w-full max-w-[calc(100%-2rem)] min-[450px]:w-[450px] min-[820px]:w-[760px] sm:max-w-[calc(100%-2rem)] outline-none mx-auto p-3 bg-[#f1f5f9] rounded-[24px] min-[820px]:rounded-[32px] border-none shadow-2xl flex flex-col gap-0"
       >
         <DialogTitle className="sr-only">Dodaj sodelavca</DialogTitle>
+
+        <style dangerouslySetInnerHTML={{ __html: `
+          .custom-ios-scrollbar::-webkit-scrollbar {
+            width: 5px;
+          }
+          .custom-ios-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          .custom-ios-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(109, 119, 142, 0.45);
+            border-radius: 9999px;
+          }
+          .custom-ios-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(109, 119, 142, 0.65);
+          }
+        `}} />
         
         <div className="flex flex-col min-[820px]:flex-row items-stretch w-full" style={{ gap: '12px' }}>
           {/* Left Column */}
@@ -104,32 +128,65 @@ export function AddWorkerCard({
               <div className="text-[10px] font-bold text-slate-700 uppercase tracking-widest mb-4">Profil</div>
               
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-[14px] bg-[#2b5493] text-white flex items-center justify-center text-[18px] font-bold shadow-md shadow-blue-900/20 shrink-0">
-                  {name ? getInitials(name) : 'JN'}
+                <div className="w-14 h-14 rounded-[14px] bg-[#2b5493] text-white flex items-center justify-center shadow-md shadow-blue-900/20 shrink-0">
+                  <Building2 className="w-7 h-7" />
                 </div>
                 <div className="flex flex-col overflow-hidden">
-                  <div className="font-bold text-[#0f172a] text-[16px] truncate">{name || 'Janez Novak'}</div>
-                  <div className="text-[#64748b] text-[13px] font-medium mt-0.5">{role === 'worker' ? 'Teren' : 'Pisarna'}</div>
+                  <div className="font-semibold text-[#0f172a] text-[14px] truncate">{company?.name || 'Asd'}</div>
+                  <div className="text-[#64748b] text-[12px] font-normal mt-0.5 truncate">{user?.email || ''}</div>
                 </div>
               </div>
             </div>
 
-            {/* DOSTOP Card */}
-            <div className="bg-white rounded-[20px] p-6 shadow-sm border border-slate-100 flex-1 flex flex-col">
-              <div className="text-[10px] font-bold text-slate-700 uppercase tracking-widest mb-5">Dostop</div>
-              
-              <div className="flex flex-col gap-3.5">
-                <div className={`flex items-center gap-3 ${role === 'worker' ? 'text-[#1c305a] font-bold' : 'text-slate-500 font-bold'}`}>
-                  <div className={`w-2 h-2 rounded-full ${role === 'worker' ? 'bg-[#1c305a]' : 'bg-[#cbd5e1]'}`}></div>
-                  <span className="text-[13px]">Teren — omejen dostop</span>
+            {/* MEMBERS LIST Card */}
+            <div className="bg-white rounded-[20px] p-6 shadow-sm border border-slate-100 flex-1 flex flex-col justify-between">
+              <div className="flex-1 flex flex-col gap-4 overflow-y-auto max-h-[220px] pr-1 custom-ios-scrollbar">
+                {/* PISARNA Section */}
+                <div>
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                    PISARNA
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {existingUsers.filter(u => u.role === 'manager' || u.role === 'owner' || u.role === 'director').length > 0 ? (
+                      existingUsers
+                        .filter(u => u.role === 'manager' || u.role === 'owner' || u.role === 'director')
+                        .map((u, i) => (
+                          <div key={i} className="flex items-center gap-1.5 text-[12px] font-light text-[#19233B] leading-none py-0.5">
+                            <div className="w-[3px] h-[3px] rounded-full bg-[#19233B] shrink-0"></div>
+                            <span className="truncate">{u.full_name}</span>
+                          </div>
+                        ))
+                    ) : (
+                      <div className="text-[11px] italic text-slate-400 pl-3">Ni članov</div>
+                    )}
+                  </div>
                 </div>
-                <div className={`flex items-center gap-3 ${role === 'manager' ? 'text-[#1c305a] font-bold' : 'text-slate-500 font-bold'}`}>
-                  <div className={`w-2 h-2 rounded-full ${role === 'manager' ? 'bg-[#1c305a]' : 'bg-[#cbd5e1]'}`}></div>
-                  <span className="text-[13px]">Pisarna — poln dostop</span>
+
+                {/* TEREN Section */}
+                <div>
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                    TEREN
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {existingUsers.filter(u => u.role === 'worker').length > 0 ? (
+                      existingUsers
+                        .filter(u => u.role === 'worker')
+                        .map((u, i) => (
+                          <div key={i} className="flex items-center gap-1.5 text-[12px] font-light text-[#19233B] leading-none py-0.5">
+                            <div className="w-[3px] h-[3px] rounded-full bg-[#19233B] shrink-0"></div>
+                            <span className="truncate">{u.full_name}</span>
+                          </div>
+                        ))
+                    ) : (
+                      <div className="text-[11px] italic text-slate-400 pl-3">Ni članov</div>
+                    )}
+                  </div>
                 </div>
               </div>
+            </div>
+          </div>
 
-              <div className="mt-auto pt-8">
+              <div className="mt-auto pt-8 shrink-0">
                 <div className="w-full h-1.5 bg-[#cbd5e1] rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-[#2b5493] rounded-full transition-all duration-300" 
@@ -154,7 +211,7 @@ export function AddWorkerCard({
             </button>
             
             <h2 className="text-[22px] font-bold text-[#0f172a] mb-1">Dodaj sodelavca</h2>
-            <p className="text-slate-500 text-[13px] font-medium mb-6">Vnesite podatke novega zaposlenega.</p>
+            <p className="text-slate-500 text-[13px] font-medium mb-6">Vnesi podatke novega zaposlenega.</p>
             
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               {/* Ime */}

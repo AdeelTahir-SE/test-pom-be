@@ -66,6 +66,7 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
     if (isOpen) {
       setDatum(defaultDate);
       setDateError(null);
+      setWorkerId("");
     }
   }, [isOpen, defaultDate]);
 
@@ -191,17 +192,21 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                 {lang === 'sl' ? 'TEREN' : 'FIELD'}
               </div>
               
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-[14px] bg-[#2b5493] text-white flex items-center justify-center text-[18px] font-bold shadow-md shadow-blue-900/20 shrink-0">
-                  {workerId ? getInitials(selectedWorkerName) : 'AH'}
+              {workerId ? (
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-[14px] bg-[#2b5493] text-white flex items-center justify-center text-[18px] font-bold shadow-md shadow-blue-900/20 shrink-0">
+                    {getInitials(selectedWorkerName)}
+                  </div>
+                  <div className="flex flex-col overflow-hidden">
+                    <div className="font-semibold text-[#0f172a] text-[14px] truncate">{selectedWorkerName}</div>
+                    {selectedWorkerPhone ? (
+                      <div className="text-[#64748b] text-[12px] font-normal mt-0.5">
+                        Tel. {selectedWorkerPhone}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-                 <div className="flex flex-col overflow-hidden">
-                   <div className="font-bold text-[#0f172a] text-[16px] truncate">{selectedWorkerName || 'Anthony Hopkins'}</div>
-                   <div className="text-[#64748b] text-[13px] font-medium mt-0.5">
-                     Tel. {selectedWorkerPhone || '041-045-478'}
-                   </div>
-                 </div>
-              </div>
+              ) : null}
             </div>
 
             {/* PREGLED Card (Hidden on mobile, visible on desktop) */}
@@ -250,7 +255,9 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                     style={{ width: `${(step / 2) * 100}%` }}
                   ></div>
                 </div>
-                <div className="text-right text-[11px] text-slate-700 font-bold mt-2">{step}/2 nalog</div>
+                <div className="text-right text-[11px] text-slate-700 font-bold mt-2">
+                  {step}/2 {lang === 'sl' ? 'korak' : 'step'}
+                </div>
               </div>
             </div>
           </div>
@@ -281,7 +288,7 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                     {/* 1. Opravilo */}
                     <div>
                       <label className="block text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-1.5">
-                        {lang === 'sl' ? 'OPRAVILO *' : 'TASK *'}
+                        {lang === 'sl' ? 'OPRAVILO' : 'TASK'}
                       </label>
                       <input 
                         className="w-full h-11 px-4 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all placeholder:text-slate-400" 
@@ -318,10 +325,10 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                            value={kraj}
                            onChange={e => setKraj(e.target.value)}
                            placeholder={t("modalTaskLocationPlaceholder") || "Ljubljana"}
-                           maxLength={15}
+                           maxLength={18}
                         />
                       </div>
-                      <div className="w-[120px] shrink-0 sm:w-auto sm:flex-1 sm:shrink">
+                      <div className="w-[120px] shrink-0">
                         <label className="block text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-1.5">
                           {lang === 'sl' ? 'DATUM' : 'DATE'}
                         </label>
@@ -344,7 +351,7 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                     {/* 4. Delavec */}
                     <div>
                       <label className="block text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-1.5">
-                        {lang === 'sl' ? 'KDO *' : 'WHO *'}
+                        {lang === 'sl' ? 'KDO' : 'WHO'}
                       </label>
                       <div className="relative w-full">
                         <select 
@@ -379,7 +386,7 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                   <div className="flex mt-8 sm:mt-4">
                     <button 
                       type="submit" 
-                      className="w-full h-[48px] rounded-[8px] bg-[#0a1128] text-white font-bold text-[12px] uppercase tracking-widest shadow-lg shadow-[#0a1128]/20 hover:bg-[#152042] transition-all"
+                      className="w-full h-[48px] rounded-[8px] bg-[#1d2a3d] text-white font-bold text-[12px] uppercase tracking-widest shadow-lg shadow-[#1d2a3d]/20 hover:bg-[#2c3d54] transition-all"
                     >
                       {lang === 'sl' ? 'NAPREJ' : 'NEXT'}
                     </button>
@@ -415,68 +422,66 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                     )}
 
                     <div>
-                      {/* Subtask list label using same font color #1c305a */}
-                      <label className="block text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-1.5">
-                        {lang === 'sl' ? 'NALOGE' : 'TASKS'}
-                      </label>
-                      <div className="flex flex-col gap-4 max-h-[265px] overflow-y-auto pr-1 custom-ios-scrollbar">
+                      {/* Subtask list label and column headers aligned perfectly with columns */}
+                      <div className="flex items-center gap-3 w-full mb-2">
+                        <div className="flex-1">
+                          <label className="block text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
+                            {lang === 'sl' ? 'NALOGE' : 'TASKS'}
+                          </label>
+                        </div>
+                        {/* Attachment column header */}
+                        <div className="shrink-0 w-8 flex justify-center" title={t("modalStepAttachmentTitle") || (lang === 'sl' ? "Slikaj ob zaključku" : "Photo required at completion")}>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5">
+                            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                          </svg>
+                        </div>
+                        {/* Spacer for delete button column */}
+                        <div className="shrink-0 w-8"></div>
+                      </div>
+                      <div className="flex flex-col gap-2 max-h-[380px] overflow-y-auto pr-1 custom-ios-scrollbar">
                         {steps.map((s, index) => (
-                          <div key={s.id} className="flex flex-col gap-1">
-                            <div className="flex items-center justify-between">
-                              <span className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                                {lang === 'sl' ? `NALOGA ${index + 1}:` : `TASK ${index + 1}:`}
-                              </span>
-                              {index === 0 && (
-                                <div className="w-9 flex justify-center mr-[48px]" title={t("modalStepAttachmentTitle") || (lang === 'sl' ? "Slikaj ob zaključku" : "Photo required at completion")}>
-                                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5">
-                                    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                                  </svg>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-3 w-full">
-                              <input 
-                                type="text"
-                                value={s.text}
-                                onChange={e => updateStepText(s.id, e.target.value.slice(0, 22))}
-                                placeholder={lang === 'sl' ? `Vnesite nalogo ${index + 1}...` : `Enter subtask ${index + 1}...`}
-                                maxLength={22}
-                                className="flex-1 h-11 px-4 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all placeholder:text-slate-400"
-                              />
+                          <div key={s.id} className="flex items-center gap-3 w-full">
+                            <input 
+                              type="text"
+                              value={s.text}
+                              onChange={e => updateStepText(s.id, e.target.value.slice(0, 28))}
+                              placeholder={lang === 'sl' ? `Dodaj nalogo ${index + 1}` : `Add subtask ${index + 1}`}
+                              maxLength={28}
+                              className="flex-1 h-9 px-3 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[13px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all placeholder:text-slate-400"
+                            />
 
-                              {/* Attachment Toggle Check Circle */}
-                              <button
-                                type="button"
-                                onClick={() => toggleStepAttachment(s.id)}
-                                className="shrink-0 w-9 h-9 rounded-full border flex items-center justify-center transition-all duration-200 cursor-pointer"
-                                style={{
-                                  background: s.requiresAttachment ? "#1c305a" : "white",
-                                  borderColor: s.requiresAttachment ? "#1c305a" : "#cbd5e1",
-                                }}
-                              >
-                                {s.requiresAttachment ? (
-                                  <svg width="10" height="8" viewBox="0 0 10 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            {/* Attachment Toggle Check Circle */}
+                            <button
+                              type="button"
+                              onClick={() => toggleStepAttachment(s.id)}
+                              className="shrink-0 w-8 h-8 rounded-full border flex items-center justify-center transition-all duration-200 cursor-pointer"
+                              style={{
+                                background: s.requiresAttachment ? "#1c305a" : "white",
+                                borderColor: s.requiresAttachment ? "#1c305a" : "#cbd5e1",
+                              }}
+                            >
+                              {s.requiresAttachment ? (
+                                  <svg width="9" height="7" viewBox="0 0 10 8" fill="none" xmlns="http://www.w3.org/2000/svg">
                                     <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                                   </svg>
                                 ) : null}
-                              </button>
+                            </button>
 
-                              {/* Delete Circle X */}
-                              {steps.length > 1 ? (
-                                <button
-                                  type="button"
-                                  onClick={() => removeStep(s.id)}
-                                  className="shrink-0 w-9 h-9 rounded-full border border-slate-300 flex items-center justify-center text-slate-400 hover:text-red-500 hover:border-red-300 hover:bg-red-50 transition-all cursor-pointer"
-                                  title={lang === 'sl' ? "Izbriši nalogo" : "Delete subtask"}
-                                >
-                                  <X className="w-4 h-4" />
-                                </button>
-                              ) : (
-                                <div className="shrink-0 w-9 h-9 rounded-full border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-300 cursor-not-allowed">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
-                                </div>
-                              )}
-                            </div>
+                            {/* Delete Circle X */}
+                            {steps.length > 1 ? (
+                              <button
+                                type="button"
+                                onClick={() => removeStep(s.id)}
+                                className="shrink-0 w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all cursor-pointer border-none bg-transparent"
+                                title={lang === 'sl' ? "Izbriši nalogo" : "Delete subtask"}
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            ) : (
+                              <div className="shrink-0 w-8 h-8 flex items-center justify-center text-slate-300/40 cursor-not-allowed">
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -486,16 +491,10 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                       <button
                         type="button"
                         onClick={handleAddTwoSteps}
-                        className="w-14 h-9 rounded-full border border-slate-200 bg-white text-slate-700 font-bold text-[13px] hover:bg-slate-50 transition-all flex items-center justify-center cursor-pointer shadow-sm"
+                        className="w-8 h-8 rounded-full border border-slate-200 bg-white text-slate-700 font-bold text-[13px] hover:bg-slate-50 transition-all flex items-center justify-center cursor-pointer shadow-sm"
                       >
                         +1
                       </button>
-                      
-                      {hasNoSteps && (
-                        <span className="text-xs font-semibold text-red-500">
-                          {lang === 'sl' ? 'Dodaj vsaj eno nalogo.' : 'Add at least one subtask.'}
-                        </span>
-                      )}
                     </div>
                   </div>
 
@@ -507,7 +506,7 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                       className={`h-[48px] px-10 rounded-[8px] font-bold text-[12px] uppercase tracking-widest transition-all shadow-md flex items-center justify-center ${
                         hasNoSteps 
                           ? 'bg-[#94a3b8]/60 text-white/80 cursor-not-allowed' 
-                          : 'bg-[#0a1128] text-white hover:bg-[#152042] shadow-lg shadow-[#0a1128]/20'
+                          : 'bg-[#1d2a3d] text-white hover:bg-[#2c3d54] shadow-lg shadow-[#1d2a3d]/20'
                       }`}
                     >
                       {lang === 'sl' ? 'DODAJ NA URNIK' : 'ADD TO SCHEDULE'}

@@ -1416,6 +1416,7 @@ export default function DatabaseDashboard() {
             alert('Težava pri povezavi z strežnikom.');
           }
         }}
+        existingUsers={staffList}
       />
 
       <AddTaskModal

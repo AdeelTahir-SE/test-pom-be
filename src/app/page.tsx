@@ -3,6 +3,7 @@
 import React, { useEffect } from "react";
 import { Navbar } from "@/components/landing/Navbar";
 import { Hero } from "@/components/landing/Hero";
+import CardsAnimationSection from "@/components/landing/CardsAnimationSection";
 import { TargetIndustries } from "@/components/landing/TargetIndustries";
 import { PainSolutions } from "@/components/landing/PainSolutions";
 import { DashboardPreview } from "@/components/landing/DashboardPreview";
@@ -108,6 +109,7 @@ export default function LandingPage() {
       <div className="relative z-10">
         <Navbar />
         <Hero />
+        <CardsAnimationSection />
         <PainSolutions />
         <DashboardPreview />
         <TransformationSlider />
