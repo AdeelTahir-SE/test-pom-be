@@ -181,6 +181,7 @@ export default function OfficeDashboard() {
     setReminders,
     setCommunications,
     setChecklistsByJob,
+    setWorkers,
     refreshBoard,
   } = useOfficeBoard(selectedDayKey, !authLoading && !!user);
 
@@ -928,6 +929,13 @@ export default function OfficeDashboard() {
       },
     );
     if (res.status === 201) {
+      // Instantly update Add-task / board worker lists (workers query only).
+      if (res.data?.user?.role === 'worker') {
+        setWorkers((prev) => {
+          if (prev.some((w) => w.id === res.data!.user.id)) return prev;
+          return [...prev, res.data!.user];
+        });
+      }
       if (res.data?.temporary_password) {
         // Shown exactly once — the backend never returns it again.
         const label =

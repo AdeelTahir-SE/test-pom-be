@@ -193,6 +193,8 @@ export function useOfficeBoard(dayKey: string, enabled: boolean) {
       queryClient.invalidateQueries({ queryKey: queryKeys.office.communications(dayKey) }),
       queryClient.invalidateQueries({ queryKey: ["office", "checklists"] }),
       queryClient.invalidateQueries({ queryKey: queryKeys.office.summary(dayKey) }),
+      // Team / Add-task / compose worker lists (Mark: new workers must appear without hard refresh).
+      queryClient.invalidateQueries({ queryKey: queryKeys.office.users() }),
     ]);
   };
 
