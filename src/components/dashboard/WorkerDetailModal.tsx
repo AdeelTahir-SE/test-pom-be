@@ -926,11 +926,7 @@ export function WorkerDetailModal({
   }
 
   const renderContentBody = () => {
-    const details = [
-      worker?.location,
-      customerName || worker?.role,
-      cardNumber
-    ].filter(Boolean).join(" • ");
+    const details = customerName || worker?.role || "";
 
     const displayedNotes = customerNotes
       .map((n) => {
@@ -1672,11 +1668,7 @@ export function WorkerDetailModal({
                       {worker?.name || "Anthony Hopkins"}
                     </div>
                     {(() => {
-                      const workerDetailsStr = [
-                        worker?.location,
-                        customerName || worker?.role,
-                        cardNumber
-                      ].filter(Boolean).join(" • ");
+                      const workerDetailsStr = customerName || worker?.role || "";
                       return workerDetailsStr && (
                         <div className="text-[#64748b] text-[12px] font-medium mt-1 leading-snug">
                           {workerDetailsStr}
@@ -2139,23 +2131,27 @@ export function WorkerDetailModal({
         if (!open) setPreviewAttachment(null);
       }}>
         <DialogContent
-          style={{
-            background: "transparent",
-            border: "none",
-            boxShadow: "none",
-            padding: 0,
-            maxWidth: "420px",
-            width: "90%",
-          }}
-          className="outline-none"
+          showCloseButton={false}
+          className="w-full max-w-[calc(100%-2rem)] sm:max-w-[420px] outline-none mx-auto p-3 bg-[#f1f5f9] rounded-[28px] border-none shadow-2xl flex flex-col gap-0 animate-in fade-in zoom-in-95 duration-200"
         >
           {previewAttachment && (
-            <div className={auraCard}>
+            <div className="relative bg-white rounded-[20px] p-6 sm:p-8 shadow-sm border border-slate-100 flex flex-col gap-5">
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setPreviewAttachment(null)}
+                className="absolute top-4 right-4 w-7 h-7 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 transition-colors border-none cursor-pointer"
+              >
+                <svg width="10" height="10" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+
               <div className="flex flex-col gap-4 text-slate-800">
                 <div className="text-center">
-                  <h3 className="text-xl font-semibold tracking-tight text-slate-900">
+                  <h2 className="text-[22px] font-bold text-[#0f172a] mb-1">
                     {t("modalPreviewTitle")}
-                  </h3>
+                  </h2>
                 </div>
                 <div className="flex flex-col gap-2">
                   {(() => {
@@ -2260,18 +2256,18 @@ export function WorkerDetailModal({
                     </div>
                   </div>
                 )}
-                <div className="flex gap-2">
+                <div className="flex gap-3 mt-4 pt-2 border-t border-slate-100/55 justify-center">
                   <button
                     type="button"
                     onClick={() => handleHideAttachment(previewAttachment.id)}
-                    className="flex-1 h-10 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 text-xs font-semibold transition-colors"
+                    className="flex-1 h-12 rounded-[12px] border border-red-200 text-red-600 font-bold text-[13px] uppercase tracking-wider hover:bg-red-50 transition-colors"
                   >
                     {t("modalHideAttachment")}
                   </button>
                   <button
                     type="button"
                     onClick={() => setPreviewAttachment(null)}
-                    className="flex-1 h-10 rounded-xl bg-[#0A1128] hover:bg-[#152042] text-white text-xs font-semibold transition-colors"
+                    className="flex-1 h-12 rounded-[12px] bg-[#0A1128] hover:bg-[#152042] text-white font-bold text-[13px] uppercase tracking-wider transition-colors shadow-lg shadow-[#0A1128]/10"
                   >
                     {t("modalClose")}
                   </button>
