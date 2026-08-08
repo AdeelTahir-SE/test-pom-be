@@ -896,7 +896,6 @@ export function WorkerDetailModal({
       }
     }
   };
-
   const handleForceDownload = async (urlStr: string, fileName: string): Promise<void> => {
     try {
       const res = await fetch(urlStr);
@@ -917,6 +916,24 @@ export function WorkerDetailModal({
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+    }
+  };
+
+  const handleOpenPreview = async (att: AttachmentItem) => {
+    setPreviewAttachment(att);
+    try {
+      const res = await api.get<{ file: { signed_url: string } }>(`/api/files/${att.id}`);
+      if (res.status >= 200 && res.status < 300 && res.data?.file?.signed_url) {
+        setPreviewAttachment((prev) => {
+          if (!prev || prev.id !== att.id) return prev;
+          return {
+            ...prev,
+            url: res?.data?.file?.signed_url ?? null,
+          };
+        });
+      }
+    } catch (err) {
+      console.error("Failed to refresh signed url:", err);
     }
   };
 
@@ -1156,10 +1173,10 @@ export function WorkerDetailModal({
                           }}
                           onOpenAttachment={() => {
                             const att = attachments.find((a) => a.checklistItemId === task.id);
-                            if (att) {
-                              setPreviewAttachment(att);
-                              return;
-                            }
+                             if (att) {
+                               handleOpenPreview(att);
+                               return;
+                             }
                             openAttachDialog(task.id);
                           }}
                           onDelete={() => setDeleteStepId(task.id)}
@@ -1207,7 +1224,7 @@ export function WorkerDetailModal({
                       <button
                         key={att.id}
                         type="button"
-                        onClick={() => setPreviewAttachment(att)}
+                        onClick={() => handleOpenPreview(att)}
                         className="flex items-start justify-between w-full text-left bg-transparent border-none p-0 outline-none group gap-3 py-1"
                       >
                         <div className="flex flex-col gap-0.5 min-w-0">
@@ -1274,7 +1291,7 @@ export function WorkerDetailModal({
                           type="button"
                           onClick={() => {
                             const att = attachments.find((a) => a.id === event.fileId);
-                            if (att) setPreviewAttachment(att);
+                            if (att) handleOpenPreview(att);
                           }}
                           className="shrink-0 bg-transparent border-none p-0 outline-none cursor-pointer hover:text-slate-400 transition-colors self-baseline"
                         >
@@ -1462,7 +1479,7 @@ export function WorkerDetailModal({
                       onOpenAttachment={() => {
                         const att = attachments.find((a) => a.checklistItemId === task.id);
                         if (att) {
-                          setPreviewAttachment(att);
+                          handleOpenPreview(att);
                           return;
                         }
                         openAttachDialog(task.id);
@@ -1517,7 +1534,7 @@ export function WorkerDetailModal({
                     <button
                       key={att.id}
                       type="button"
-                      onClick={() => setPreviewAttachment(att)}
+                      onClick={() => handleOpenPreview(att)}
                       className="flex items-start justify-between w-full text-left bg-transparent border-none p-0 outline-none group gap-3 py-1"
                     >
                       <div className="flex flex-col gap-0.5 min-w-0">
@@ -1584,7 +1601,7 @@ export function WorkerDetailModal({
                         type="button"
                         onClick={() => {
                           const att = attachments.find((a) => a.id === event.fileId);
-                          if (att) setPreviewAttachment(att);
+                          if (att) handleOpenPreview(att);
                         }}
                         className="shrink-0 bg-transparent border-none p-0 outline-none cursor-pointer hover:text-slate-400 transition-colors self-baseline"
                       >
@@ -1964,7 +1981,7 @@ export function WorkerDetailModal({
                   {!missingAttachment && stepAttachment && (
                     <button
                       type="button"
-                      onClick={() => setPreviewAttachment(stepAttachment)}
+                      onClick={() => handleOpenPreview(stepAttachment)}
                       className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left hover:bg-slate-100 transition-colors cursor-pointer"
                     >
                       <Paperclip className="w-4 h-4 text-slate-400 shrink-0" />
