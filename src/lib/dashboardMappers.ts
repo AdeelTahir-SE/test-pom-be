@@ -152,9 +152,8 @@ export function reminderToCard(
     description: r.description ?? "",
     // Bottom big time = form-entered time (never created_at / system clock).
     time: r.remind_time?.trim() || "",
-    // Top tiny time is rendered as a live system clock in CommunicationCard;
-    // createdAt is unused for PISARNA display but kept for Order shape compat.
-    createdAt: "",
+    // Top tiny time = card creation time (created_at).
+    createdAt: r.created_at,
     priority: r.is_urgent ? "nujno" : "normalna",
     status: r.action_state?.confirmed
       ? "potrjeno"
@@ -165,7 +164,15 @@ export function reminderToCard(
     workerName: t("cardSenderOffice"),
     hasEmail: r.actions.includes("email"),
     hasAttachment: r.actions.includes("attachment"),
-    attachmentName: "",
+    attachmentName: (() => {
+      if (!r.link) return "";
+      try {
+        const linkData = JSON.parse(r.link);
+        return linkData.fileName || "";
+      } catch {
+        return "";
+      }
+    })(),
     phoneNumber: r.phone ?? "",
     hasConfirm: r.actions.includes("confirm"),
     hasDecline: r.actions.includes("reject"),

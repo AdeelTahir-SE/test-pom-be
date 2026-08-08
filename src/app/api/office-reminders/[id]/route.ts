@@ -3,6 +3,8 @@ import { withAuth } from "@/lib/http/handler";
 import { ok, ApiError } from "@/lib/http/responses";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { parseJsonBody } from "@/lib/validation/schemas";
+import { normalizePhone } from "@/lib/phone";
+import { normalizeRemindTime } from "@/lib/officeDate";
 
 export const dynamic = "force-dynamic";
 
@@ -12,9 +14,16 @@ const updateReminderSchema = z
     hidden: z.literal(true).optional(),
     confirm: z.literal(true).optional(),
     reject: z.literal(true).optional(),
+    title: z.string().trim().min(1).optional(),
+    description: z.string().trim().optional(),
+    is_urgent: z.boolean().optional(),
+    remind_on: z.string().date().optional(),
+    remind_time: z.string().trim().min(1).optional(),
+    actions: z.array(z.string()).optional(),
+    phone: z.string().trim().min(1).optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, {
-    message: "At least one of order_index, hidden, confirm, or reject must be provided.",
+    message: "At least one field must be provided.",
   });
 
 // PATCH /api/office-reminders/[id] — owner/manager only: reorder, hide
@@ -46,6 +55,13 @@ export const PATCH = withAuth<{ id: string }>(
     if (input.reject) {
       updates.action_state = { ...reminder.action_state, confirmed: false, rejected: true };
     }
+    if (input.title !== undefined) updates.title = input.title;
+    if (input.description !== undefined) updates.description = input.description;
+    if (input.is_urgent !== undefined) updates.is_urgent = input.is_urgent;
+    if (input.remind_on !== undefined) updates.remind_on = input.remind_on;
+    if (input.remind_time !== undefined) updates.remind_time = normalizeRemindTime(input.remind_time);
+    if (input.actions !== undefined) updates.actions = input.actions;
+    if (input.phone !== undefined) updates.phone = normalizePhone(input.phone);
 
     const { data: updated, error: updateError } = await db
       .from("office_reminders")

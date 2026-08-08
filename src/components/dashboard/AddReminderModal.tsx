@@ -4,15 +4,33 @@ import React, { useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useLanguage } from "@/lib/useLanguage";
 import { normalizeRemindTime } from "@/lib/officeDate";
-import { AuraFileInput } from "./AuraForm";
 import { isValidPhone, normalizePhone, toTelHref } from "@/lib/phone";
 import { AuraPhoneInput } from "./PhoneInput";
+import { AttachmentDialog } from "./AttachmentDialog";
+import { Paperclip } from "lucide-react";
 
 interface AddReminderModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   /** Prefill date field (DD.MM.YYYY) from the office day navigator. */
   defaultDate?: string;
+  /** Callback to open attachment dialog for existing reminder */
+  onOpenAttachmentDialog?: (reminderId: string) => void;
+  /** If set, this is edit mode for an existing reminder */
+  editReminderId?: string | null;
+  /** Prefill data for edit mode */
+  editData?: {
+    title: string;
+    description: string;
+    time: string;
+    date: string;
+    isUrgent: boolean;
+    hasAttachment: boolean;
+    hasEmail: boolean;
+    phoneNumber: string;
+    hasConfirm: boolean;
+    hasDecline: boolean;
+  } | null;
   onAddReminder: (reminderData: {
     title: string;
     description: string;
@@ -28,7 +46,7 @@ interface AddReminderModalProps {
   }) => void;
 }
 
-export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAddReminder }: AddReminderModalProps) {
+export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onOpenAttachmentDialog, editReminderId, editData, onAddReminder }: AddReminderModalProps) {
   const { t } = useLanguage();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -38,14 +56,30 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
 
   React.useEffect(() => {
     if (isOpen) {
-      setDate(defaultDate);
-      setDateError(null);
+      if (editReminderId && editData) {
+        // Edit mode: prefill existing data
+        setTitle(editData.title);
+        setDescription(editData.description);
+        setTime(editData.time);
+        setDate(editData.date);
+        setIsUrgent(editData.isUrgent);
+        setHasAttachment(editData.hasAttachment);
+        setHasEmail(editData.hasEmail);
+        setPhoneNumber(editData.phoneNumber);
+        setHasConfirm(editData.hasConfirm);
+        setHasDecline(editData.hasDecline);
+      } else {
+        // Create mode: reset to defaults
+        setDate(defaultDate);
+        setDateError(null);
+      }
     }
-  }, [isOpen, defaultDate]);
+  }, [isOpen, defaultDate, editReminderId, editData]);
 
   // Dynamic icon selections
   const [hasAttachment, setHasAttachment] = useState(false);
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [stageAttachDialogOpen, setStageAttachDialogOpen] = useState(false);
   const [hasEmail, setHasEmail] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [phoneError, setPhoneError] = useState<string | null>(null);
@@ -346,8 +380,15 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
                     <button
                       type="button"
                       onClick={() => {
-                        setHasAttachment(!hasAttachment);
-                        if (hasAttachment) setAttachmentFile(null);
+                        if (editReminderId && onOpenAttachmentDialog) {
+                          // Edit mode: reminder already exists — upload directly.
+                          onOpenAttachmentDialog(editReminderId);
+                        } else {
+                          // Create mode: reminder doesn't exist yet — open the
+                          // same "Dodaj priponko" popup, but stage the file
+                          // locally until the reminder is actually created.
+                          setStageAttachDialogOpen(true);
+                        }
                       }}
                       className="flex items-center gap-3 text-left bg-transparent border-none p-0 outline-none cursor-pointer group"
                     >
@@ -390,7 +431,6 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
                       type="button"
                       onClick={() => {
                         setHasConfirm(!hasConfirm);
-                        setHasDecline(false);
                       }}
                       className="flex items-center gap-3 text-left bg-transparent border-none p-0 outline-none cursor-pointer group"
                     >
@@ -413,7 +453,6 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
                       type="button"
                       onClick={() => {
                         setHasDecline(!hasDecline);
-                        setHasConfirm(false);
                       }}
                       className="flex items-center gap-3 text-left bg-transparent border-none p-0 outline-none cursor-pointer group"
                     >
@@ -432,19 +471,25 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
                     </button>
                   </div>
 
-                  {/* Attachment input line if file upload is active */}
-                  {hasAttachment && (
-                    <div className="w-full flex flex-col gap-1 animate-fade-in">
-                      <AuraFileInput
-                        id="reminder-attachment"
-                        onFile={(file) => setAttachmentFile(file)}
-                        onReject={(msg) => window.alert(msg)}
-                      />
-                      {attachmentFile && (
-                        <span className="text-[11px] text-slate-500 truncate">
-                          {attachmentFile.name}
-                        </span>
-                      )}
+                  {/* Selected attachment preview (file picked via the "Dodaj priponko" popup) */}
+                  {attachmentFile && (
+                    <div className="w-full flex items-center gap-2 p-2.5 rounded-[8px] bg-slate-50 border border-slate-100 animate-fade-in">
+                      <Paperclip className="w-3.5 h-3.5 text-[#1B3A6B] shrink-0" />
+                      <span className="text-[11px] text-slate-600 font-medium truncate flex-1">
+                        {attachmentFile.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAttachmentFile(null);
+                          setHasAttachment(false);
+                        }}
+                        className="text-slate-400 hover:text-slate-600 bg-transparent border-none p-0 outline-none cursor-pointer shrink-0"
+                      >
+                        <svg width="10" height="10" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </button>
                     </div>
                   )}
 
@@ -506,6 +551,16 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onAdd
           </form>
         </div>
       </DialogContent>
+
+      <AttachmentDialog
+        isOpen={stageAttachDialogOpen}
+        onOpenChange={setStageAttachDialogOpen}
+        stageOnly
+        onFileSelected={(f) => {
+          setAttachmentFile(f);
+          setHasAttachment(true);
+        }}
+      />
     </Dialog>
   );
 }
