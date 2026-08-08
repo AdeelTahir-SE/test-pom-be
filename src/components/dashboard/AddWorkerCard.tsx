@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useLanguage } from '@/lib/useLanguage';
 import { isValidPhone, normalizePhone } from '@/lib/phone';
@@ -54,6 +54,23 @@ export function AddWorkerCard({
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [prevCount, setPrevCount] = useState(existingUsers.length);
+
+  useEffect(() => {
+    if (existingUsers.length > prevCount) {
+      if (scrollContainerRef.current) {
+        setTimeout(() => {
+          scrollContainerRef.current?.scrollTo({
+            top: scrollContainerRef.current.scrollHeight,
+            behavior: 'smooth',
+          });
+        }, 100);
+      }
+    }
+    setPrevCount(existingUsers.length);
+  }, [existingUsers.length, prevCount]);
 
   const officeUsers = existingUsers.filter((u) =>
     OFFICE_ROLES.includes(normalizeRole(u.role))
@@ -235,7 +252,10 @@ export function AddWorkerCard({
 
             {/* MEMBERS LIST Card */}
             <div className="bg-white rounded-[20px] p-6 shadow-sm border border-slate-100 flex-1 flex flex-col justify-between">
-              <div className="flex-1 flex flex-col gap-4 overflow-y-auto max-h-[220px] pr-1 custom-ios-scrollbar">
+              <div
+                ref={scrollContainerRef}
+                className="flex-1 flex flex-col gap-4 overflow-y-auto max-h-[340px] pr-1 custom-ios-scrollbar min-h-0"
+              >
                 {/* PISARNA Section */}
                 <div>
                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
@@ -275,14 +295,8 @@ export function AddWorkerCard({
                 </div>
               </div>
 
-              <div className="mt-auto pt-8 shrink-0">
-                <div className="w-full h-1.5 bg-[#cbd5e1] rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[#2b5493] rounded-full transition-all duration-300"
-                    style={{ width: `${Math.min(password.length, 4) * 25}%` }}
-                  ></div>
-                </div>
-                <div className="text-right text-[11px] text-slate-700 font-bold mt-2">{Math.min(password.length, 4)}/4 številke</div>
+              <div className="mt-auto pt-4 shrink-0">
+                <div className="text-right text-[11px] text-slate-700 font-bold">Dodano: {existingUsers.length}</div>
               </div>
             </div>
           </div>
