@@ -1994,7 +1994,7 @@ export function WorkerDetailModal({
                             setConfirmUploading(false);
                           }
                         }}
-                        className="w-full h-12 rounded-[12px] bg-[#1B3A6B] hover:bg-[#152e55] disabled:opacity-40 disabled:cursor-not-allowed text-white text-[13px] font-bold uppercase tracking-wider transition-colors shadow-lg shadow-blue-900/10"
+                        className="w-full h-12 rounded-[12px] bg-[#0A1128] hover:bg-[#152042] disabled:opacity-40 disabled:cursor-not-allowed text-white text-[13px] font-bold uppercase tracking-wider transition-colors shadow-lg shadow-[#0A1128]/10"
                       >
                         {confirmUploading ? t("modalUploading") : t("modalAdd")}
                       </button>
@@ -2015,7 +2015,7 @@ export function WorkerDetailModal({
                             await handleToggleComplete(task);
                             setConfirmStepId(null);
                           }}
-                          className="flex-1 h-12 rounded-[12px] bg-[#1B3A6B] text-white font-bold text-[13px] uppercase tracking-wider hover:bg-[#152e55] transition-colors shadow-lg shadow-blue-900/10"
+                          className="flex-1 h-12 rounded-[12px] bg-[#0A1128] text-white font-bold text-[13px] uppercase tracking-wider hover:bg-[#152042] transition-colors shadow-lg shadow-[#0A1128]/10"
                         >
                           {t("modalConfirmStepSubmit")}
                         </button>
@@ -2268,7 +2268,7 @@ export function WorkerDetailModal({
                   <button
                     type="button"
                     onClick={() => setPreviewAttachment(null)}
-                    className="flex-1 h-10 rounded-xl bg-[#1B3A6B] hover:bg-[#142c52] text-white text-xs font-semibold transition-colors"
+                    className="flex-1 h-10 rounded-xl bg-[#0A1128] hover:bg-[#152042] text-white text-xs font-semibold transition-colors"
                   >
                     {t("modalClose")}
                   </button>
@@ -2354,7 +2354,7 @@ export function WorkerDetailModal({
                       (!saveNoteText.trim() || !(saveNoteCustomer.trim() || resolvedCustomerName)))
                   }
                   onClick={() => void handleSaveCustomerNote(false)}
-                  className="flex-1 h-10 rounded-xl bg-[#1B3A6B] hover:bg-[#142c52] text-white text-xs font-semibold transition-colors disabled:opacity-50"
+                  className="flex-1 h-10 rounded-xl bg-[#0A1128] hover:bg-[#152042] text-white text-xs font-semibold transition-colors disabled:opacity-50"
                 >
                   {t("customerNotesSaveBtn")}
                 </button>

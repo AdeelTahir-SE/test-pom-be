@@ -386,7 +386,7 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                   <div className="flex mt-8 sm:mt-4">
                     <button 
                       type="submit" 
-                      className="w-full h-[48px] rounded-[8px] bg-[#1d2a3d] text-white font-bold text-[12px] uppercase tracking-widest shadow-lg shadow-[#1d2a3d]/20 hover:bg-[#2c3d54] transition-all"
+                      className="w-full h-[48px] rounded-[8px] bg-[#0A1128] text-white font-bold text-[12px] uppercase tracking-widest shadow-lg shadow-[#0A1128]/20 hover:bg-[#152042] transition-all"
                     >
                       {lang === 'sl' ? 'NAPREJ' : 'NEXT'}
                     </button>
@@ -506,7 +506,7 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                       className={`h-[48px] px-10 rounded-[8px] font-bold text-[12px] uppercase tracking-widest transition-all shadow-md flex items-center justify-center ${
                         hasNoSteps 
                           ? 'bg-[#94a3b8]/60 text-white/80 cursor-not-allowed' 
-                          : 'bg-[#1d2a3d] text-white hover:bg-[#2c3d54] shadow-lg shadow-[#1d2a3d]/20'
+                          : 'bg-[#0A1128] text-white hover:bg-[#152042] shadow-lg shadow-[#0A1128]/20'
                       }`}
                     >
                       {lang === 'sl' ? 'DODAJ NA URNIK' : 'ADD TO SCHEDULE'}

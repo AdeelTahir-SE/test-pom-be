@@ -71,7 +71,7 @@ export function SearchModal({ isOpen, onOpenChange, onOpenJob }: SearchModalProp
               <button
                 onClick={runSearch}
                 disabled={!query.trim() || loading}
-                className="shrink-0 h-11 px-4 rounded-xl bg-[#1B3A6B] hover:bg-[#142c52] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold transition-colors"
+                className="shrink-0 h-11 px-4 rounded-xl bg-[#0A1128] hover:bg-[#152042] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold transition-colors"
               >
                 {loading ? "…" : t("searchButton")}
               </button>
@@ -96,7 +96,7 @@ export function SearchModal({ isOpen, onOpenChange, onOpenJob }: SearchModalProp
                           href={r.signed_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs font-semibold text-[#1B3A6B] hover:underline"
+                          className="text-xs font-semibold text-[#0A1128] hover:underline"
                         >
                           {t("searchOpenFile")}
                         </a>
@@ -104,7 +104,7 @@ export function SearchModal({ isOpen, onOpenChange, onOpenJob }: SearchModalProp
                       {onOpenJob && (
                         <button
                           onClick={() => onOpenJob(r.job_id)}
-                          className="text-xs font-semibold text-[#1B3A6B] hover:underline"
+                          className="text-xs font-semibold text-[#0A1128] hover:underline"
                         >
                           {t("searchViewJob")}
                         </button>
