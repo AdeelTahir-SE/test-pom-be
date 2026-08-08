@@ -174,7 +174,6 @@ export default function OfficeDashboard() {
     reminders,
     communications,
     workers,
-    summary,
     checklistsByJob,
     dataLoading,
     setJobs,
@@ -408,7 +407,21 @@ export default function OfficeDashboard() {
       );
   })();
 
-  const dayFieldOverview = summary?.field_overview ?? [];
+  // Derive HITRI PREGLED from the same TEREN cards on screen (Mark: must sync
+  // without a full page refresh). Do not wait on /api/dashboard/summary cache.
+  const dayFieldOverview = activeJobs.map((job) => {
+    const checklist = mergedChecklistsByJob[job.id] ?? [];
+    const completed = checklist.filter((i) => i.is_completed).length;
+    const worker = job.worker_id ? workerById.get(job.worker_id) : null;
+    return {
+      job_id: job.id,
+      job_title: job.title,
+      location: job.location,
+      worker_name: worker?.full_name ?? null,
+      checklist_completed: completed,
+      checklist_total: checklist.length,
+    };
+  });
   const dayUrgent = dayReminders.find((r) => r.is_urgent) ?? null;
 
   const selectedJob = selectedWorkerJobId
@@ -2080,12 +2093,17 @@ export default function OfficeDashboard() {
                 <select
                   value={composeWorkerId}
                   onChange={(e) => setComposeWorkerId(e.target.value)}
-                  className="w-full h-11 pl-4 pr-10 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all appearance-none cursor-pointer"
+                  disabled={composeWorkerOptions.length === 0}
+                  className="w-full h-11 pl-4 pr-10 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all appearance-none cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <option value="" disabled>Izberite delavca</option>
-                  {workers.map((w) => (
+                  <option value="" disabled>
+                    {composeWorkerOptions.length === 0
+                      ? 'Ni delavcev z odprto kartico danes'
+                      : 'Izberite delavca'}
+                  </option>
+                  {composeWorkerOptions.map((w) => (
                     <option key={w.id} value={w.id}>
-                      {w.full_name}
+                      {w.name}
                     </option>
                   ))}
                 </select>

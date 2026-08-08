@@ -82,16 +82,20 @@ describe("structureVoiceTranscript (unit, mocked fetch)", () => {
     expect(called).toBe(false);
   });
 
-  it("sends gpt-4o-mini by default", async () => {
-    let body: { model?: string } | undefined;
+  it("sends gpt-5.4-mini by default", async () => {
+    let body: { model?: string; max_completion_tokens?: number } | undefined;
     const fetchImpl = (async (_url: string | URL, init?: RequestInit) => {
-      body = JSON.parse(String(init?.body)) as { model?: string };
+      body = JSON.parse(String(init?.body)) as {
+        model?: string;
+        max_completion_tokens?: number;
+      };
       return jsonResponse({
         choices: [{ message: { content: "Ok." } }],
       });
     }) as unknown as typeof fetch;
 
     await structureVoiceTranscript("ok", { fetchImpl });
-    expect(body?.model).toBe("gpt-4o-mini");
+    expect(body?.model).toBe("gpt-5.4-mini");
+    expect(body?.max_completion_tokens).toBe(300);
   });
 });

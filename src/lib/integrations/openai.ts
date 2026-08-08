@@ -2,7 +2,7 @@ import { env } from "@/lib/env";
 
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const STRUCTURE_TIMEOUT_MS = 15_000;
-const DEFAULT_MODEL = "gpt-4o-mini";
+const DEFAULT_MODEL = "gpt-5.4-mini";
 
 export interface StructureVoiceDeps {
   fetchImpl?: typeof fetch;
@@ -68,7 +68,8 @@ export async function structureVoiceTranscript(
       body: JSON.stringify({
         model: env.openaiVoiceModel || DEFAULT_MODEL,
         temperature: 0.2,
-        max_tokens: 300,
+        // gpt-5.4-mini rejects max_tokens — requires max_completion_tokens.
+        max_completion_tokens: 300,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           {

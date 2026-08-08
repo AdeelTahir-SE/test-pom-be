@@ -192,6 +192,7 @@ export function useOfficeBoard(dayKey: string, enabled: boolean) {
       queryClient.invalidateQueries({ queryKey: queryKeys.office.notifications() }),
       queryClient.invalidateQueries({ queryKey: queryKeys.office.communications(dayKey) }),
       queryClient.invalidateQueries({ queryKey: ["office", "checklists"] }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.office.summary(dayKey) }),
     ]);
   };
 
