@@ -31,7 +31,7 @@ click/type, and what should happen.
 2. Log back in with the same email/password.
    - ✅ Expected: back on the office dashboard.
 3. Try logging in with a wrong password.
-   - ✅ Expected: red error banner, stays on `/login`.  
+   - ✅ Expected: red error banner, stays on `/login`. 
 
 ---
 
