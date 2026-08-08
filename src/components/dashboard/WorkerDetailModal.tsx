@@ -897,6 +897,29 @@ export function WorkerDetailModal({
     }
   };
 
+  const handleForceDownload = async (urlStr: string, fileName: string): Promise<void> => {
+    try {
+      const res = await fetch(urlStr);
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch {
+      const a = document.createElement("a");
+      a.href = urlStr;
+      a.download = fileName;
+      a.target = "_blank";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  };
+
   const firstIncompleteId = tasks.find((t) => !t.completed)?.id ?? null;
   const taskIds = React.useMemo(() => tasks.map((t) => t.id), [tasks]);
   const canPreviewAttachment = (att: AttachmentItem): boolean =>
@@ -2132,147 +2155,145 @@ export function WorkerDetailModal({
       }}>
         <DialogContent
           showCloseButton={false}
-          className="w-full max-w-[calc(100%-2rem)] sm:max-w-[420px] outline-none mx-auto p-3 bg-[#f1f5f9] rounded-[28px] border-none shadow-2xl flex flex-col gap-0 animate-in fade-in zoom-in-95 duration-200"
+          className="w-full max-w-[95vw] md:max-w-[85vw] h-[85vh] outline-none mx-auto p-0 bg-transparent border-none shadow-none flex flex-col items-center justify-center animate-in fade-in zoom-in-95 duration-200"
         >
           {previewAttachment && (
-            <div className="relative bg-white rounded-[20px] p-6 sm:p-8 shadow-sm border border-slate-100 flex flex-col gap-5">
+            <div className="relative w-full h-full flex items-center justify-center">
               {/* Close Button */}
               <button
                 type="button"
                 onClick={() => setPreviewAttachment(null)}
-                className="absolute top-4 right-4 w-7 h-7 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 transition-colors border-none cursor-pointer"
+                className="absolute top-4 right-4 z-50 w-8 h-8 flex items-center justify-center rounded-full bg-white text-slate-800 hover:bg-slate-100 transition-colors border border-slate-200 cursor-pointer shadow-lg"
+                title="Zapri"
               >
                 <svg width="10" height="10" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </button>
 
-              <div className="flex flex-col gap-4 text-slate-800">
-                <div className="text-center">
-                  <h2 className="text-[22px] font-bold text-[#0f172a] mb-1">
-                    {t("modalPreviewTitle")}
-                  </h2>
-                </div>
-                <div className="flex flex-col gap-2">
-                  {(() => {
-                    const url = previewAttachment.url;
-                    const isImage =
-                      previewAttachment.attachmentType === "image" ||
-                      /\.(jpe?g|png|gif|webp|heic|bmp)$/i.test(previewAttachment.name);
-                    const isPdf =
-                      previewAttachment.attachmentType === "pdf" ||
-                      /\.pdf$/i.test(previewAttachment.name);
-                    if (url && isImage) {
-                      return (
-                        <a
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block aspect-video rounded-xl bg-slate-100 border border-slate-200 overflow-hidden"
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={url}
-                            alt={previewAttachment.name}
-                            className="w-full h-full object-contain"
-                          />
-                        </a>
-                      );
-                    }
-                    if (url && isPdf) {
-                      return (
-                        <iframe
-                          src={url}
-                          title={previewAttachment.name}
-                          className="w-full aspect-video rounded-xl bg-slate-100 border border-slate-200"
-                        />
-                      );
-                    }
-                    if (url) {
-                      return (
-                        <a
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="aspect-video rounded-xl bg-slate-100 border border-slate-200 flex flex-col items-center justify-center gap-2 hover:bg-slate-200 transition-colors"
-                        >
-                          <Paperclip className="w-10 h-10 text-slate-400" />
-                          <span className="text-xs text-[#1B3A6B] font-medium">
-                            {previewAttachment.name}
-                          </span>
-                        </a>
-                      );
-                    }
+              {(() => {
+                const url = previewAttachment.url;
+                const isLocalUrl = (urlStr: string) => {
+                  try {
+                    const parsed = new URL(urlStr);
                     return (
-                      <div className="aspect-video rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center">
-                        <Paperclip className="w-10 h-10 text-slate-300" />
+                      parsed.hostname === "localhost" ||
+                      parsed.hostname === "127.0.0.1" ||
+                      parsed.hostname.startsWith("192.168.") ||
+                      parsed.hostname.startsWith("10.") ||
+                      parsed.hostname.startsWith("172.16.")
+                    );
+                  } catch {
+                    return true;
+                  }
+                };
+
+                const isImage =
+                  previewAttachment.attachmentType === "image" ||
+                  /\.(jpe?g|png|gif|webp|heic|bmp)$/i.test(previewAttachment.name);
+                const isPdf =
+                  previewAttachment.attachmentType === "pdf" ||
+                  /\.pdf$/i.test(previewAttachment.name);
+                const isDocxOrOffice =
+                  /\.(docx?|xlsx?|pptx?)$/i.test(previewAttachment.name);
+                const isAudio =
+                  previewAttachment.attachmentType === "audio" ||
+                  /\.(mp3|wav|ogg|m4a|aac|flac|webm)$/i.test(previewAttachment.name);
+                const isVideo =
+                  previewAttachment.attachmentType === "video" ||
+                  /\.(mp4|webm|ogv|mov|avi|mkv|3gp)$/i.test(previewAttachment.name);
+
+                if (url && isImage) {
+                  return (
+                    <img
+                      src={url}
+                      alt={previewAttachment.name}
+                      className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl cursor-pointer"
+                      onClick={() => setPreviewAttachment(null)}
+                    />
+                  );
+                }
+
+                if (url && isPdf) {
+                  return (
+                    <iframe
+                      src={url}
+                      title={previewAttachment.name}
+                      className="w-full h-[85vh] rounded-lg border-none shadow-2xl bg-white"
+                    />
+                  );
+                }
+
+                if (url && isDocxOrOffice) {
+                  if (isLocalUrl(url)) {
+                    return (
+                      <div
+                        onClick={() => handleForceDownload(url, previewAttachment.name)}
+                        className="w-full max-w-md p-8 rounded-2xl bg-white border border-slate-200 flex flex-col items-center justify-center gap-4 text-center cursor-pointer shadow-2xl"
+                      >
+                        <Paperclip className="w-16 h-16 text-slate-400" />
+                        <span className="text-sm text-slate-800 font-semibold truncate max-w-[80%]">
+                          {previewAttachment.name}
+                        </span>
+                        <span className="text-xs text-slate-500 font-light">
+                          Lokalni predogled Word/Excel dokumentov ni na voljo. Kliknite za prenos.
+                        </span>
                       </div>
                     );
-                  })()}
-                  {(() => {
-                    const { title, showFileNameSub } = attachmentDisplayTitle(
-                      {
-                        fileName: previewAttachment.name,
-                        attachmentType: previewAttachment.attachmentType,
-                        documentType: previewAttachment.documentType,
-                      },
-                      t
-                    );
-                    return (
-                      <>
-                        <p className="text-sm font-medium text-slate-800">{title}</p>
-                        {showFileNameSub && (
-                          <p className="text-xs text-slate-500">{previewAttachment.name}</p>
-                        )}
-                      </>
-                    );
-                  })()}
-                  <p className="text-xs text-slate-500">{t("modalPreviewAddedAtPrefix")} {previewAttachment.time} · {previewAttachment.date}</p>
-                </div>
-                {previewAttachment.documentPreview &&
-                  previewAttachment.documentType &&
-                  previewAttachment.documentType !== "other" && (
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      {t("modalDocumentPreviewLabel")}
-                    </span>
-                    <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-                      <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
-                        {previewAttachment.documentPreview}
-                      </p>
+                  }
+                  return (
+                    <iframe
+                      src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`}
+                      title={previewAttachment.name}
+                      className="w-full h-[85vh] rounded-lg border-none shadow-2xl bg-white"
+                    />
+                  );
+                }
+
+                if (url && isAudio) {
+                  return (
+                    <div className="w-full max-w-md p-6 rounded-2xl bg-white border border-slate-100 flex flex-col items-center justify-center gap-4 shadow-2xl">
+                      <div className="w-16 h-16 rounded-full bg-[#EFF6FF] flex items-center justify-center text-[#1B3A6B]">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                          <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                        </svg>
+                      </div>
+                      <audio controls className="w-full mt-2" src={url} autoPlay>
+                        Your browser does not support the audio element.
+                      </audio>
                     </div>
-                  </div>
-                )}
-                {previewAttachment.documentType &&
-                  previewAttachment.documentType !== "other" && (
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      {t("modalOcrTextLabel")}
-                    </span>
-                    <div className="max-h-40 overflow-y-auto rounded-xl bg-slate-50 border border-slate-100 p-3">
-                      <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">
-                        {previewAttachment.ocrText || t("modalOcrTextNone")}
-                      </p>
+                  );
+                }
+
+                if (url && isVideo) {
+                  return (
+                    <video controls className="max-w-full max-h-[85vh] rounded-lg bg-black shadow-2xl" src={url} autoPlay>
+                      Your browser does not support the video tag.
+                    </video>
+                  );
+                }
+
+                if (url) {
+                  return (
+                    <div
+                      onClick={() => handleForceDownload(url, previewAttachment.name)}
+                      className="w-full max-w-md p-8 rounded-2xl bg-white border border-slate-200 flex flex-col items-center justify-center gap-4 text-center cursor-pointer shadow-2xl"
+                    >
+                      <Paperclip className="w-16 h-16 text-slate-400" />
+                      <span className="text-sm text-slate-800 font-semibold truncate max-w-[80%]">
+                        {previewAttachment.name}
+                      </span>
                     </div>
+                  );
+                }
+
+                return (
+                  <div className="w-full max-w-md p-8 rounded-2xl bg-white border border-slate-200 flex items-center justify-center shadow-2xl">
+                    <Paperclip className="w-16 h-16 text-slate-300" />
                   </div>
-                )}
-                <div className="flex gap-3 mt-4 pt-2 border-t border-slate-100/55 justify-center">
-                  <button
-                    type="button"
-                    onClick={() => handleHideAttachment(previewAttachment.id)}
-                    className="flex-1 h-12 rounded-[12px] border border-red-200 text-red-600 font-bold text-[13px] uppercase tracking-wider hover:bg-red-50 transition-colors"
-                  >
-                    {t("modalHideAttachment")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewAttachment(null)}
-                    className="flex-1 h-12 rounded-[12px] bg-[#0A1128] hover:bg-[#152042] text-white font-bold text-[13px] uppercase tracking-wider transition-colors shadow-lg shadow-[#0A1128]/10"
-                  >
-                    {t("modalClose")}
-                  </button>
-                </div>
-              </div>
+                );
+              })()}
             </div>
           )}
         </DialogContent>
