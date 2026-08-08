@@ -2034,49 +2034,52 @@ export function WorkerDetailModal({
         if (!open) setDeleteStepId(null);
       }}>
         <DialogContent
-          style={{
-            background: "transparent",
-            border: "none",
-            boxShadow: "none",
-            padding: 0,
-            maxWidth: "380px",
-            width: "90%",
-          }}
-          className="outline-none"
+          showCloseButton={false}
+          className="w-full max-w-[calc(100%-2rem)] sm:max-w-[400px] outline-none mx-auto p-3 bg-[#f1f5f9] rounded-[28px] border-none shadow-2xl flex flex-col gap-0 animate-in fade-in zoom-in-95 duration-200"
         >
           {(() => {
             const task = tasks.find(t => t.id === deleteStepId);
             if (!task) return null;
             return (
-              <div className={auraCard}>
-                <div className="flex flex-col gap-4 text-slate-800">
-                  <div className="text-center">
-                    <h3 className="text-xl font-semibold tracking-tight text-slate-900">
-                      {t("modalDeleteStepConfirmTitle")}
-                    </h3>
-                  </div>
-                  <p className="text-sm text-slate-600 text-center">
-                    {t("modalDeleteStepConfirmPrefix")} <strong className="text-slate-900">{task.text}</strong>{t("modalDeleteStepConfirmSuffix")}
+              <div className="relative bg-white rounded-[20px] p-6 sm:p-8 shadow-sm border border-slate-100 flex flex-col gap-5">
+                {/* Close Button */}
+                <button
+                  type="button"
+                  onClick={() => setDeleteStepId(null)}
+                  className="absolute top-4 right-4 w-7 h-7 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 transition-colors border-none cursor-pointer"
+                >
+                  <svg width="10" height="10" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+
+                <div className="text-center">
+                  <h2 className="text-[22px] font-bold text-[#0f172a] mb-1">
+                    {t("modalDeleteStepConfirmTitle")}
+                  </h2>
+                  <p className="text-slate-500 text-[13px] font-medium leading-relaxed mt-2">
+                    {task.text}
                   </p>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setDeleteStepId(null)}
-                      className="flex-1 h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors"
-                    >
-                      {t("modalCancel")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await handleDeleteTask(task.id);
-                        setDeleteStepId(null);
-                      }}
-                      className="flex-1 h-10 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition-colors"
-                    >
-                      {t("modalDeleteStepSubmit")}
-                    </button>
-                  </div>
+                </div>
+
+                <div className="flex gap-3 mt-4 pt-2 border-t border-slate-100/55 justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setDeleteStepId(null)}
+                    className="flex-1 h-12 rounded-[12px] border border-slate-300 text-slate-700 font-bold text-[13px] uppercase tracking-wider hover:bg-slate-50 transition-colors"
+                  >
+                    {t("modalCancel")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await handleDeleteTask(task.id);
+                      setDeleteStepId(null);
+                    }}
+                    className="flex-1 h-12 rounded-[12px] bg-[#0A1128] hover:bg-[#152042] text-white font-bold text-[13px] uppercase tracking-wider transition-colors shadow-lg shadow-[#0A1128]/10"
+                  >
+                    {t("modalDeleteStepSubmit")}
+                  </button>
                 </div>
               </div>
             );
