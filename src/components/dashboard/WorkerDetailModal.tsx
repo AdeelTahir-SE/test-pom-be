@@ -33,7 +33,6 @@ import {
   AuraCheckbox,
   AuraTextarea,
   auraCard,
-  auraButton,
 } from "./AuraForm";
 import { describeTimelineEvent, attachmentDisplayTitle, shouldShowTimelineEvent } from "@/lib/timeline/describe";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -107,7 +106,7 @@ const TIMELINE_TYPE_BY_EVENT: Record<string, TimelineItem["type"]> = {
   voice_message_transcribed: "voice",
 };
 
-function nowTime() {
+function nowTime(): string {
   return new Date().toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" });
 }
 
@@ -260,6 +259,25 @@ function getInitials(name?: string): string {
     .toUpperCase();
 }
 
+// Premaknjeno izven glavne komponente - prej je bila TimelineIcon definirana
+// znotraj WorkerDetailModal, kar je pomenilo, da se ob vsakem renderju
+// ustvari nov komponentni tip in React podrejeno drevo po nepotrebnem
+// unmounta/remounta namesto zgolj posodobi.
+function TimelineIcon({ type }: { type: TimelineItem["type"] }) {
+  switch (type) {
+    case "voice":
+      return (
+        <svg width="12" height="12" viewBox="0 0 32 36" fill="#6D778E" className="shrink-0 mt-0.5">
+          <path d="M20.8542 17.1124C19.2762 18.3754 8.94271 26.6494 6.55021 28.5664L2.50471 24.5209L14.0067 10.2649L20.8542 17.1124ZM28.8177 2.31188C25.7352 -0.770625 20.7357 -0.770625 17.6532 2.31188C15.6207 4.34588 15.4482 6.57487 15.3492 7.36538L23.7642 15.7804C24.4902 15.6994 26.7672 15.5269 28.8177 13.4764C31.9017 10.3939 31.9017 5.39438 28.8177 2.31188ZM14.0667 29.2219C10.6287 29.2219 9.05821 31.3624 6.84271 32.7544C5.27371 33.7384 3.78871 33.2389 3.07471 32.3554C2.81521 32.0389 2.07421 30.8989 3.33571 29.5924L3.14821 29.4049L1.45921 27.7684C-0.598793 29.8924 -0.234293 32.4304 1.04071 34.0039C2.50321 35.8099 5.44471 36.7219 8.23321 34.9714C10.6107 33.4789 11.6637 31.8394 14.0667 31.8394C15.6207 31.8394 17.0367 32.5354 19.2942 35.9989L21.4857 34.5709C19.3962 31.3609 17.3337 29.2219 14.0667 29.2219Z" />
+        </svg>
+      );
+    case "attachment":
+      return <Paperclip className="w-3.5 h-3.5 text-slate-300 shrink-0 mt-0.5" />;
+    default:
+      return null;
+  }
+}
+
 export function WorkerDetailModal({
   isOpen,
   onOpenChange,
@@ -356,12 +374,9 @@ export function WorkerDetailModal({
   }, [worker, tasksSyncNonce]);
 
   const [deleteCardOpen, setDeleteCardOpen] = React.useState(false);
-  const [isDeletingCard, setIsDeletingCard] = React.useState(false);
   const [stepPosition, setStepPosition] = React.useState(tasks.length + 1);
   const queryClient = useQueryClient();
   const jobReady = !!jobId && !isOptimisticId(jobId);
-  const workerRef = React.useRef(worker);
-  workerRef.current = worker;
 
   React.useEffect(() => {
     setStepPosition(tasks.length + 1);
@@ -430,7 +445,7 @@ export function WorkerDetailModal({
   const filesLoading = filesQuery.isFetching && !filesQuery.data;
   const timelineLoading = timelineQuery.isFetching && !timelineQuery.data;
 
-  const refreshFilesAndTimeline = React.useCallback(async () => {
+  const refreshFilesAndTimeline = React.useCallback(async (): Promise<void> => {
     if (!jobId) return;
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.job.files(jobId) }),
@@ -447,7 +462,7 @@ export function WorkerDetailModal({
     }, 2500);
   }, [jobId, queryClient]);
 
-  const loadCustomerNotes = React.useCallback(async (name: string) => {
+  const loadCustomerNotes = React.useCallback(async (name: string): Promise<void> => {
     const requestId = ++notesRequestRef.current;
     if (name.length < 2) {
       setCustomerNotes([]);
@@ -530,17 +545,25 @@ export function WorkerDetailModal({
       setIsAddNoteOpen(false);
       if (mountedRef.current) {
         void loadCustomerNotes(resolvedCustomerName);
-        void refreshFilesAndTimeline();
+        // .catch dodan: gre za "fire and forget" klic, ki brez tega ne bi bil
+        // ujet nikjer navzgor po klicni verigi (unhandled promise rejection).
+        void refreshFilesAndTimeline().catch((err) => {
+          if (mountedRef.current) showToast(getErrorMessage(err));
+        });
       }
     }
     return result.success;
   }, [newNoteText, newNoteType, resolvedCustomerName, jobId, t, showToast, loadCustomerNotes, refreshFilesAndTimeline]);
 
-  const handleAddNote = async (force = false) => {
+  const handleAddNote = async (force = false): Promise<void> => {
     if (newNoteSaving) return;
     setNewNoteSaving(true);
     try {
       await submitNote(force);
+    } catch (err) {
+      if (mountedRef.current) {
+        showToast(getErrorMessage(err));
+      }
     } finally {
       if (mountedRef.current) {
         setNewNoteSaving(false);
@@ -566,7 +589,7 @@ export function WorkerDetailModal({
     void loadCustomerNotes(resolvedCustomerName);
   }, [isOpen, resolvedCustomerName, loadCustomerNotes]);
 
-  const handleDeleteCustomerNote = async (id: string) => {
+  const handleDeleteCustomerNote = async (id: string): Promise<void> => {
     try {
       const res = await api.delete<{ deleted: boolean }>(`/api/customer-notes/${id}`);
       if (!mountedRef.current) return;
@@ -590,10 +613,6 @@ export function WorkerDetailModal({
     setSaveNoteOpen(true);
   }, [resolvedCustomerName]);
 
-  const requestComplete = React.useCallback(() => {
-    openSaveNoteDialog(true);
-  }, [openSaveNoteDialog]);
-
   const finishComplete = React.useCallback(() => {
     const shouldComplete = completeAfterSaveRef.current;
     completeAfterSaveRef.current = false;
@@ -614,33 +633,47 @@ export function WorkerDetailModal({
       showToast(t("customerNotesSaveCustomerRequired"));
       return false;
     }
-    const result = await postCustomerNote(note, "always", customer, force, isRetry);
-    if (result.shouldRetry) {
-      const okAnyway = window.confirm(t("customerNotesDuplicateConfirm"));
-      if (okAnyway) {
-        return submitSaveNote(true, true);
+    try {
+      const result = await postCustomerNote(note, "always", customer, force, isRetry);
+      if (result.shouldRetry) {
+        const okAnyway = window.confirm(t("customerNotesDuplicateConfirm"));
+        if (okAnyway) {
+          return submitSaveNote(true, true);
+        }
+        return false;
+      }
+      if (result.success) {
+        if (mountedRef.current) {
+          setCustomerNotes((prev) => {
+            const newNote: CustomerNoteDto = { id: `temp-${Date.now()}`, note, created_at: new Date().toISOString() };
+            return [newNote, ...prev];
+          });
+          void loadCustomerNotes(customer);
+        }
+        finishComplete();
+        return true;
+      }
+      return false;
+    } catch (err) {
+      // postCustomerNote sicer sam lovi napake, a finishComplete()/loadCustomerNotes()
+      // klici zgoraj lahko v robnih primerih (npr. sinhrona napaka v onChangeJobStatus)
+      // še vedno vržejo - to zagotavlja, da uporabnik dobi obvestilo namesto tihega fail-a.
+      if (mountedRef.current) {
+        showToast(getErrorMessage(err));
       }
       return false;
     }
-    if (result.success) {
-      if (mountedRef.current) {
-        setCustomerNotes((prev) => {
-          const newNote: CustomerNoteDto = { id: `temp-${Date.now()}`, note, created_at: new Date().toISOString() };
-          return [newNote, ...prev];
-        });
-        void loadCustomerNotes(customer);
-      }
-      finishComplete();
-      return true;
-    }
-    return false;
   }, [saveNoteText, saveNoteCustomer, resolvedCustomerName, saveNoteChecked, jobId, t, showToast, finishComplete, loadCustomerNotes]);
 
-  const handleSaveCustomerNote = async (force = false) => {
+  const handleSaveCustomerNote = async (force = false): Promise<void> => {
     if (saveNoteSaving) return;
     setSaveNoteSaving(true);
     try {
       await submitSaveNote(force);
+    } catch (err) {
+      if (mountedRef.current) {
+        showToast(getErrorMessage(err));
+      }
     } finally {
       if (mountedRef.current) {
         setSaveNoteSaving(false);
@@ -653,7 +686,7 @@ export function WorkerDetailModal({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const handleTaskDragEnd = async (event: DragEndEvent) => {
+  const handleTaskDragEnd = async (event: DragEndEvent): Promise<void> => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     if (!jobReady || tasks.some((t) => isOptimisticId(t.id))) {
@@ -707,7 +740,7 @@ export function WorkerDetailModal({
     setStepPosition(tasks.length + 1);
   };
 
-  const handleToggleComplete = async (task: TaskItem) => {
+  const handleToggleComplete = async (task: TaskItem): Promise<void> => {
     try {
       const res = await api.patch<{ item: { id: string; is_completed: boolean; completed_at: string | null } }>(
         `/api/checklist-items/${task.id}`,
@@ -739,7 +772,7 @@ export function WorkerDetailModal({
     }
   };
 
-  const handleDeleteTask = async (taskId: string) => {
+  const handleDeleteTask = async (taskId: string): Promise<void> => {
     try {
       const res = await api.delete(`/api/checklist-items/${taskId}`);
       if (!mountedRef.current) return;
@@ -756,7 +789,7 @@ export function WorkerDetailModal({
     }
   };
 
-  const handleAddStep = async (e: React.FormEvent) => {
+  const handleAddStep = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     if (!stepText.trim() || !jobId) return;
     if (!jobReady) {
@@ -841,7 +874,7 @@ export function WorkerDetailModal({
     setAttachOnlyOpen(true);
   };
 
-  const handleHideAttachment = async (fileId: string) => {
+  const handleHideAttachment = async (fileId: string): Promise<void> => {
     try {
       const res = await api.patch(`/api/files/${fileId}`, { hidden: true });
       if (!mountedRef.current) return;
@@ -864,38 +897,10 @@ export function WorkerDetailModal({
     }
   };
 
-  const renderStepsList = (maxHeightClass = "max-h-[320px]") => (
-    <div className={`flex flex-col gap-3 overflow-y-auto ${maxHeightClass} custom-ios-scrollbar pr-1 flex-grow`}>
-      {tasks.length === 0 ? (
-        <span className="text-xs text-slate-400 font-light">
-          Ni predvidenih del.
-        </span>
-      ) : (
-        tasks.map((task, idx) => (
-          <div key={task.id} className="flex items-start gap-2.5">
-            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 font-mono ${
-              task.completed 
-                ? "bg-green-50 border border-green-600 text-green-600" 
-                : "bg-slate-200 text-slate-700"
-            }`}>
-              {task.completed ? (
-                <svg width="10" height="7" viewBox="0 0 10 7" fill="none">
-                  <path d="M1 3.5L3.5 6L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              ) : (
-                idx + 1
-              )}
-            </div>
-            <span className={`text-xs flex-1 min-w-0 font-normal leading-relaxed break-words ${
-              task.completed ? "text-slate-400 line-through" : "text-[#0F172A]"
-            }`}>
-              {task.text}
-            </span>
-          </div>
-        ))
-      )}
-    </div>
-  );
+  const firstIncompleteId = tasks.find((t) => !t.completed)?.id ?? null;
+  const taskIds = React.useMemo(() => tasks.map((t) => t.id), [tasks]);
+  const canPreviewAttachment = (att: AttachmentItem): boolean =>
+    !!att.documentPreview && !!att.documentType && att.documentType !== "other";
 
   if (!worker) {
     if (!isOpen) return null;
@@ -919,21 +924,6 @@ export function WorkerDetailModal({
       </Dialog>
     );
   }
-
-function TimelineIcon({ type }: { type: TimelineItem["type"] }) {
-  switch (type) {
-    case "voice":
-      return (
-        <svg width="12" height="12" viewBox="0 0 32 36" fill="#6D778E" className="shrink-0 mt-0.5">
-          <path d="M20.8542 17.1124C19.2762 18.3754 8.94271 26.6494 6.55021 28.5664L2.50471 24.5209L14.0067 10.2649L20.8542 17.1124ZM28.8177 2.31188C25.7352 -0.770625 20.7357 -0.770625 17.6532 2.31188C15.6207 4.34588 15.4482 6.57487 15.3492 7.36538L23.7642 15.7804C24.4902 15.6994 26.7672 15.5269 28.8177 13.4764C31.9017 10.3939 31.9017 5.39438 28.8177 2.31188ZM14.0667 29.2219C10.6287 29.2219 9.05821 31.3624 6.84271 32.7544C5.27371 33.7384 3.78871 33.2389 3.07471 32.3554C2.81521 32.0389 2.07421 30.8989 3.33571 29.5924L3.14821 29.4049L1.45921 27.7684C-0.598793 29.8924 -0.234293 32.4304 1.04071 34.0039C2.50321 35.8099 5.44471 36.7219 8.23321 34.9714C10.6107 33.4789 11.6637 31.8394 14.0667 31.8394C15.6207 31.8394 17.0367 32.5354 19.2942 35.9989L21.4857 34.5709C19.3962 31.3609 17.3337 29.2219 14.0667 29.2219Z" />
-        </svg>
-      );
-    case "attachment":
-      return <Paperclip className="w-3.5 h-3.5 text-slate-300 shrink-0 mt-0.5" />;
-    default:
-      return null;
-  }
-}
 
   const renderContentBody = () => {
     const details = [
@@ -1058,9 +1048,22 @@ function TimelineIcon({ type }: { type: TimelineItem["type"] }) {
 
           {/* Right Column (Desktop) */}
           <div className="relative flex-1 bg-white rounded-[24px] p-6 sm:p-8 shadow-sm border border-slate-100 flex flex-col min-h-[581px] max-h-[581px] overflow-y-auto custom-ios-scrollbar">
+            {/* Close button - dodano, da je zapiranje modala mogoče tudi na desktop širini
+                brez klika izven modala (prej je bil X gumb prisoten samo v mobilnem layoutu) */}
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              aria-label="Zapri"
+              className="absolute top-6 right-6 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+            >
+              <svg width="10" height="10" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+
             {/* Delete card / completion actions - IZBRIŠI KARTICO on top right */}
             {(onDeleteCard || jobStatus === "completed") && (
-              <div className="flex justify-end gap-4 mb-10">
+              <div className="flex justify-end gap-4 mb-10 pr-9">
                 {jobStatus === "completed" && (
                   <button
                     type="button"
@@ -1094,6 +1097,7 @@ function TimelineIcon({ type }: { type: TimelineItem["type"] }) {
                 )}
               </div>
             )}
+            {!(onDeleteCard || jobStatus === "completed") && <div className="mb-10" />}
 
             <div className="flex flex-col gap-6">
               {/* PREDVIDENA DELA (Tasks) */}
