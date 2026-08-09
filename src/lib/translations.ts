@@ -1,6 +1,12 @@
 export const translations = {
   sl: {
     // Navigation
+    cmdCenterLabel: "PREGLED SISTEMA",
+    cmdCenterTitle: "Komandni center",
+    cmdCenterSubtitle: "Vse vaše terensko delo, opomniki in komunikacija zbrani na enem mestu za popoln nadzor.",
+    ptrReminders: "Opomniki za šefa",
+    ptrField: "Teren",
+    ptrCommunication: "Komunikacija",
     navHowItWorks: "Kako deluje",
     navFeatures: "Funkcionalnosti",
     navBenefits: "Prednosti",
@@ -514,6 +520,12 @@ export const translations = {
   },
   en: {
     // Navigation
+    cmdCenterLabel: "SYSTEM OVERVIEW",
+    cmdCenterTitle: "Command Center",
+    cmdCenterSubtitle: "All your field work, reminders, and communication gathered in one place for complete control.",
+    ptrReminders: "Reminders for boss",
+    ptrField: "Field",
+    ptrCommunication: "Communication",
     navHowItWorks: "How it works",
     navFeatures: "Features",
     navBenefits: "Benefits",
