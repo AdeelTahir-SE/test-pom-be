@@ -1498,7 +1498,7 @@ export default function DatabaseDashboard() {
               type="button"
               disabled={attachUploading}
               onClick={() => void handleUploadAttachment()}
-              className="flex-1 h-9 rounded-[8px] bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold disabled:opacity-50"
+              className="flex-1 h-9 rounded-[8px] bg-[#0A1128] hover:bg-[#152042] text-white text-xs font-semibold disabled:opacity-50 transition-colors"
             >
               {attachUploading ? 'Nalagam…' : 'Naloži'}
             </button>

@@ -2034,7 +2034,7 @@ export default function OfficeDashboard() {
                         };
                         cardAttachInputRef.current?.click();
                       }}
-                      className="w-full h-11 rounded-[12px] bg-[#1B3A6B] text-white text-xs font-bold uppercase tracking-wider hover:bg-[#152e55] transition-colors shadow-md shadow-[#1B3A6B]/10"
+                      className="w-full h-11 rounded-[12px] bg-[#0A1128] text-white text-xs font-bold uppercase tracking-wider hover:bg-[#152042] transition-colors shadow-md shadow-[#0A1128]/10"
                     >
                       Naloži priponko
                     </button>
@@ -2065,7 +2065,7 @@ export default function OfficeDashboard() {
                     <button
                       type="button"
                       onClick={() => void completeConfirmedTask()}
-                      className="flex-1 h-12 rounded-[12px] bg-[#1B3A6B] text-white font-bold text-[13px] uppercase tracking-wider hover:bg-[#152e55] transition-colors shadow-lg shadow-blue-900/10"
+                      className="flex-1 h-12 rounded-[12px] bg-[#0A1128] text-white font-bold text-[13px] uppercase tracking-wider hover:bg-[#152042] transition-colors shadow-lg shadow-[#0A1128]/10"
                     >
                       {t('modalConfirmStepSubmit')}
                     </button>
@@ -2243,8 +2243,8 @@ export default function OfficeDashboard() {
                 <div
                   className={`w-16 h-16 rounded-[20px] flex items-center justify-center border transition-all ${
                     composeWorkerId
-                      ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-lg shadow-[#1B3A6B]/20"
-                      : "bg-white border-slate-400 text-slate-400"
+                      ? "bg-[#0A1128] border-[#0A1128] text-white shadow-lg shadow-[#0A1128]/20"
+                      : "bg-white border-slate-200 text-slate-400"
                   }`}
                 >
                   <svg
@@ -2281,8 +2281,8 @@ export default function OfficeDashboard() {
                 <div
                   className={`w-16 h-16 rounded-[20px] flex items-center justify-center border transition-all ${
                     composeWorkerId
-                      ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-lg shadow-[#1B3A6B]/20"
-                      : "bg-white border-slate-400 text-slate-400"
+                      ? "bg-[#0A1128] border-[#0A1128] text-white shadow-lg shadow-[#0A1128]/20"
+                      : "bg-white border-slate-200 text-slate-400"
                   }`}
                 >
                   <svg
@@ -2377,7 +2377,7 @@ export default function OfficeDashboard() {
             </button>
             <button
               onClick={handleSendReply}
-              className="w-10 h-10 rounded-xl bg-[#1B3A6B] hover:bg-[#142c52] text-white flex items-center justify-center transition-colors shrink-0 cursor-pointer"
+              className="w-10 h-10 rounded-xl bg-[#0A1128] hover:bg-[#152042] text-white flex items-center justify-center transition-colors shrink-0 cursor-pointer"
             >
               <Send className="w-4 h-4" />
             </button>

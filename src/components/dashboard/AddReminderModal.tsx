@@ -394,13 +394,13 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onOpe
                     >
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all shrink-0 ${
                         hasAttachment
-                          ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-md shadow-[#1B3A6B]/10"
-                          : "bg-white border-[#cbd5e1] text-slate-500 hover:border-[#1B3A6B]/50"
+                          ? "bg-[#0A1128] border-[#0A1128] text-white shadow-md shadow-[#0A1128]/10"
+                          : "bg-white border-[#cbd5e1] text-slate-500 hover:border-[#0A1128]/50"
                       }`}>
                         {attachmentIcon}
                       </div>
                       <span className={`text-[12px] transition-colors ${
-                        hasAttachment ? "text-[#1B3A6B] font-semibold" : "text-slate-600 font-medium"
+                        hasAttachment ? "text-[#0A1128] font-semibold" : "text-slate-600 font-medium"
                       }`}>
                         {t("modalReminderAttachment") || "Priponka"}
                       </span>
@@ -414,13 +414,13 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onOpe
                     >
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all shrink-0 ${
                         hasEmail
-                          ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-md shadow-[#1B3A6B]/10"
-                          : "bg-white border-[#cbd5e1] text-slate-500 hover:border-[#1B3A6B]/50"
+                          ? "bg-[#0A1128] border-[#0A1128] text-white shadow-md shadow-[#0A1128]/10"
+                          : "bg-white border-[#cbd5e1] text-slate-500 hover:border-[#0A1128]/50"
                       }`}>
                         {emailIcon}
                       </div>
                       <span className={`text-[12px] transition-colors ${
-                        hasEmail ? "text-[#1B3A6B] font-semibold" : "text-slate-600 font-medium"
+                        hasEmail ? "text-[#0A1128] font-semibold" : "text-slate-600 font-medium"
                       }`}>
                         {t("modalReminderEmail") || "E-pošta"}
                       </span>
@@ -436,13 +436,13 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onOpe
                     >
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all shrink-0 ${
                         hasConfirm
-                          ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-md shadow-[#1B3A6B]/10"
-                          : "bg-white border-[#cbd5e1] text-slate-500 hover:border-[#1B3A6B]/50"
+                          ? "bg-[#0A1128] border-[#0A1128] text-white shadow-md shadow-[#0A1128]/10"
+                          : "bg-white border-[#cbd5e1] text-slate-500 hover:border-[#0A1128]/50"
                       }`}>
                         {confirmIcon}
                       </div>
                       <span className={`text-[12px] transition-colors ${
-                        hasConfirm ? "text-[#1B3A6B] font-semibold" : "text-slate-600 font-medium"
+                        hasConfirm ? "text-[#0A1128] font-semibold" : "text-slate-600 font-medium"
                       }`}>
                         {t("modalReminderConfirm") || "Potrdi"}
                       </span>
@@ -458,13 +458,13 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onOpe
                     >
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all shrink-0 ${
                         hasDecline
-                          ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-md shadow-[#1B3A6B]/10"
-                          : "bg-white border-[#cbd5e1] text-slate-500 hover:border-[#1B3A6B]/50"
+                          ? "bg-[#0A1128] border-[#0A1128] text-white shadow-md shadow-[#0A1128]/10"
+                          : "bg-white border-[#cbd5e1] text-slate-500 hover:border-[#0A1128]/50"
                       }`}>
                         {declineIcon}
                       </div>
                       <span className={`text-[12px] transition-colors ${
-                        hasDecline ? "text-[#1B3A6B] font-semibold" : "text-slate-600 font-medium"
+                        hasDecline ? "text-[#0A1128] font-semibold" : "text-slate-600 font-medium"
                       }`}>
                         {t("modalReminderDecline") || "Zavrni"}
                       </span>
@@ -517,8 +517,8 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onOpe
                         <div
                           className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all ${
                             phoneNumber && toTelHref(phoneNumber)
-                              ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-md shadow-[#1B3A6B]/10"
-                              : "bg-white border-[#cbd5e1] text-slate-500 hover:border-[#1B3A6B]/50"
+                              ? "bg-[#0A1128] border-[#0A1128] text-white shadow-md shadow-[#0A1128]/10"
+                              : "bg-white border-[#cbd5e1] text-slate-500 hover:border-[#0A1128]/50"
                           }`}
                         >
                           {phoneIcon}
@@ -543,7 +543,7 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onOpe
             <div className="mt-2.5 pt-2.5 sm:mt-4 sm:pt-3 border-t border-slate-100/50">
               <button
                 type="submit"
-                className="w-full h-[40px] rounded-[12px] bg-[#2b5493] text-white font-medium text-[13px] uppercase tracking-wider hover:bg-[#1f3f72] transition-colors shadow-lg shadow-blue-900/10"
+                className="w-full h-[40px] rounded-[12px] bg-[#0A1128] text-white font-medium text-[13px] uppercase tracking-wider hover:bg-[#152042] transition-colors shadow-lg shadow-[#0A1128]/10"
               >
                 {t("modalScheduleSubmit") || "Dodaj na urnik"}
               </button>

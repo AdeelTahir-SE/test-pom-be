@@ -28,7 +28,7 @@ export const auraCard =
   "rounded-2xl bg-white/95 backdrop-blur ring-1 ring-white/60 shadow-lg p-5";
 
 export const auraButton =
-  "w-full inline-flex items-center justify-center rounded-xl bg-gradient-to-b from-[#1B3A6B] to-[#12274b] text-white px-4 py-3 text-sm font-semibold hover:from-[#234882] hover:to-[#1a3867] active:scale-[0.98] transition-all";
+  "w-full inline-flex items-center justify-center rounded-xl bg-gradient-to-b from-[#0A1128] to-[#050814] text-white px-4 py-3 text-sm font-semibold hover:from-[#152042] hover:to-[#0c142c] active:scale-[0.98] transition-all";
 
 type AuraLabelProps = Readonly<{
   children: React.ReactNode;
@@ -188,7 +188,7 @@ export function AuraIconButton({
   onClick,
   icon,
   label,
-  activeIconColor = "#1B3A6B",
+  activeIconColor = "#0A1128",
   inactiveIconColor = "#64748B",
   title,
   type = "button",
@@ -208,8 +208,8 @@ export function AuraIconButton({
         className={cn(
           "w-8 h-8 rounded-lg flex items-center justify-center border transition-all",
           active
-            ? "bg-[#1B3A6B] border-[#1B3A6B] shadow-[0_4px_10px_-2px_rgba(27,58,107,0.3)]"
-            : "bg-white border-[#1B3A6B]/25 hover:border-[#1B3A6B]/50"
+            ? "bg-[#0A1128] border-[#0A1128] shadow-[0_4px_10px_-2px_rgba(10,17,40,0.3)]"
+            : "bg-white border-[#0A1128]/25 hover:border-[#0A1128]/50"
         )}
       >
         <span style={{ color: active ? "#ffffff" : inactiveIconColor }}>
@@ -220,7 +220,7 @@ export function AuraIconButton({
         <span
           className={cn(
             "text-[12px] transition-colors",
-            active ? "text-[#1B3A6B]" : "text-slate-500"
+            active ? "text-[#0A1128]" : "text-slate-500"
           )}
         >
           {label}
@@ -247,8 +247,8 @@ export function AuraCheckbox({
         className={cn(
           "w-4 h-4 rounded border flex items-center justify-center transition-all",
           checked
-            ? "bg-[#1B3A6B] border-[#1B3A6B]"
-            : "bg-white border-slate-300 hover:border-[#1B3A6B]/50"
+            ? "bg-[#0A1128] border-[#0A1128]"
+            : "bg-white border-slate-300 hover:border-[#0A1128]/50"
         )}
       >
         {checked && (
