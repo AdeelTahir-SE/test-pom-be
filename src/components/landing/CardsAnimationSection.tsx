@@ -12,6 +12,7 @@ export default function CardAnimationSection() {
   const [inView, setInView] = useState(false);
   const [scale, setScale] = useState(0.85);
   const [isMobile, setIsMobile] = useState(false);
+  const [showPointers, setShowPointers] = useState(false);
 
   // Responsive scaling handler
   useEffect(() => {
@@ -54,6 +55,16 @@ export default function CardAnimationSection() {
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  // Timer to sync pointer appearance and card hover launch (12 seconds)
+  useEffect(() => {
+    if (inView) {
+      const timer = setTimeout(() => {
+        setShowPointers(true);
+      }, 12000);
+      return () => clearTimeout(timer);
+    }
+  }, [inView]);
 
   // Hardcoded preview data
   const previewWorkers: Worker[] = [
@@ -140,11 +151,12 @@ export default function CardAnimationSection() {
   ];
 
   // The 6 cards in order of appearance mapping to the columns (width 1300 scale):
+  // isPointerCard triggers the rise-and-float animation at the end
   const cards = [
-    { left: 450, top: 280, col: 2, row: 1, type: "order", data: previewOrders[0], delay: 0.0 },
-    { left: 0, top: 280, col: 1, row: 1, type: "worker", data: previewWorkers[0], delay: 1.5 },
+    { left: 450, top: 280, col: 2, row: 1, type: "order", data: previewOrders[0], delay: 0.0, isPointerCard: true },
+    { left: 0, top: 280, col: 1, row: 1, type: "worker", data: previewWorkers[0], delay: 1.5, isPointerCard: true },
     { left: 450, top: 570, col: 2, row: 2, type: "order", data: previewOrders[1], delay: 3.0 },
-    { left: 900, top: 280, col: 3, row: 1, type: "message", data: previewMessages[0], delay: 4.5 },
+    { left: 900, top: 280, col: 3, row: 1, type: "message", data: previewMessages[0], delay: 4.5, isPointerCard: true },
     { left: 0, top: 570, col: 1, row: 2, type: "worker", data: previewWorkers[1], delay: 6.0 },
     { left: 900, top: 570, col: 3, row: 2, type: "message", data: previewMessages[1], delay: 7.5 }
   ];
@@ -259,6 +271,22 @@ export default function CardAnimationSection() {
               box-shadow: none;
             }
           }
+          /* Rise-up and fix styling in the air for top cards when pointers activate */
+          .itp-card-hovering {
+            opacity: 1 !important;
+            animation: itp-card-rise-up 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            animation-delay: 0s !important;
+          }
+          @keyframes itp-card-rise-up {
+            0% {
+              transform: translate3d(0, 0, 0);
+              box-shadow: none;
+            }
+            100% {
+              transform: translate3d(0, 0, 45px);
+              box-shadow: -22px 44px 18px rgba(15, 23, 42, 0.22);
+            }
+          }
           .itp-pointer {
             position: absolute; z-index: 300;
             display: flex; flex-direction: column; align-items: center;
@@ -267,8 +295,8 @@ export default function CardAnimationSection() {
             animation: itp-pointer-fade-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
           }
           @keyframes itp-pointer-fade-in {
-            from { opacity: 0; transform: translate3d(-50%, 15px, 0) rotate(47deg) rotateX(-48deg); }
-            to   { opacity: 1; transform: translate3d(-50%, 0, 0) rotate(47deg) rotateX(-48deg); }
+            from { opacity: 0; transform: translate3d(-50%, 15px, 45px) rotate(47deg) rotateX(-48deg); }
+            to   { opacity: 1; transform: translate3d(-50%, 0, 45px) rotate(47deg) rotateX(-48deg); }
           }
           .itp-pointer-label {
             border-radius: 999px; background: #2F6BFF;
@@ -419,21 +447,21 @@ export default function CardAnimationSection() {
                 {inView && (
                   <>
                     {/* Pointer 2 - Left Column (Teren) */}
-                    <div className="itp-pointer" style={{ left: 0 + 197, top: 220, animationDelay: '12.0s' }}>
+                    <div className="itp-pointer" style={{ left: 0 + 197, top: 230, animationDelay: '13.2s' }}>
                       <div className="itp-pointer-label">{t('ptrField')}</div>
                       <div className="itp-pointer-line" />
                       <div className="itp-pointer-dot" />
                     </div>
 
                     {/* Pointer 1 - Middle Column (Opomniki za šefa) */}
-                    <div className="itp-pointer" style={{ left: 450 + 197, top: 220, animationDelay: '12.0s' }}>
+                    <div className="itp-pointer" style={{ left: 450 + 197, top: 230, animationDelay: '13.2s' }}>
                       <div className="itp-pointer-label">{t('ptrReminders')}</div>
                       <div className="itp-pointer-line" />
                       <div className="itp-pointer-dot" />
                     </div>
 
                     {/* Pointer 3 - Right Column (Komunikacija) */}
-                    <div className="itp-pointer" style={{ left: 900 + 197, top: 220, animationDelay: '12.0s' }}>
+                    <div className="itp-pointer" style={{ left: 900 + 197, top: 230, animationDelay: '13.2s' }}>
                       <div className="itp-pointer-label">{t('ptrCommunication')}</div>
                       <div className="itp-pointer-line" />
                       <div className="itp-pointer-dot" />
@@ -554,7 +582,7 @@ export default function CardAnimationSection() {
                 {cards.map((c, i) => (
                   <div
                     key={i}
-                    className="itp-card"
+                    className={`itp-card ${c.isPointerCard && showPointers ? "itp-card-hovering" : ""}`}
                     style={{
                       left: c.left,
                       top: c.top,
