@@ -13,10 +13,6 @@ export default function CardAnimationSection() {
   const [scale, setScale] = useState(0.85);
   const [isMobile, setIsMobile] = useState(false);
 
-  // Playground rotation state controls (initialized to current design defaults)
-  const [rotateX, setRotateX] = useState(58);
-  const [rotateZ, setRotateZ] = useState(-47);
-
   // Responsive scaling handler
   useEffect(() => {
     const handleResize = () => {
@@ -271,8 +267,8 @@ export default function CardAnimationSection() {
             animation: itp-pointer-fade-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
           }
           @keyframes itp-pointer-fade-in {
-            from { opacity: 0; transform: translate3d(-50%, 15px, 0); }
-            to   { opacity: 1; transform: translate3d(-50%, 0, 0); }
+            from { opacity: 0; transform: translate3d(-50%, 15px, 0) rotate(47deg) rotateX(-48deg); }
+            to   { opacity: 1; transform: translate3d(-50%, 0, 0) rotate(47deg) rotateX(-48deg); }
           }
           .itp-pointer-label {
             border-radius: 999px; background: #2F6BFF;
@@ -292,46 +288,6 @@ export default function CardAnimationSection() {
             50% { transform: translateY(-12px) scale(1.05); }
           }
         `}</style>
-
-        {/* Dynamic Rotation Controls (Desktop only) */}
-        {!isMobile && (
-          <div className="absolute top-6 left-6 z-[100] bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-white/10 p-4 rounded-2xl shadow-xl flex flex-col gap-3 w-64 pointer-events-auto">
-            <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 tracking-wide uppercase">
-              Rotation Control
-            </div>
-            <div className="flex flex-col gap-1">
-              <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400">
-                <span>rotateX (Pitch)</span>
-                <span className="font-mono font-medium">{rotateX}°</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="90"
-                value={rotateX}
-                onChange={(e) => setRotateX(Number(e.target.value))}
-                className="w-full h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400">
-                <span>rotateZ (Yaw)</span>
-                <span className="font-mono font-medium">{rotateZ}°</span>
-              </div>
-              <input
-                type="range"
-                min="-90"
-                max="90"
-                value={rotateZ}
-                onChange={(e) => setRotateZ(Number(e.target.value))}
-                className="w-full h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-              />
-            </div>
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-400 dark:text-slate-500 font-mono text-center">
-              {`rotateX(${rotateX}deg) rotateZ(${rotateZ}deg)`}
-            </div>
-          </div>
-        )}
 
         {/* Grid Background */}
         <div className="itp-grid-bg" />
@@ -455,7 +411,7 @@ export default function CardAnimationSection() {
                   height: 820,
                   width: 1300,
                   transformStyle: "preserve-3d",
-                  transform: `perspective(3200px) rotateX(${rotateX}deg) rotateZ(${rotateZ}deg) scale(${scale})`,
+                  transform: `perspective(3200px) rotateX(48deg) rotateZ(-47deg) scale(${scale})`,
                   transformOrigin: "center center",
                 }}
               >
@@ -464,29 +420,23 @@ export default function CardAnimationSection() {
                   <>
                     {/* Pointer 2 - Left Column (Teren) */}
                     <div className="itp-pointer" style={{ left: 0 + 197, top: 220, animationDelay: '12.0s' }}>
-                      <div style={{ transform: `rotate(${-rotateZ}deg) rotateX(${-rotateX}deg)`, transformStyle: "preserve-3d", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                        <div className="itp-pointer-label">{t('ptrField')}</div>
-                        <div className="itp-pointer-line" />
-                        <div className="itp-pointer-dot" />
-                      </div>
+                      <div className="itp-pointer-label">{t('ptrField')}</div>
+                      <div className="itp-pointer-line" />
+                      <div className="itp-pointer-dot" />
                     </div>
 
                     {/* Pointer 1 - Middle Column (Opomniki za šefa) */}
                     <div className="itp-pointer" style={{ left: 450 + 197, top: 220, animationDelay: '12.0s' }}>
-                      <div style={{ transform: `rotate(${-rotateZ}deg) rotateX(${-rotateX}deg)`, transformStyle: "preserve-3d", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                        <div className="itp-pointer-label">{t('ptrReminders')}</div>
-                        <div className="itp-pointer-line" />
-                        <div className="itp-pointer-dot" />
-                      </div>
+                      <div className="itp-pointer-label">{t('ptrReminders')}</div>
+                      <div className="itp-pointer-line" />
+                      <div className="itp-pointer-dot" />
                     </div>
 
                     {/* Pointer 3 - Right Column (Komunikacija) */}
                     <div className="itp-pointer" style={{ left: 900 + 197, top: 220, animationDelay: '12.0s' }}>
-                      <div style={{ transform: `rotate(${-rotateZ}deg) rotateX(${-rotateX}deg)`, transformStyle: "preserve-3d", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                        <div className="itp-pointer-label">{t('ptrCommunication')}</div>
-                        <div className="itp-pointer-line" />
-                        <div className="itp-pointer-dot" />
-                      </div>
+                      <div className="itp-pointer-label">{t('ptrCommunication')}</div>
+                      <div className="itp-pointer-line" />
+                      <div className="itp-pointer-dot" />
                     </div>
                   </>
                 )}
