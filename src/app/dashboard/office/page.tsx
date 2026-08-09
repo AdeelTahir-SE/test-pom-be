@@ -56,6 +56,7 @@ import { CommunicationCard } from '@/components/dashboard/CommunicationCard';
 import { WorkerDetailModal } from '@/components/dashboard/WorkerDetailModal';
 import { AddTaskModal } from '@/components/dashboard/AddTaskModal';
 import { AddReminderModal } from '@/components/dashboard/AddReminderModal';
+import { AttachmentDialog } from '@/components/dashboard/AttachmentDialog';
 import { AddWorkerCard } from '@/components/dashboard/AddWorkerCard';
 import { TeamManagementModal } from '@/components/dashboard/TeamManagementModal';
 import { SearchModal } from '@/components/dashboard/SearchModal';
@@ -174,13 +175,13 @@ export default function OfficeDashboard() {
     reminders,
     communications,
     workers,
-    summary,
     checklistsByJob,
     dataLoading,
     setJobs,
     setReminders,
     setCommunications,
     setChecklistsByJob,
+    setWorkers,
     refreshBoard,
   } = useOfficeBoard(selectedDayKey, !authLoading && !!user);
 
@@ -197,6 +198,9 @@ export default function OfficeDashboard() {
   const [isWorkerDetailOpen, setIsWorkerDetailOpen] = useState(false);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [isAddReminderOpen, setIsAddReminderOpen] = useState(false);
+  const [reminderEditTarget, setReminderEditTarget] = useState<string | null>(null);
+  const [isAttachmentDialogOpen, setIsAttachmentDialogOpen] = useState(false);
+  const [attachmentDialogReminderId, setAttachmentDialogReminderId] = useState<string | null>(null);
   const [isAddWorkerOpen, setIsAddWorkerOpen] = useState(false);
   const [isTeamOpen, setIsTeamOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -380,9 +384,11 @@ export default function OfficeDashboard() {
   })();
 
   // Same day-matching as column 1 / API — never show a reminder on the wrong day.
-  const dayReminders = reminders.filter((r) =>
-    reminderBelongsToDay(r, selectedDayKey, boardTodayKey),
-  );
+  const dayReminders = reminders
+    .filter((r) =>
+      reminderBelongsToDay(r, selectedDayKey, boardTodayKey),
+    )
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   // Shared office channel (a6) — one conversation box per job for all office roles.
   const dayCommunications = communications;
   const communicationThreads = (() => {
@@ -408,7 +414,21 @@ export default function OfficeDashboard() {
       );
   })();
 
-  const dayFieldOverview = summary?.field_overview ?? [];
+  // Derive HITRI PREGLED from the same TEREN cards on screen (Mark: must sync
+  // without a full page refresh). Do not wait on /api/dashboard/summary cache.
+  const dayFieldOverview = activeJobs.map((job) => {
+    const checklist = mergedChecklistsByJob[job.id] ?? [];
+    const completed = checklist.filter((i) => i.is_completed).length;
+    const worker = job.worker_id ? workerById.get(job.worker_id) : null;
+    return {
+      job_id: job.id,
+      job_title: job.title,
+      location: job.location,
+      worker_name: worker?.full_name ?? null,
+      checklist_completed: completed,
+      checklist_total: checklist.length,
+    };
+  });
   const dayUrgent = dayReminders.find((r) => r.is_urgent) ?? null;
 
   const selectedJob = selectedWorkerJobId
@@ -545,6 +565,44 @@ export default function OfficeDashboard() {
     if (!item || isOptimisticId(item.job_id)) return;
     cardAttachTargetRef.current = { jobId: item.job_id, taskId: item.id };
     cardAttachInputRef.current?.click();
+  };
+
+  const handleReminderAttachmentClick = (reminderId: string) => {
+    setReminderEditTarget(reminderId);
+    setIsAddReminderOpen(true);
+  };
+
+  const handleReminderAttachmentDialog = (reminderId: string) => {
+    setAttachmentDialogReminderId(reminderId);
+    setIsAttachmentDialogOpen(true);
+  };
+
+  const handleOpenReminderAttachment = async (reminderId: string) => {
+    const reminder = reminders.find(r => r.id === reminderId);
+    if (!reminder) {
+      showToast('Opomnik ni najden.');
+      return;
+    }
+
+    if (!reminder.link) {
+      // No attachment yet - open the upload dialog
+      handleReminderAttachmentDialog(reminderId);
+      return;
+    }
+
+    try {
+      const res = await api.get<{ url: string; fileName: string }>(
+        `/api/office-reminders/${reminderId}/attachment-url`
+      );
+      if (res.status === 200 && res.data?.url) {
+        window.open(res.data.url, '_blank', 'noopener,noreferrer');
+      } else {
+        showToast(res.error?.message || 'Datoteke ni bilo mogoče odpreti.');
+      }
+    } catch (err) {
+      console.error('Failed to open attachment:', err);
+      showToast('Napaka pri odpiranju datoteke.');
+    }
   };
 
   const handleCardAttachmentFile = async (file: File | null) => {
@@ -718,11 +776,18 @@ export default function OfficeDashboard() {
     date: string;
     isUrgent: boolean;
     hasAttachment: boolean;
+    attachmentFile: File | null;
     hasEmail: boolean;
     phoneNumber: string;
     hasConfirm: boolean;
     hasDecline: boolean;
   }) => {
+    // If editing an existing reminder, call update instead
+    if (reminderEditTarget) {
+      handleUpdateReminder(reminderEditTarget, reminderData);
+      return;
+    }
+
     const actions: string[] = [];
     if (reminderData.hasAttachment) actions.push('attachment');
     if (reminderData.hasEmail) actions.push('email');
@@ -781,6 +846,71 @@ export default function OfficeDashboard() {
     })();
   };
 
+  const handleUpdateReminder = async (reminderId: string, reminderData: {
+    title: string;
+    description: string;
+    time: string;
+    date: string;
+    isUrgent: boolean;
+    hasAttachment: boolean;
+    attachmentFile: File | null;
+    hasEmail: boolean;
+    phoneNumber: string;
+    hasConfirm: boolean;
+    hasDecline: boolean;
+  }) => {
+    const actions: string[] = [];
+    if (reminderData.hasAttachment) actions.push('attachment');
+    if (reminderData.hasEmail) actions.push('email');
+    if (reminderData.phoneNumber) actions.push('phone');
+    if (reminderData.hasConfirm) actions.push('confirm');
+    if (reminderData.hasDecline) actions.push('reject');
+
+    const remindDay =
+      parseFlexibleDate(reminderData.date ?? '') ?? selectedDate;
+    const remindOnKey = toIsoDate(remindDay);
+    const remindTime = normalizeRemindTime(reminderData.time);
+
+    // Optimistic update
+    setReminders((prev) =>
+      prev.map((r) =>
+        r.id === reminderId
+          ? {
+              ...r,
+              title: reminderData.title,
+              description: reminderData.description || null,
+              is_urgent: reminderData.isUrgent,
+              remind_on: remindOnKey,
+              remind_time: remindTime,
+              actions,
+              phone: reminderData.phoneNumber || null,
+            }
+          : r
+      ),
+    );
+
+    const res = await api.patch<{ reminder: ApiOfficeReminder }>(
+      `/api/office-reminders/${reminderId}`,
+      {
+        title: reminderData.title,
+        description: reminderData.description || undefined,
+        is_urgent: reminderData.isUrgent,
+        actions,
+        phone: reminderData.phoneNumber || undefined,
+        remind_on: remindOnKey,
+        remind_time: remindTime || undefined,
+      },
+    );
+
+    if (res.status === 200 && res.data) {
+      setReminders((prev) => prev.map((r) => (r.id === reminderId ? res.data!.reminder : r)));
+      void refreshBoard();
+    } else {
+      showToast(res.error?.message ?? 'Opomnika ni bilo mogoče posodobiti.');
+      void refreshBoard();
+    }
+  };
+
   const handleAddWorker = async (workerData: {
     name: string;
     phone: string;
@@ -799,6 +929,13 @@ export default function OfficeDashboard() {
       },
     );
     if (res.status === 201) {
+      // Instantly update Add-task / board worker lists (workers query only).
+      if (res.data?.user?.role === 'worker') {
+        setWorkers((prev) => {
+          if (prev.some((w) => w.id === res.data!.user.id)) return prev;
+          return [...prev, res.data!.user];
+        });
+      }
       if (res.data?.temporary_password) {
         // Shown exactly once — the backend never returns it again.
         const label =
@@ -1247,105 +1384,107 @@ export default function OfficeDashboard() {
           todayLabel={t('officeJumpToday')}
         />
 
-        <div className="flex justify-center sm:justify-end mb-12 relative">
-          <div
-            className="inline-flex items-center gap-4 px-5 py-3 rounded-full"
-            style={{
-              width: '370px',
-              background: 'rgba(255, 255, 255, 0.002)',
-              border: '1px solid rgba(255, 255, 255, 0.9)',
-              boxShadow:
-                '0px 14px 38px -22px rgba(15, 23, 42, 0.42), inset 0px 1px 0px 1px #FFFFFF',
-              backdropFilter: 'blur(20px)',
-              WebkitBackdropFilter: 'blur(20px)',
-            }}
-          >
+        <div className="flex justify-center sm:justify-end mb-12">
+          <div className="relative inline-block">
             <div
-              className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[20px] font-bold"
+              className="inline-flex items-center gap-4 px-5 py-3 rounded-full"
               style={{
-                background: 'linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)',
+                width: '370px',
+                background: 'rgba(255, 255, 255, 0.002)',
+                border: '1px solid rgba(255, 255, 255, 0.9)',
+                boxShadow:
+                  '0px 14px 38px -22px rgba(15, 23, 42, 0.42), inset 0px 1px 0px 1px #FFFFFF',
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
               }}
             >
-              AI
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[20px] font-bold"
+                style={{
+                  background: 'linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)',
+                }}
+              >
+                AI
+              </div>
+              <div className="flex flex-col">
+                <span
+                  className="text-[20px] font-normal"
+                  style={{
+                    fontFamily: 'Inter, sans-serif',
+                    lineHeight: '28px',
+                    letterSpacing: '-0.5px',
+                    color: 'rgba(15, 23, 42, 1)',
+                  }}
+                >
+                  <span className="hidden sm:inline">Povzetek dneva za šefa</span>
+                  <span className="sm:hidden">Povzetek za šefa</span>
+                </span>
+                <span
+                  style={{
+                    fontFamily: 'Inter, sans-serif',
+                    fontWeight: 400,
+                    fontSize: '13px',
+                    lineHeight: '16px',
+                    letterSpacing: '-0.3px',
+                    color: 'rgba(148, 163, 184, 1)',
+                  }}
+                >
+                  v eni minuti
+                </span>
+              </div>
             </div>
-            <div className="flex flex-col">
-              <span
-                className="text-[20px] font-normal"
-                style={{
-                  fontFamily: 'Inter, sans-serif',
-                  lineHeight: '28px',
-                  letterSpacing: '-0.5px',
-                  color: 'rgba(15, 23, 42, 1)',
-                }}
-              >
-                <span className="hidden sm:inline">Povzetek dneva za šefa</span>
-                <span className="sm:hidden">Povzetek za šefa</span>
-              </span>
-              <span
-                style={{
-                  fontFamily: 'Inter, sans-serif',
-                  fontWeight: 400,
-                  fontSize: '13px',
-                  lineHeight: '16px',
-                  letterSpacing: '-0.3px',
-                  color: 'rgba(148, 163, 184, 1)',
-                }}
-              >
-                v eni minuti
-              </span>
+
+            <div
+              className="flex items-center gap-3 px-5 py-3 z-10 pointer-events-none absolute"
+              style={{
+                width: '180.42px',
+                height: '58px',
+                top: 'calc(100% - 25px)',
+                right: '0px',
+                transform: 'rotate(3deg)',
+                borderRadius: '16px',
+                background: 'rgba(255, 255, 255, 1)',
+                boxShadow:
+                  '0 18px 38px -20px rgba(15,23,42,0.45), inset 0 1px 0 white',
+                animation: 'aura-float-soft 4.5s ease-in-out infinite',
+              }}
+            >
+              <div className="flex flex-col">
+                <span
+                  style={{
+                    fontFamily: 'Inter, sans-serif',
+                    fontWeight: 400,
+                    fontSize: '12px',
+                    lineHeight: '16px',
+                    letterSpacing: '0px',
+                    color: 'rgba(15, 23, 42, 1)',
+                  }}
+                >
+                  V pripravi
+                </span>
+                <span
+                  style={{
+                    fontFamily: 'Inter, sans-serif',
+                    fontWeight: 300,
+                    fontSize: '12px',
+                    lineHeight: '16px',
+                    letterSpacing: '0px',
+                    color: 'rgba(148, 163, 184, 1)',
+                  }}
+                >
+                  Dodano bo v avgustu
+                </span>
+              </div>
             </div>
           </div>
-
-          {/* <div
-            className="hidden sm:flex items-center gap-3 px-5 py-3 z-10 pointer-events-none absolute"
-            style={{
-              width: "180.42px",
-              height: "58px",
-              top: "261px",
-              left: "1152px",
-              transform: "rotate(3deg)",
-              opacity: 1,
-              borderRadius: "16px",
-              background: "rgba(255, 255, 255, 1)",
-              boxShadow: "0 18px 38px -20px rgba(15,23,42,0.45), inset 0 1px 0 white",
-              animation: "aura-float-soft 4.5s ease-in-out infinite",
-            }}
-          >
-            <div className="flex flex-col">
-              <span
-                style={{
-                  fontFamily: "Inter, sans-serif",
-                  fontWeight: 400,
-                  fontSize: "12px",
-                  lineHeight: "16px",
-                  letterSpacing: "0px",
-                  color: "rgba(15, 23, 42, 1)",
-                }}
-              >
-                V pripravi
-              </span>
-              <span
-                style={{
-                  fontFamily: "Inter, sans-serif",
-                  fontWeight: 300,
-                  fontSize: "12px",
-                  lineHeight: "16px",
-                  letterSpacing: "0px",
-                  color: "rgba(148, 163, 184, 1)",
-                }}
-              >
-                Dodano bo v avgustu
-              </span>
-            </div>
-          </div> */}
         </div>
 
-        {/* <style>{`
+        <style>{`
           @keyframes aura-float-soft {
             0%, 100% { transform: translateY(0) rotate(3deg); }
             50% { transform: translateY(-8px) rotate(3deg); }
           }
-        `}</style> */}
+        `}</style>
 
         <div className="relative" style={{ marginBottom: '32px' }}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1402,54 +1541,6 @@ export default function OfficeDashboard() {
             </SummaryCard>
           </div>
         </div>
-
-        <div
-          className="absolute z-10 pointer-events-none flex items-center gap-3 px-5 py-3 top-[360px] md:top-[261px] right-4 md:right-8 lg:right-24"
-          style={{
-            width: '180.42px',
-            height: '58px',
-            transform: 'rotate(3deg)',
-            borderRadius: '16px',
-            background: 'rgba(255, 255, 255, 1)',
-            boxShadow:
-              '0 18px 38px -20px rgba(15,23,42,0.45), inset 0 1px 0 white',
-            animation: 'aura-float-soft 4.5s ease-in-out infinite',
-          }}
-        >
-          <div className="flex flex-col">
-            <span
-              style={{
-                fontFamily: 'Inter, sans-serif',
-                fontWeight: 400,
-                fontSize: '12px',
-                lineHeight: '16px',
-                letterSpacing: '0px',
-                color: 'rgba(15, 23, 42, 1)',
-              }}
-            >
-              V pripravi
-            </span>
-            <span
-              style={{
-                fontFamily: 'Inter, sans-serif',
-                fontWeight: 300,
-                fontSize: '12px',
-                lineHeight: '16px',
-                letterSpacing: '0px',
-                color: 'rgba(148, 163, 184, 1)',
-              }}
-            >
-              Dodano bo v avgustu
-            </span>
-          </div>
-        </div>
-
-        <style>{`
-          @keyframes aura-float-soft {
-            0%, 100% { transform: translateY(0) rotate(3deg); }
-            50% { transform: translateY(-8px) rotate(3deg); }
-          }
-        `}</style>
 
         <div
           ref={containerRef}
@@ -1611,6 +1702,7 @@ export default function OfficeDashboard() {
                         onResolve={() => handleConfirmReminder(r.id)}
                         onDismiss={() => handleDismissReminder(r.id)}
                         onArchive={() => handleDeclineReminder(r.id)}
+                        onAttachmentClick={() => handleOpenReminderAttachment(r.id)}
                       />
                     </SortableItem>
                   ))}
@@ -1994,9 +2086,37 @@ export default function OfficeDashboard() {
       />
       <AddReminderModal
         isOpen={isAddReminderOpen}
-        onOpenChange={setIsAddReminderOpen}
+        onOpenChange={(open) => {
+          setIsAddReminderOpen(open);
+          if (!open) setReminderEditTarget(null);
+        }}
         defaultDate={selectedSiDate}
+        editReminderId={reminderEditTarget}
+        editData={reminderEditTarget ? (() => {
+          const reminder = reminders.find(r => r.id === reminderEditTarget);
+          if (!reminder) return null;
+          return {
+            title: reminder.title,
+            description: reminder.description || '',
+            time: reminder.remind_time || '',
+            date: reminder.remind_on ? formatSiDate(new Date(reminder.remind_on)) : selectedSiDate,
+            isUrgent: reminder.is_urgent,
+            hasAttachment: reminder.actions.includes('attachment'),
+            hasEmail: reminder.actions.includes('email'),
+            phoneNumber: reminder.phone || '',
+            hasConfirm: reminder.actions.includes('confirm'),
+            hasDecline: reminder.actions.includes('reject'),
+          };
+        })() : null}
+        onOpenAttachmentDialog={handleReminderAttachmentDialog}
         onAddReminder={handleAddReminder}
+      />
+      <AttachmentDialog
+        isOpen={isAttachmentDialogOpen}
+        onOpenChange={setIsAttachmentDialogOpen}
+        targetType="reminder"
+        targetId={attachmentDialogReminderId || ""}
+        onUploadSuccess={() => void refreshBoard()}
       />
       <AddWorkerCard
         isOpen={isAddWorkerOpen}
@@ -2080,12 +2200,17 @@ export default function OfficeDashboard() {
                 <select
                   value={composeWorkerId}
                   onChange={(e) => setComposeWorkerId(e.target.value)}
-                  className="w-full h-11 pl-4 pr-10 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all appearance-none cursor-pointer"
+                  disabled={composeWorkerOptions.length === 0}
+                  className="w-full h-11 pl-4 pr-10 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all appearance-none cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <option value="" disabled>Izberite delavca</option>
-                  {workers.map((w) => (
+                  <option value="" disabled>
+                    {composeWorkerOptions.length === 0
+                      ? 'Ni delavcev z odprto kartico danes'
+                      : 'Izberite delavca'}
+                  </option>
+                  {composeWorkerOptions.map((w) => (
                     <option key={w.id} value={w.id}>
-                      {w.full_name}
+                      {w.name}
                     </option>
                   ))}
                 </select>
@@ -2113,7 +2238,7 @@ export default function OfficeDashboard() {
                   if (!composeWorkerId) return;
                   handleComposeMessage(composeWorkerId);
                 }}
-                className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-blue-200 transition-all cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed group"
+                className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-400 hover:border-blue-400 transition-all cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed group"
               >
                 <div
                   className={`w-16 h-16 rounded-[20px] flex items-center justify-center border transition-all ${
@@ -2151,7 +2276,7 @@ export default function OfficeDashboard() {
                   if (!composeWorkerId) return;
                   handleComposeMessage(composeWorkerId);
                 }}
-                className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-blue-200 transition-all cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed group"
+                className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-400 hover:border-blue-400 transition-all cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed group"
               >
                 <div
                   className={`w-16 h-16 rounded-[20px] flex items-center justify-center border transition-all ${

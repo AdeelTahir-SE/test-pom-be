@@ -43,7 +43,7 @@ export const env = {
     return optional("OPENAI_API_KEY");
   },
   get openaiVoiceModel() {
-    return optional("OPENAI_VOICE_MODEL") || "gpt-4o-mini";
+    return optional("OPENAI_VOICE_MODEL") || "gpt-5.4-mini";
   },
   get resendApiKey() {
     return optional("RESEND_API_KEY");

@@ -206,7 +206,21 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                     ) : null}
                   </div>
                 </div>
-              ) : null}
+              ) : (
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-[14px] bg-[#2b5493] text-white flex items-center justify-center text-[18px] font-bold shadow-md shadow-blue-900/20 shrink-0">
+                    —
+                  </div>
+                  <div className="flex flex-col overflow-hidden">
+                    <div className="font-bold text-[#0f172a] text-[16px] truncate">
+                      {lang === 'sl' ? 'Izberi delavca' : 'Select worker'}
+                    </div>
+                    <div className="text-[#64748b] text-[13px] font-medium mt-0.5">
+                      {lang === 'sl' ? 'Še ni izbran' : 'Not selected yet'}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* PREGLED Card (Hidden on mobile, visible on desktop) */}
@@ -408,7 +422,7 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                     </svg>
                   </button>
                   <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
-                    {selectedWorkerName || 'Anthony Hopkins'}
+                    {selectedWorkerName || (lang === 'sl' ? 'Izberi delavca' : 'Select worker')}
                   </span>
                   <h3 className="text-2xl font-bold tracking-tight text-[#0f172a]">
                     {lang === 'sl' ? 'Dodaj nalogo' : 'Add subtask'}

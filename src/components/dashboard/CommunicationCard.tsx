@@ -35,15 +35,23 @@ export function CommunicationCard({
   buttonsConfig = "attachment-tick-decline",
   showRedButton = false,
 }: CommunicationCardProps) {
-  // Top tiny time = live system clock (never form date/time or created_at).
-  const [systemClock, setSystemClock] = useState(formatSystemClock);
+  // Top tiny time = card creation time (createdAt) if available, otherwise live system clock.
+  const [displayTime, setDisplayTime] = useState(() => {
+    if (order.createdAt) {
+      return formatSystemClock(new Date(order.createdAt));
+    }
+    return formatSystemClock();
+  });
 
   useEffect(() => {
-    const tick = () => setSystemClock(formatSystemClock());
-    tick();
-    const id = window.setInterval(tick, 1000);
-    return () => window.clearInterval(id);
-  }, []);
+    // Only use live clock if no createdAt (fallback for other card types)
+    if (!order.createdAt) {
+      const tick = () => setDisplayTime(formatSystemClock());
+      tick();
+      const id = window.setInterval(tick, 1000);
+      return () => window.clearInterval(id);
+    }
+  }, [order.createdAt]);
 
   return (
     <div
@@ -99,7 +107,7 @@ export function CommunicationCard({
           }}
           className="flex-1 min-w-0"
         >
-          {order.workerName} • {systemClock}
+          {order.workerName} • {displayTime}
         </span>
 
         {/* Top-Right Buttons */}
