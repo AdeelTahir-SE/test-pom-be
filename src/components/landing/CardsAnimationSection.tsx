@@ -422,105 +422,83 @@ export default function CardAnimationSection() {
           /* Responsive Mobile Layout (Flat stack, no 3D) */
           <div className="flex flex-col gap-6 px-4 py-8 max-w-md mx-auto w-full relative z-10">
             {/* NUJNE ZADEVE Block */}
-            <div
-              className="relative rounded-2xl border border-slate-200 dark:border-white/10 p-5 shadow-lg bg-[#1D2A3D]"
-              style={{
-                opacity: inView ? 1 : 0,
-                transform: inView ? "translateY(0)" : "translateY(80px)",
-                transition: `transform 3.5s cubic-bezier(0.05, 0.95, 0.05, 1), opacity 3.5s ease-out`,
-                transitionDelay: `12.0s`,
-                width: "100%",
-              }}
-            >
-              <div className="flex items-center gap-3 mb-3">
-                <svg width="20" height="20" viewBox="0 0 34 34" fill="none">
-                  <path d="M17 0C7.61175 0 0 7.61175 0 17C0 26.3883 7.61175 34 17 34C26.3883 34 34 26.3883 34 17C34 7.61175 26.3883 0 17 0ZM15.0861 9.19842C14.9727 8.06367 15.8653 7.08333 17 7.08333C18.1348 7.08333 19.0273 8.06367 18.9139 9.19842C18.4708 13.6299 18.2223 16.1144 17.7792 20.5459C17.7381 20.9454 17.4023 21.25 17 21.25C16.5977 21.25 16.2619 20.9454 16.2208 20.5445L15.0861 9.19842ZM17 27.2708C16.0225 27.2708 15.2292 26.4775 15.2292 25.5C15.2292 24.5225 16.0225 23.7292 17 23.7292C17.9775 23.7292 18.7708 24.5225 18.7708 25.5C18.7708 26.4775 17.9775 27.2708 17 27.2708Z" fill="#FF3B30"/>
-                </svg>
-                <span className="font-['PT_Sans',sans-serif] font-bold text-white text-xs tracking-wide uppercase">NUJNE ZADEVE</span>
-              </div>
-              <div className="flex flex-col gap-2">
-                <div className="flex items-start gap-3">
-                  <span className="text-xs font-semibold text-[#FF3B30] min-w-[34px]">10:30</span>
-                  <div>
-                    <p className="text-xs text-white font-medium">Pokliči Maksa za rezervacijo</p>
-                    <p className="text-[10px] text-slate-300">Danes je zadnji dan.</p>
-                  </div>
+            <MobileScrollReveal>
+              <div className="relative rounded-2xl border border-slate-200 dark:border-white/10 p-5 shadow-lg bg-[#1D2A3D] w-full">
+                <div className="flex items-center gap-3 mb-3">
+                  <svg width="20" height="20" viewBox="0 0 34 34" fill="none">
+                    <path d="M17 0C7.61175 0 0 7.61175 0 17C0 26.3883 7.61175 34 17 34C26.3883 34 34 26.3883 34 17C34 7.61175 26.3883 0 17 0ZM15.0861 9.19842C14.9727 8.06367 15.8653 7.08333 17 7.08333C18.1348 7.08333 19.0273 8.06367 18.9139 9.19842C18.4708 13.6299 18.2223 16.1144 17.7792 20.5459C17.7381 20.9454 17.4023 21.25 17 21.25C16.5977 21.25 16.2619 20.9454 16.2208 20.5445L15.0861 9.19842ZM17 27.2708C16.0225 27.2708 15.2292 26.4775 15.2292 25.5C15.2292 24.5225 16.0225 23.7292 17 23.7292C17.9775 23.7292 18.7708 24.5225 18.7708 25.5C18.7708 26.4775 17.9775 27.2708 17 27.2708Z" fill="#FF3B30"/>
+                  </svg>
+                  <span className="font-['PT_Sans',sans-serif] font-bold text-white text-xs tracking-wide uppercase">NUJNE ZADEVE</span>
                 </div>
-                <div className="flex items-start gap-3">
-                  <span className="text-xs font-semibold text-[#FF3B30] min-w-[34px]">10:53</span>
-                  <div>
-                    <p className="text-xs text-white font-medium">Prometna nesreča pri Celju</p>
-                    <p className="text-[10px] text-slate-300">Zaprta cesta do 13:30.</p>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-start gap-3">
+                    <span className="text-xs font-semibold text-[#FF3B30] min-w-[34px]">10:30</span>
+                    <div>
+                      <p className="text-xs text-white font-medium">Pokliči Maksa za rezervacijo</p>
+                      <p className="text-[10px] text-slate-300">Danes je zadnji dan.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <span className="text-xs font-semibold text-[#FF3B30] min-w-[34px]">10:53</span>
+                    <div>
+                      <p className="text-xs text-white font-medium">Prometna nesreča pri Celju</p>
+                      <p className="text-[10px] text-slate-300">Zaprta cesta do 13:30.</p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            </MobileScrollReveal>
 
             {/* HITRI PREGLED Block */}
-            <div
-              className="relative rounded-2xl border border-slate-200 dark:border-white/10 p-5 shadow-lg bg-white dark:bg-[#111827]"
-              style={{
-                opacity: inView ? 1 : 0,
-                transform: inView ? "translateY(0)" : "translateY(80px)",
-                transition: `transform 3.5s cubic-bezier(0.05, 0.95, 0.05, 1), opacity 3.5s ease-out`,
-                transitionDelay: `13.5s`,
-                width: "100%",
-              }}
-            >
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-6 h-6 rounded-lg bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center shrink-0 border border-blue-100 dark:border-blue-900/30">
-                  <svg width="12" height="12" viewBox="0 0 20 20" fill="none" className="text-blue-500">
-                    <path d="M11.2503 12.9168C11.2503 11.3452 11.2503 10.5602 11.7387 10.0718C12.227 9.5835 13.012 9.5835 14.5837 9.5835C16.1553 9.5835 16.9403 9.5835 17.4287 10.0718C17.917 10.5602 17.917 11.3452 17.917 12.9168V14.5835C17.917 16.1552 17.917 16.9402 17.4287 17.4285C16.9403 17.9168 16.1553 17.9168 14.5837 17.9168C13.012 17.9168 12.227 17.9168 11.7387 17.4285C11.2503 16.9402 11.2503 16.1552 11.2503 14.5835V12.9168ZM1.66699 7.0835C1.66699 8.65516 1.66699 9.44016 2.15533 9.9285C2.64366 10.4168 3.42866 10.4168 5.00033 10.4168C6.57199 10.4168 7.35699 10.4168 7.84533 9.9285C8.33366 9.44016 8.33366 8.65516 8.33366 7.0835V5.41683C8.33366 3.84516 8.33366 3.06016 7.84533 2.57183C7.35699 2.0835 6.57199 2.0835 5.00033 2.0835C3.42866 2.0835 2.64366 2.0835 2.15533 2.57183C1.66699 3.06016 1.66699 3.84516 1.66699 5.41683V7.0835ZM11.2503 4.5835C11.2503 3.80683 11.2503 3.4185 11.377 3.11266C11.5462 2.704 11.8708 2.37933 12.2795 2.21016C12.5853 2.0835 12.9737 2.0835 13.7503 2.0835H15.417C16.1937 2.0835 16.582 2.0835 16.8878 2.21016C17.2965 2.37933 17.6212 2.704 17.7903 3.11266C17.917 3.4185 17.917 3.80683 17.917 4.5835C17.917 5.36016 17.917 5.7485 17.7903 6.05433C17.6212 6.463 17.2965 6.78767 16.8878 6.95683C16.582 7.0835 16.1937 7.0835 15.417 7.0835H13.7503C12.9737 7.0835 12.5853 7.0835 12.2795 6.95683C11.8708 6.78767 11.5462 6.463 11.377 6.05433C11.2503 5.7485 11.2503 5.36016 11.2503 4.5835ZM1.66699 15.4168C1.66699 16.1935 1.66699 16.5818 1.79366 16.8877C1.96282 17.2963 2.28749 17.621 2.69616 17.7902C3.00199 17.9168 3.39033 17.9168 4.16699 17.9168H5.83366C6.61033 17.9168 6.99866 17.9168 7.30449 17.7902C7.71316 17.621 8.03783 17.2963 8.20699 16.8877C8.33366 16.5818 8.33366 16.1935 8.33366 15.4168C8.33366 14.6402 8.33366 14.2518 8.20699 13.946C8.03783 13.5373 7.71316 13.2127 7.30449 13.0435C6.99866 12.9168 6.61033 12.9168 5.83366 12.9168H4.16699C3.39033 12.9168 3.00199 12.9168 2.69616 13.0435C2.28749 13.2127 1.96282 13.5373 1.79366 13.946C1.66699 14.2518 1.66699 14.6402 1.66699 15.4168Z" stroke="#3B82F6" strokeWidth="1.25" />
-                  </svg>
+            <MobileScrollReveal>
+              <div className="relative rounded-2xl border border-slate-200 dark:border-white/10 p-5 shadow-lg bg-white dark:bg-[#111827] w-full">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-6 h-6 rounded-lg bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center shrink-0 border border-blue-100 dark:border-blue-900/30">
+                    <svg width="12" height="12" viewBox="0 0 20 20" fill="none" className="text-blue-500">
+                      <path d="M11.2503 12.9168C11.2503 11.3452 11.2503 10.5602 11.7387 10.0718C12.227 9.5835 13.012 9.5835 14.5837 9.5835C16.1553 9.5835 16.9403 9.5835 17.4287 10.0718C17.917 10.5602 17.917 11.3452 17.917 12.9168V14.5835C17.917 16.1552 17.917 16.9402 17.4287 17.4285C16.9403 17.9168 16.1553 17.9168 14.5837 17.9168C13.012 17.9168 12.227 17.9168 11.7387 17.4285C11.2503 16.9402 11.2503 16.1552 11.2503 14.5835V12.9168ZM1.66699 7.0835C1.66699 8.65516 1.66699 9.44016 2.15533 9.9285C2.64366 10.4168 3.42866 10.4168 5.00033 10.4168C6.57199 10.4168 7.35699 10.4168 7.84533 9.9285C8.33366 9.44016 8.33366 8.65516 8.33366 7.0835V5.41683C8.33366 3.84516 8.33366 3.06016 7.84533 2.57183C7.35699 2.0835 6.57199 2.0835 5.00033 2.0835C3.42866 2.0835 2.64366 2.0835 2.15533 2.57183C1.66699 3.06016 1.66699 3.84516 1.66699 5.41683V7.0835ZM11.2503 4.5835C11.2503 3.80683 11.2503 3.4185 11.377 3.11266C11.5462 2.704 11.8708 2.37933 12.2795 2.21016C12.5853 2.0835 12.9737 2.0835 13.7503 2.0835H15.417C16.1937 2.0835 16.582 2.0835 16.8878 2.21016C17.2965 2.37933 17.6212 2.704 17.7903 3.11266C17.917 3.4185 17.917 3.80683 17.917 4.5835C17.917 5.36016 17.917 5.7485 17.7903 6.05433C17.6212 6.463 17.2965 6.78767 16.8878 6.95683C16.582 7.0835 16.1937 7.0835 15.417 7.0835H13.7503C12.9737 7.0835 12.5853 7.0835 12.2795 6.95683C11.8708 6.78767 11.5462 6.463 11.377 6.05433C11.2503 5.7485 11.2503 5.36016 11.2503 4.5835ZM1.66699 15.4168C1.66699 16.1935 1.66699 16.5818 1.79366 16.8877C1.96282 17.2963 2.28749 17.621 2.69616 17.7902C3.00199 17.9168 3.39033 17.9168 4.16699 17.9168H5.83366C6.61033 17.9168 6.99866 17.9168 7.30449 17.7902C7.71316 17.621 8.03783 17.2963 8.20699 16.8877C8.33366 16.5818 8.33366 16.1935 8.33366 15.4168C8.33366 14.6402 8.33366 14.2518 8.20699 13.946C8.03783 13.5373 7.71316 13.2127 7.30449 13.0435C6.99866 12.9168 6.61033 12.9168 5.83366 12.9168H4.16699C3.39033 12.9168 3.00199 12.9168 2.69616 13.0435C2.28749 13.2127 1.96282 13.5373 1.79366 13.946C1.66699 14.2518 1.66699 14.6402 1.66699 15.4168Z" fill="#3B82F6" strokeWidth="1.25" />
+                    </svg>
+                  </div>
+                  <span className="font-['PT_Sans',sans-serif] font-bold text-slate-800 dark:text-slate-200 text-xs tracking-wide uppercase">HITRI PREGLED</span>
                 </div>
-                <span className="font-['PT_Sans',sans-serif] font-bold text-slate-800 dark:text-slate-200 text-xs tracking-wide uppercase">HITRI PREGLED</span>
-              </div>
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-                  <span className="font-semibold text-slate-700 dark:text-slate-300 min-w-[28px]">3/8</span>
-                  <span>•</span>
-                  <span className="truncate">Kopalnica prenova</span>
-                  <span>•</span>
-                  <span className="shrink-0">Ljubljana</span>
-                  <span>•</span>
-                  <span className="truncate font-medium text-slate-600 dark:text-slate-400">Anthony H</span>
-                </div>
-                <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-                  <span className="font-semibold text-slate-700 dark:text-slate-300 min-w-[28px]">4/5</span>
-                  <span>•</span>
-                  <span className="truncate">Čiščenje prostorov</span>
-                  <span>•</span>
-                  <span className="shrink-0">Ljubljana</span>
-                  <span>•</span>
-                  <span className="truncate font-medium text-slate-600 dark:text-slate-400">ANA NOVAK</span>
-                </div>
-                <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-                  <span className="font-semibold text-slate-700 dark:text-slate-300 min-w-[28px]">1/4</span>
-                  <span>•</span>
-                  <span className="truncate">Dostava cvetja</span>
-                  <span>•</span>
-                  <span className="shrink-0">Celje</span>
-                  <span>•</span>
-                  <span className="truncate font-medium text-slate-600 dark:text-slate-400">PAVLE</span>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="font-semibold text-slate-700 dark:text-slate-300 min-w-[28px]">3/8</span>
+                    <span>•</span>
+                    <span className="truncate">Kopalnica prenova</span>
+                    <span>•</span>
+                    <span className="shrink-0">Ljubljana</span>
+                    <span>•</span>
+                    <span className="truncate font-medium text-slate-600 dark:text-slate-400">Anthony H</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="font-semibold text-slate-700 dark:text-slate-300 min-w-[28px]">4/5</span>
+                    <span>•</span>
+                    <span className="truncate">Čiščenje prostorov</span>
+                    <span>•</span>
+                    <span className="shrink-0">Ljubljana</span>
+                    <span>•</span>
+                    <span className="truncate font-medium text-slate-600 dark:text-slate-400">ANA NOVAK</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="font-semibold text-slate-700 dark:text-slate-300 min-w-[28px]">1/4</span>
+                    <span>•</span>
+                    <span className="truncate">Dostava cvetja</span>
+                    <span>•</span>
+                    <span className="shrink-0">Celje</span>
+                    <span>•</span>
+                    <span className="truncate font-medium text-slate-600 dark:text-slate-400">PAVLE</span>
+                  </div>
                 </div>
               </div>
-            </div>
+            </MobileScrollReveal>
 
             {/* The 6 Cards */}
             {cards.map((c, i) => (
-              <div
-                key={i}
-                className="relative overflow-hidden rounded-2xl shadow-lg bg-white dark:bg-[#111827]"
-                style={{
-                  opacity: inView ? 1 : 0,
-                  transform: inView ? "translateY(0)" : "translateY(80px)",
-                  transition: `transform 3.5s cubic-bezier(0.05, 0.95, 0.05, 1), opacity 3.5s ease-out`,
-                  transitionDelay: `${c.delay}s`,
-                  width: "100%",
-                }}
-              >
-                {renderCardContent(c)}
-              </div>
+              <MobileScrollReveal key={i}>
+                <div className="relative overflow-hidden rounded-2xl shadow-lg bg-white dark:bg-[#111827] w-full">
+                  {renderCardContent(c)}
+                </div>
+              </MobileScrollReveal>
             ))}
           </div>
         ) : (
@@ -703,5 +681,49 @@ export default function CardAnimationSection() {
         )}
       </div>
     </section>
+  );
+}
+
+interface MobileScrollRevealProps {
+  children: React.ReactNode;
+}
+
+function MobileScrollReveal({ children }: MobileScrollRevealProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      {
+        threshold: 0.05,
+        rootMargin: "0px 0px -40px 0px",
+      }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className="w-full"
+      style={{
+        opacity: isVisible ? 1 : 0,
+        transform: isVisible ? "translateY(0)" : "translateY(80px)",
+        transition: "transform 1.8s cubic-bezier(0.05, 0.95, 0.05, 1), opacity 1.8s ease-out",
+      }}
+    >
+      {children}
+    </div>
   );
 }
