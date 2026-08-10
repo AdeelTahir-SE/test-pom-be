@@ -414,7 +414,7 @@ export default function CardAnimationSection() {
             {t('cmdCenterTitle')}
           </h2>
           <p className="font-['Inter',sans-serif] text-sm md:text-base font-light text-slate-500 dark:text-slate-400 mt-4 max-w-2xl leading-relaxed">
-            Enostavno dodajanje in sledenje
+            Vsak delovni dan je bolje organiziran. Ekipa dela samostojneje, komunikacije je manj, a je hitrejša, pregled nad deli je boljši in vodenje lažje.
           </p>
         </div>
 
