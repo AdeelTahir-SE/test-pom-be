@@ -697,8 +697,9 @@ function MobileScrollReveal({ children }: MobileScrollRevealProps) {
     if (!el) return;
 
     const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry?.isIntersecting) {
+      (entries) => {
+        const entry = entries[0];
+        if (entry && entry.isIntersecting) {
           setIsVisible(true);
           observer.disconnect();
         }
