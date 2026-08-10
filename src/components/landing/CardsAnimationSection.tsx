@@ -26,14 +26,14 @@ export default function CardAnimationSection() {
       const w = window.innerWidth;
       setIsMobile(w < 768);
       if (w >= 1280) {
-        setScale(0.8);
+        setScale(0.7);
       } else if (w >= 1024) {
-        setScale(0.68);
+        setScale(0.6);
       } else if (w >= 768) {
-        setScale(0.5);
+        setScale(0.44);
       } else {
         // Mobile scaling factor (based on 1300 width)
-        setScale(Math.max(0.28, (w - 32) / 1300));
+        setScale(Math.max(0.25, ((w - 32) / 1300) * 0.88));
       }
     };
     handleResize();
@@ -225,7 +225,7 @@ export default function CardAnimationSection() {
       <div
         ref={viewportRef}
         className="relative w-full rounded-[44px] border border-slate-200/80 dark:border-white/10 overflow-hidden bg-white/60 dark:bg-[#101827]/60 backdrop-blur-md shadow-xl transition-all duration-300"
-        style={{ height: isMobile ? "auto" : "880px" }}
+        style={{ height: isMobile ? "auto" : "780px" }}
       >
         <style>{`
           .itp-grid-bg {

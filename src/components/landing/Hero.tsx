@@ -8,7 +8,7 @@ export function Hero() {
   const { t } = useLanguage();
 
   return (
-    <section className="max-w-7xl mx-auto px-3 md:px-6 pt-32 md:pt-40 pb-20 md:pb-[140px] relative">
+    <section className="max-w-7xl mx-auto px-3 md:px-6 pt-32 md:pt-[220px] pb-20 md:pb-[240px] relative">
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes aura-float-soft {
           0%, 100% { transform: translateY(0); }
