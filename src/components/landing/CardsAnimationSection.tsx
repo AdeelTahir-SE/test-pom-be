@@ -256,11 +256,31 @@ export default function CardAnimationSection() {
           .itp-card {
             position: absolute;
             height: auto; width: 395px;
-            overflow: hidden;
+            overflow: visible;
             border-radius: 12px;
             opacity: 0;
             animation: itp-card-slide-in 3.5s cubic-bezier(0.05, 0.95, 0.05, 1) both;
             animation-play-state: paused;
+          }
+          /* High-performance shadows using pseudo-element opacity */
+          .itp-card::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-radius: 12px;
+            pointer-events: none;
+            z-index: -1;
+            box-shadow: -20px 40px 15px rgba(15, 23, 42, 0.28);
+            opacity: 1;
+            transition: opacity 1.2s cubic-bezier(0.05, 0.95, 0.05, 1);
+          }
+          /* Fade out shadow when card settles on the flat surface */
+          .itp-card.itp-go-down::after {
+            opacity: 0;
+          }
+          /* Fade shadow back in when card is hovering/pointer active */
+          .itp-card.itp-card-hovering::after {
+            opacity: 1 !important;
           }
           .itp-in-view .itp-card,
           .itp-in-view .itp-nujno-block,
@@ -271,7 +291,6 @@ export default function CardAnimationSection() {
             0%   { 
               opacity: 0; 
               transform: translate3d(1200px, 800px, 200px); 
-              box-shadow: -80px 160px 45px rgba(15, 23, 42, 0.38);
             }
             20%  { 
               opacity: 1; 
@@ -279,7 +298,6 @@ export default function CardAnimationSection() {
             100% { 
               opacity: 1; 
               transform: translate3d(0, 0, 40px);
-              box-shadow: -20px 40px 15px rgba(15, 23, 42, 0.28);
             }
           }
           /* Rise-up and fix styling in the air for top cards when pointers activate */
@@ -291,11 +309,9 @@ export default function CardAnimationSection() {
           @keyframes itp-card-rise-up {
             0% {
               transform: translate3d(0, 0, 0);
-              box-shadow: none;
             }
             100% {
               transform: translate3d(0, 0, 45px);
-              box-shadow: -22px 44px 18px rgba(15, 23, 42, 0.22);
             }
           }
           /* All cards go down together */
@@ -308,12 +324,10 @@ export default function CardAnimationSection() {
             0% {
               opacity: 1;
               transform: translate3d(0, 0, 40px);
-              box-shadow: -20px 40px 15px rgba(15, 23, 42, 0.28);
             }
             100% {
               opacity: 1;
               transform: translate3d(0, 0, 0);
-              box-shadow: none;
             }
           }
           /* Overview and urgent blocks slide in completely to flat state */
@@ -321,7 +335,6 @@ export default function CardAnimationSection() {
             0%   { 
               opacity: 0; 
               transform: translate3d(1200px, 800px, 200px); 
-              box-shadow: -80px 160px 45px rgba(15, 23, 42, 0.38);
             }
             20%  { 
               opacity: 1; 
@@ -329,7 +342,6 @@ export default function CardAnimationSection() {
             100% { 
               opacity: 1; 
               transform: translate3d(0, 0, 0); 
-              box-shadow: none;
             }
           }
           .itp-pointer {
@@ -654,7 +666,7 @@ export default function CardAnimationSection() {
                       zIndex: Math.round(c.left + c.top),
                     }}
                   >
-                    <div className="w-full h-full relative bg-white dark:bg-[#111827]">
+                    <div className="w-full h-full relative bg-white dark:bg-[#111827] rounded-[12px] overflow-hidden">
                       {renderCardContent(c)}
                     </div>
                   </div>
