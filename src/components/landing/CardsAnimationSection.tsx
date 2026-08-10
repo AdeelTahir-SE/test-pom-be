@@ -261,6 +261,9 @@ export default function CardAnimationSection() {
             opacity: 0;
             animation: itp-card-slide-in 3.5s cubic-bezier(0.05, 0.95, 0.05, 1) both;
             animation-play-state: paused;
+            will-change: transform, opacity;
+            backface-visibility: hidden;
+            transform-style: preserve-3d;
           }
           /* High-performance shadows using pseudo-element opacity */
           .itp-card::after {
@@ -286,6 +289,12 @@ export default function CardAnimationSection() {
           .itp-in-view .itp-nujno-block,
           .itp-in-view .itp-overview-block {
             animation-play-state: running;
+          }
+          .itp-nujno-block,
+          .itp-overview-block {
+            will-change: transform, opacity;
+            backface-visibility: hidden;
+            transform-style: preserve-3d;
           }
           @keyframes itp-card-slide-in {
             0%   { 
@@ -511,6 +520,8 @@ export default function CardAnimationSection() {
                   transformStyle: "preserve-3d",
                   transform: `perspective(3200px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) rotateZ(${rotateZ}deg) scale(${scale})`,
                   transformOrigin: "center center",
+                  willChange: "transform",
+                  backfaceVisibility: "hidden",
                 }}
               >
                 {/* 3D Column Pointers */}
