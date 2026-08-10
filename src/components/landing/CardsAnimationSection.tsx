@@ -410,10 +410,10 @@ export default function CardAnimationSection() {
 
         {/* Block Header */}
         <div className="text-left pt-10 md:pt-12 px-6 md:px-12 pb-4 flex flex-col items-start relative md:absolute md:left-0 md:top-0 w-full md:max-w-2xl z-20">
-          <h2 className="font-['Inter',sans-serif] text-[30px] md:text-[40px] lg:text-5xl font-light tracking-tight leading-tight text-slate-900 dark:text-white mt-2">
+          <h2 className="font-['Inter',sans-serif] text-3xl md:text-[40px] lg:text-5xl font-normal md:font-light tracking-tight leading-tight text-slate-950 dark:text-white mt-2">
             {t('cmdCenterTitle')}
           </h2>
-          <p className="font-['Inter',sans-serif] text-[16px] md:text-lg font-normal text-slate-500 dark:text-slate-400 mt-4 max-w-2xl leading-relaxed">
+          <p className="font-['Inter',sans-serif] text-sm md:text-base font-light text-slate-500 dark:text-slate-400 mt-4 max-w-2xl leading-relaxed">
             Enostavno dodajanje in sledenje
           </p>
         </div>
@@ -504,7 +504,7 @@ export default function CardAnimationSection() {
         ) : (
           /* Desktop & Tablet 3D Perspective Layout */
           <div className={`w-full h-full relative transition-opacity duration-700 ${inView ? "itp-in-view opacity-100" : "opacity-0"}`}>
-            <div style={{ position: "absolute", left: "50%", top: "48%", transform: "translate(-50%, -50%)" }}>
+            <div style={{ position: "absolute", left: "56%", top: "48%", transform: "translate(-50%, -50%)" }}>
               <div
                 style={{
                   position: "relative",
