@@ -414,7 +414,8 @@ export default function CardAnimationSection() {
             {t('cmdCenterTitle')}
           </h2>
           <p className="font-['Inter',sans-serif] text-sm md:text-base font-light text-slate-500 dark:text-slate-400 mt-4 max-w-2xl leading-relaxed">
-            Vsak delovni dan je bolje organiziran. Ekipa dela samostojneje, komunikacije je manj, a je hitrejša, pregled nad deli je boljši in vodenje lažje.
+            <p>Vsak delovni dan je bolje organiziran.
+             Ekipa dela samostojneje,</p><p> komunikacije je manj, a je hitrejša, pregled nad deli </p><p>je boljši in vodenje lažje.</p>
           </p>
         </div>
 
@@ -504,7 +505,7 @@ export default function CardAnimationSection() {
         ) : (
           /* Desktop & Tablet 3D Perspective Layout */
           <div className={`w-full h-full relative transition-opacity duration-700 ${inView ? "itp-in-view opacity-100" : "opacity-0"}`}>
-            <div style={{ position: "absolute", left: "56%", top: "48%", transform: "translate(-50%, -50%)" }}>
+            <div style={{ position: "absolute", left: "53%", top: "48%", transform: "translate(-50%, -50%)" }}>
               <div
                 style={{
                   position: "relative",
