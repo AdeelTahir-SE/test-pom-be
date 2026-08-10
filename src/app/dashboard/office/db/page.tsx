@@ -34,6 +34,7 @@ interface TeamUser {
   phone: string | null;
   is_active: boolean;
   created_at: string;
+  login_pin?: string | null;
 }
 
 interface DbJobRow {
@@ -1405,15 +1406,23 @@ export default function DatabaseDashboard() {
         onOpenChange={setIsAddWorkerOpen}
         onAddWorker={async (w) => {
           try {
-            const res = await api.post('/api/users', w);
+            const res = await api.post('/api/users', {
+              email: w.email,
+              full_name: w.name,
+              role: w.role,
+              phone: w.phone || undefined,
+              password: w.password || undefined,
+            });
             if (res.status === 201 || res.status === 200) {
               await loadStaff();
             } else {
-              alert(res.error?.message || 'Napaka pri dodajanju sodelavca.');
+              throw new Error(res.error?.message || 'Napaka pri dodajanju sodelavca.');
             }
           } catch (err) {
             console.error(err);
-            alert('Težava pri povezavi z strežnikom.');
+            throw err instanceof Error
+              ? err
+              : new Error('Težava pri povezavi z strežnikom.');
           }
         }}
         existingUsers={staffList}

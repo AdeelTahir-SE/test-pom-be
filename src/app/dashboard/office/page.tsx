@@ -202,7 +202,23 @@ export default function OfficeDashboard() {
   const [isAttachmentDialogOpen, setIsAttachmentDialogOpen] = useState(false);
   const [attachmentDialogReminderId, setAttachmentDialogReminderId] = useState<string | null>(null);
   const [isAddWorkerOpen, setIsAddWorkerOpen] = useState(false);
+  const [companyUsers, setCompanyUsers] = useState<ApiUser[]>([]);
   const [isTeamOpen, setIsTeamOpen] = useState(false);
+
+  // Full company roster (all roles + login_pin) for the add-worker left list.
+  useEffect(() => {
+    if (!isAddWorkerOpen) return;
+    let cancelled = false;
+    void (async () => {
+      const res = await api.get<{ users: ApiUser[] }>('/api/users');
+      if (!cancelled && res.status === 200 && res.data?.users) {
+        setCompanyUsers(res.data.users);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAddWorkerOpen]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isCompanySettingsOpen, setIsCompanySettingsOpen] = useState(false);
   const [companyNameOverride, setCompanyNameOverride] = useState<string | null>(
@@ -928,28 +944,30 @@ export default function OfficeDashboard() {
         password: workerData.password || undefined,
       },
     );
-    if (res.status === 201) {
-      // Instantly update Add-task / board worker lists (workers query only).
-      if (res.data?.user?.role === 'worker') {
-        setWorkers((prev) => {
-          if (prev.some((w) => w.id === res.data!.user.id)) return prev;
-          return [...prev, res.data!.user];
-        });
-      }
-      if (res.data?.temporary_password) {
-        // Shown exactly once — the backend never returns it again.
-        const label =
-          workerData.role === 'worker' ? 'Koda za prijavo' : 'Začasno geslo';
-        alert(
-          `Račun ustvarjen za ${workerData.email}.\n${label}: ${res.data.temporary_password}\n\nZapišite si to geslo in jim ga posredujte; kasneje ne bo več prikazano.`,
-        );
-      }
-      void refreshBoard();
-    } else {
-      showToast(
+    if (res.status !== 201 || !res.data?.user) {
+      throw new Error(
         res.error?.message ?? 'Prišlo je do napake. Račun ni bil ustvarjen.',
       );
     }
+
+    const createdUser = res.data.user;
+    setCompanyUsers((prev) => {
+      if (prev.some((u) => u.id === createdUser.id)) return prev;
+      return [...prev, createdUser];
+    });
+    // Instantly update Add-task / board worker lists (workers query only).
+    if (createdUser.role === 'worker') {
+      setWorkers((prev) => {
+        if (prev.some((w) => w.id === createdUser.id)) return prev;
+        return [...prev, createdUser];
+      });
+    }
+    if (res.data.temporary_password) {
+      alert(
+        `Račun ustvarjen za ${workerData.email}.\nZačasno geslo: ${res.data.temporary_password}\n\nZapišite si to geslo; prikazano je tudi na seznamu levo.`,
+      );
+    }
+    void refreshBoard();
   };
 
   const handleConfirmReminder = async (id: string) => {
@@ -2122,7 +2140,7 @@ export default function OfficeDashboard() {
         isOpen={isAddWorkerOpen}
         onOpenChange={setIsAddWorkerOpen}
         onAddWorker={handleAddWorker}
-        existingUsers={workers}
+        existingUsers={companyUsers}
       />
 
       <TeamManagementModal

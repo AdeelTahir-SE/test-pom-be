@@ -78,11 +78,17 @@ export async function createCompanyUser(
   overrides: Partial<{ email: string; password: string; full_name: string; role: string }> = {}
 ): Promise<CreatedCompanyUser> {
   const email = overrides.email ?? uniqueEmail("member");
-  const password = overrides.password ?? "MemberPass123!";
   const role = overrides.role ?? "worker";
+  // Workers: company sets a 4-character PIN. Managers: 8+ or omit for auto-temp.
+  const password =
+    overrides.password ??
+    (role === "worker" ? "1111" : "MemberPass123!");
 
   const res = await api.post<{
-    data?: { user: { id: string; role: string }; temporary_password?: string };
+    data?: {
+      user: { id: string; role: string; login_pin?: string | null };
+      temporary_password?: string;
+    };
   }>("/api/users", {
     token: ownerToken,
     body: {
@@ -93,9 +99,10 @@ export async function createCompanyUser(
     },
   });
 
-  // Workers always get an auto-generated login code; managers may get a
-  // temporary password when none was supplied. Prefer that over the request body.
-  const actualPassword = res.body.data?.temporary_password ?? password;
+  const actualPassword =
+    res.body.data?.temporary_password ??
+    res.body.data?.user?.login_pin ??
+    password;
 
   return {
     status: res.status,

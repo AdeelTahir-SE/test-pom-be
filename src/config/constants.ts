@@ -3,7 +3,8 @@
 export const LIMITS = {
   // Files (Supabase Storage add-on §12 + Attachments §10)
   MAX_FILES_PER_REQUEST: 3,
-  MAX_FILES_PER_JOB: 6,
+  // Mark a13: required checklist attachments were blocked at 6; allow up to 15.
+  MAX_FILES_PER_JOB: 15,
   MAX_DOCUMENT_BYTES: 25 * 1024 * 1024, // 25 MB hard cap
   MAX_IMAGE_OUTPUT_BYTES: 500 * 1024, // compressed image target
   IMAGE_MAX_DIMENSION: 1920, // 1920 x 1920

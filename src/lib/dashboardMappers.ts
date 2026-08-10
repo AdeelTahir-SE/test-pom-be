@@ -22,6 +22,9 @@ export interface ApiJob {
   started_at: string | null;
   completed_at: string | null;
   worker_id: string | null;
+  /** Present on list responses for office DB (Mark a13 Terenec column). */
+  worker_name?: string | null;
+  worker_phone?: string | null;
   created_at: string;
   hidden_at?: string | null;
   hidden_by?: string | null;
@@ -49,6 +52,8 @@ export interface ApiUser {
   role: "owner" | "manager" | "worker";
   phone: string | null;
   is_active: boolean;
+  /** Company-set login PIN (workers: 4 chars). Visible to owner/manager only. */
+  login_pin?: string | null;
 }
 
 export interface ApiOfficeReminder {

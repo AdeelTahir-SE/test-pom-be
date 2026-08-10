@@ -36,10 +36,21 @@ export async function uploadToStorage(
 // Passive storage only knows a signed URL is a temporary representation of a
 // DB record (spec §7) — callers must have already authorized DB-level access
 // before calling this.
-export async function getSignedUrl(db: SupabaseClient, path: string): Promise<string | null> {
+/**
+ * Temporary signed URL for an authorized storage object.
+ * Default is inline preview (Mark a13: open docs, don't force download).
+ * Pass `download: true` or a filename only when a download is intentional.
+ */
+export async function getSignedUrl(
+  db: SupabaseClient,
+  path: string,
+  options?: { download?: boolean | string }
+): Promise<string | null> {
   const { data, error } = await db.storage
     .from(env.storageBucket)
-    .createSignedUrl(path, SIGNED_URL_EXPIRY_SECONDS);
+    .createSignedUrl(path, SIGNED_URL_EXPIRY_SECONDS, {
+      download: options?.download ?? false,
+    });
   if (error || !data) return null;
   return data.signedUrl;
 }

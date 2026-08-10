@@ -13,7 +13,7 @@ export const GET = withAuth<{ id: string }>(
     const db = getAdminClient();
     const { data: userRow, error } = await db
       .from("users")
-      .select("id, email, full_name, role, phone, is_active, created_at")
+      .select("id, email, full_name, role, phone, is_active, created_at, login_pin")
       .eq("id", params.id)
       .eq("company_id", auth.companyId)
       .maybeSingle();
@@ -94,7 +94,7 @@ export const PATCH = withAuth<{ id: string }>(
       .update(updates)
       .eq("id", params.id)
       .eq("company_id", auth.companyId)
-      .select("id, email, full_name, role, phone, is_active, created_at")
+      .select("id, email, full_name, role, phone, is_active, created_at, login_pin")
       .single();
 
     if (updateError || !updated) {

@@ -112,10 +112,12 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     }
   }
 
+  // Soft-hidden files do not count toward the job cap (Mark a13).
   const { count: existingCount, error: countError } = await db
     .from("job_files")
     .select("id", { count: "exact", head: true })
-    .eq("job_id", params.id);
+    .eq("job_id", params.id)
+    .is("hidden_at", null);
   if (countError) {
     throw new ApiError("internal", "Failed to check job file count.", countError.message);
   }

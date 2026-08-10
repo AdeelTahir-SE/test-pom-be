@@ -39,6 +39,45 @@ describe("Phase 3 — User Management", () => {
     expect(loginRes.status).toBe(200);
   });
 
+  it("company-set 4-char worker PIN is stored, listed, and works for login", async () => {
+    const owner = await registerCompany();
+    createdCompanies.push(owner);
+
+    const pin = "2468";
+    const worker = await createCompanyUser(owner.accessToken!, {
+      role: "worker",
+      password: pin,
+      full_name: "Pin Worker",
+    });
+    expect(worker.status).toBe(201);
+    expect(worker.password).toBe(pin);
+
+    const list = await api.get<{
+      data?: { users: { id: string; full_name: string; login_pin?: string | null }[] };
+    }>("/api/users", { token: owner.accessToken! });
+    expect(list.status).toBe(200);
+    const row = list.body.data?.users.find((u) => u.id === worker.userId);
+    expect(row?.login_pin).toBe(pin);
+
+    const loginRes = await loginAs(worker.email, pin);
+    expect(loginRes.status).toBe(200);
+  });
+
+  it("worker create without 4-char password is rejected", async () => {
+    const owner = await registerCompany();
+    createdCompanies.push(owner);
+
+    const res = await api.post("/api/users", {
+      token: owner.accessToken!,
+      body: {
+        email: `nopin-${Date.now()}@example.com`,
+        full_name: "No Pin",
+        role: "worker",
+      },
+    });
+    expect(res.status).toBe(400);
+  });
+
   it("cannot create a second owner", async () => {
     const owner = await registerCompany();
     createdCompanies.push(owner);

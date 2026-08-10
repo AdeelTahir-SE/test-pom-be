@@ -29,6 +29,8 @@ export const GET = withAuth(async (request, auth) => {
   const db = getAdminClient();
   const url = new URL(request.url);
   const statusFilter = url.searchParams.get("status");
+  const customerFilter = url.searchParams.get("customer")?.trim() ?? "";
+  const workerFilter = url.searchParams.get("worker_id")?.trim() ?? "";
 
   if (statusFilter && !(JOB_STATUSES as readonly string[]).includes(statusFilter)) {
     throw new ApiError("bad_request", "Invalid status filter.");
@@ -40,6 +42,19 @@ export const GET = withAuth(async (request, auth) => {
       .from("job_assignments")
       .select("job_id")
       .eq("worker_id", auth.userId);
+    if (assignError) {
+      throw new ApiError("internal", "Failed to load assignments.", assignError.message);
+    }
+    workerJobIds = (assignments ?? []).map((a) => a.job_id);
+    if (workerJobIds.length === 0) {
+      return ok({ jobs: [] });
+    }
+  } else if (workerFilter) {
+    // Office DB smart table: click Terenec → only that worker's jobs (Mark a13).
+    const { data: assignments, error: assignError } = await db
+      .from("job_assignments")
+      .select("job_id")
+      .eq("worker_id", workerFilter);
     if (assignError) {
       throw new ApiError("internal", "Failed to load assignments.", assignError.message);
     }
@@ -68,6 +83,10 @@ export const GET = withAuth(async (request, auth) => {
   if (!includeHidden) query = query.is("hidden_at", null);
   if (statusFilter) query = query.eq("status", statusFilter);
   if (workerJobIds) query = query.in("id", workerJobIds);
+  // Office DB smart table: click Stranka → that customer's job history.
+  if (customerFilter && (auth.role === "owner" || auth.role === "manager")) {
+    query = query.ilike("customer", customerFilter);
+  }
 
   const { data: jobs, error: jobsError } = await query;
   if (jobsError) {
@@ -84,7 +103,32 @@ export const GET = withAuth(async (request, auth) => {
   }
 
   const workerByJobId = new Map((assignments ?? []).map((a) => [a.job_id, a.worker_id]));
-  const result = (jobs ?? []).map((j) => ({ ...j, worker_id: workerByJobId.get(j.id) ?? null }));
+  const workerIds = [...new Set([...workerByJobId.values()])];
+  const workerInfoById = new Map<string, { full_name: string; phone: string | null }>();
+  if (workerIds.length > 0) {
+    const { data: workers, error: workersError } = await db
+      .from("users")
+      .select("id, full_name, phone")
+      .eq("company_id", auth.companyId)
+      .in("id", workerIds);
+    if (workersError) {
+      throw new ApiError("internal", "Failed to load workers for jobs.", workersError.message);
+    }
+    for (const w of workers ?? []) {
+      workerInfoById.set(w.id, { full_name: w.full_name, phone: w.phone });
+    }
+  }
+
+  const result = (jobs ?? []).map((j) => {
+    const workerId = workerByJobId.get(j.id) ?? null;
+    const worker = workerId ? workerInfoById.get(workerId) : undefined;
+    return {
+      ...j,
+      worker_id: workerId,
+      worker_name: worker?.full_name ?? null,
+      worker_phone: worker?.phone ?? null,
+    };
+  });
 
   return ok({ jobs: result });
 });

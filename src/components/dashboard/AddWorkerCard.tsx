@@ -22,6 +22,7 @@ interface AddWorkerCardProps {
   existingUsers?: {
     full_name: string;
     role: string;
+    login_pin?: string | null;
   }[];
 }
 
@@ -123,9 +124,13 @@ export function AddWorkerCard({
   };
 
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // dovolimo samo številke, max 4 znaki
-    const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 4);
-    setPassword(digitsOnly);
+    // Workers: company PIN — digits only, max 4 (Mark).
+    // Managers: normal password (min 8), separate from company self-registration.
+    if (role === 'worker') {
+      setPassword(e.target.value.replace(/\D/g, '').slice(0, 4));
+    } else {
+      setPassword(e.target.value.slice(0, 64));
+    }
     if (passwordError) setPasswordError(null);
   };
 
@@ -155,8 +160,13 @@ export function AddWorkerCard({
       valid = false;
     }
 
-    if (!PASSWORD_REGEX.test(password)) {
-      setPasswordError('Geslo mora vsebovati natanko 4 številke.');
+    if (role === 'worker') {
+      if (!PASSWORD_REGEX.test(password)) {
+        setPasswordError('Geslo mora vsebovati natanko 4 znake (npr. 1111).');
+        valid = false;
+      }
+    } else if (password.length < 8) {
+      setPasswordError('Geslo za pisarno mora imeti vsaj 8 znakov.');
       valid = false;
     }
 
@@ -264,9 +274,14 @@ export function AddWorkerCard({
                   <div className="flex flex-col gap-1">
                     {officeUsers.length > 0 ? (
                       officeUsers.map((u, i) => (
-                        <div key={`office-${i}-${u.full_name}-${u.role}`} className="flex items-center gap-1.5 text-[12px] font-light text-[#19233B] leading-none py-0.5">
-                          <div className="w-[3px] h-[3px] rounded-full bg-[#19233B] shrink-0"></div>
-                          <span className="truncate">{u.full_name}</span>
+                        <div key={`office-${i}-${u.full_name}-${u.role}`} className="flex items-center justify-between gap-2 text-[12px] font-light text-[#19233B] leading-none py-0.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <div className="w-[3px] h-[3px] rounded-full bg-[#19233B] shrink-0"></div>
+                            <span className="truncate">{u.full_name}</span>
+                          </div>
+                          {u.login_pin ? (
+                            <span className="shrink-0 font-mono text-[11px] text-slate-500">{u.login_pin}</span>
+                          ) : null}
                         </div>
                       ))
                     ) : (
@@ -283,9 +298,14 @@ export function AddWorkerCard({
                   <div className="flex flex-col gap-1">
                     {fieldUsers.length > 0 ? (
                       fieldUsers.map((u, i) => (
-                        <div key={`field-${i}-${u.full_name}-${u.role}`} className="flex items-center gap-1.5 text-[12px] font-light text-[#19233B] leading-none py-0.5">
-                          <div className="w-[3px] h-[3px] rounded-full bg-[#19233B] shrink-0"></div>
-                          <span className="truncate">{u.full_name}</span>
+                        <div key={`field-${i}-${u.full_name}-${u.role}`} className="flex items-center justify-between gap-2 text-[12px] font-light text-[#19233B] leading-none py-0.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <div className="w-[3px] h-[3px] rounded-full bg-[#19233B] shrink-0"></div>
+                            <span className="truncate">{u.full_name}</span>
+                          </div>
+                          {u.login_pin ? (
+                            <span className="shrink-0 font-mono text-[11px] text-slate-500">{u.login_pin}</span>
+                          ) : null}
                         </div>
                       ))
                     ) : (
@@ -356,14 +376,22 @@ export function AddWorkerCard({
                 <div className="flex p-1 bg-[#f1f5f9] rounded-[10px] w-full h-[44px]">
                   <button
                     type="button"
-                    onClick={() => setRole('manager')}
+                    onClick={() => {
+                      setRole('manager');
+                      setPassword('');
+                      setPasswordError(null);
+                    }}
                     className={`flex-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase transition-all ${role === 'manager' ? 'border-[1.5px] border-[#4A6FBF] bg-white text-[#1c305a] shadow-sm' : 'border-[1.5px] border-transparent text-slate-600 hover:text-slate-800'}`}
                   >
                     Pisarna
                   </button>
                   <button
                     type="button"
-                    onClick={() => setRole('worker')}
+                    onClick={() => {
+                      setRole('worker');
+                      setPassword('');
+                      setPasswordError(null);
+                    }}
                     className={`flex-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase transition-all ${role === 'worker' ? 'border-[1.5px] border-[#4A6FBF] bg-white text-[#1c305a] shadow-sm' : 'border-[1.5px] border-transparent text-slate-600 hover:text-slate-800'}`}
                   >
                     Teren
@@ -371,19 +399,21 @@ export function AddWorkerCard({
                 </div>
               </div>
 
-              {/* Začasno Geslo */}
+              {/* Geslo — workers: 4-char company PIN; managers: 8+ */}
               <div>
-                <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-widest mb-1.5">Začasno Geslo (4 številke)</label>
+                <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-widest mb-1.5">
+                  {role === 'worker' ? 'Geslo (4 znaki)' : 'Geslo (min. 8 znakov)'}
+                </label>
                 <div className="relative">
                   <input
                      type={showPassword ? 'text' : 'password'}
-                     inputMode="numeric"
+                     inputMode={role === 'worker' ? 'numeric' : 'text'}
                      autoComplete="new-password"
-                     className={`w-full h-11 pl-4 pr-11 rounded-[8px] border ${passwordError ? 'border-red-300 ring-1 ring-red-300 bg-red-50' : 'border-slate-300 bg-[#F1F5F9]'} text-[#0f172a] text-[16px] tracking-[0.5em] text-center font-bold focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all placeholder:text-slate-400 placeholder:tracking-normal placeholder:font-light`}
+                     className={`w-full h-11 pl-4 pr-11 rounded-[8px] border ${passwordError ? 'border-red-300 ring-1 ring-red-300 bg-red-50' : 'border-slate-300 bg-[#F1F5F9]'} text-[#0f172a] text-[16px] ${role === 'worker' ? 'tracking-[0.5em] text-center font-bold' : 'tracking-normal text-left font-medium'} focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all placeholder:text-slate-400 placeholder:tracking-normal placeholder:font-light`}
                      value={password}
                      onChange={handlePasswordChange}
-                     placeholder="284"
-                     maxLength={4}
+                     placeholder={role === 'worker' ? '1111' : 'Geslo'}
+                     maxLength={role === 'worker' ? 4 : 64}
                   />
                   <button
                     type="button"

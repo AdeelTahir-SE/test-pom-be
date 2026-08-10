@@ -181,57 +181,55 @@ function extractAmount(text: string): string | null {
   return inline?.[1]?.trim() ?? null;
 }
 
-function extractStructuredLines(type: DocumentType, text: string): string[] {
-  const lines: string[] = [typeHeading(type)];
-
-  const supplier = extractSupplier(text);
-  const customer = extractCustomer(text);
-  const invoiceNo = extractInvoiceNo(text);
-  const date = extractInvoiceDate(text);
-  const amount = extractAmount(text);
-  const items = findLabeledValue(text, [/(?:items|postavke|št\.\s*postavk)/i]);
-  const parties = findLabeledValue(text, [/(?:parties|stranke|pogodbene\s*stranke)/i]);
-  const duration = findLabeledValue(text, [/(?:duration|trajanje)/i]);
-  const work = findLabeledValue(text, [
-    /(?:performed\s*work|opravljeno\s*delo|work\s*done)/i,
+function extractSubject(text: string): string | null {
+  return findLabeledValue(text, [
+    /zadeva/i,
+    /predmet/i,
+    /subject/i,
+    /regarding/i,
+    /opis\s+dela/i,
+    /vrsta\s+dela/i,
   ]);
-  const technician = findLabeledValue(text, [/(?:technician|tehnik)/i]);
+}
 
-  switch (type) {
-    case "invoice":
-      if (supplier) lines.push(`Supplier: ${supplier}`);
-      if (invoiceNo) lines.push(`Invoice No: ${invoiceNo}`);
-      if (date) lines.push(`Date: ${date}`);
-      if (amount) lines.push(`Amount: ${amount}`);
-      break;
-    case "delivery_note":
-      if (supplier) lines.push(`Supplier: ${supplier}`);
-      if (date) lines.push(`Delivery: ${date}`);
-      if (items) lines.push(`Items: ${items}`);
-      break;
-    case "contract":
-      if (parties) lines.push(`Parties: ${parties}`);
-      else if (supplier && customer) lines.push(`Parties: ${supplier} / ${customer}`);
-      if (duration) lines.push(`Duration: ${duration}`);
-      break;
-    case "service_report":
-      if (customer) lines.push(`Customer: ${customer}`);
-      if (work) lines.push(`Performed work: ${work}`);
-      if (technician) lines.push(`Technician: ${technician}`);
-      break;
-    case "offer":
-      if (supplier) lines.push(`From: ${supplier}`);
-      if (customer) lines.push(`To: ${customer}`);
-      if (date) lines.push(`Date: ${date}`);
-      if (amount) lines.push(`Amount: ${amount}`);
-      break;
-    case "receipt":
-      if (supplier) lines.push(`Merchant: ${supplier}`);
-      if (date) lines.push(`Date: ${date}`);
-      if (amount) lines.push(`Amount: ${amount}`);
-      break;
-    default:
-      break;
+function extractForWhom(text: string): string | null {
+  // Prefer the party the document is FOR — never the sender/supplier.
+  return firstNonEmpty(
+    extractCustomer(text),
+    findLabeledValue(text, [
+      /za\b/i,
+      /for\b/i,
+      /bill\s*to/i,
+      /naslovnik/i,
+      /prejemnik/i,
+    ])
+  );
+}
+
+/**
+ * Mark a13: AI Extract must be three useful lines —
+ * Subject (Zadeva), Date, For whom — not sender/supplier noise.
+ */
+function extractStructuredLines(type: DocumentType, text: string): string[] {
+  const lines: string[] = [];
+
+  const subject =
+    extractSubject(text) ??
+    (type !== "other" ? typeHeading(type) : null);
+  const date = extractInvoiceDate(text);
+  const forWhom = extractForWhom(text);
+
+  if (subject) lines.push(`Zadeva: ${subject}`);
+  if (date) lines.push(`Datum: ${date}`);
+  if (forWhom) lines.push(`Za: ${forWhom}`);
+
+  // If structured trio is empty, keep a light type-specific fallback so
+  // invoices still show something useful beyond filename.
+  if (lines.length === 0) {
+    const invoiceNo = extractInvoiceNo(text);
+    const amount = extractAmount(text);
+    if (invoiceNo) lines.push(`Št.: ${invoiceNo}`);
+    if (amount) lines.push(`Znesek: ${amount}`);
   }
 
   return lines;
@@ -271,8 +269,8 @@ export function buildDocumentPreview(
   }
 
   const structured = extractStructuredLines(documentType, text);
-  // Heading alone is not enough — need at least one extracted field.
-  if (structured.length <= 1) {
+  // Need at least one extracted field.
+  if (structured.length === 0) {
     return fallbackPreview(fileName, text);
   }
 

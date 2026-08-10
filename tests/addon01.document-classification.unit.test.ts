@@ -50,21 +50,24 @@ describe("Add-on 1 — document classification", () => {
 });
 
 describe("Add-on 1 — document preview", () => {
-  it("builds a structured invoice preview with filename secondary", () => {
+  it("builds Mark a13 preview: Zadeva, Datum, Za (not sender)", () => {
     const preview = buildDocumentPreview(
       "invoice",
       [
         "Invoice",
+        "Zadeva: Montaža klimatske naprave",
         "Supplier: ABC d.o.o.",
+        "Kupac: Novak d.o.o.",
         "Invoice No: 2025-018",
         "Date: 12.06.2025",
         "Amount: 684,20 €",
       ].join("\n"),
       "Invoice_2025_018.pdf"
     );
-    expect(preview).toContain("Invoice");
-    expect(preview).toContain("Supplier: ABC d.o.o.");
-    expect(preview).toContain("Invoice No: 2025-018");
+    expect(preview).toContain("Zadeva:");
+    expect(preview).toContain("Datum:");
+    expect(preview).toContain("Za: Novak d.o.o.");
+    expect(preview).not.toContain("Supplier:");
     expect(preview).toContain("Invoice_2025_018.pdf");
     expect(preview.length).toBeLessThanOrEqual(DOCUMENT_PREVIEW_MAX_CHARS);
   });
@@ -83,11 +86,12 @@ describe("Add-on 1 — document preview", () => {
 
   it("enrichDocumentFromOcr classifies and previews in one pass", () => {
     const result = enrichDocumentFromOcr(
-      "Invoice No: 9\nSupplier: ACME\nAmount: 10 €\nVAT included",
+      "Zadeva: Servis kotla\nKupac: ACME d.o.o.\nDate: 01.02.2026\nInvoice No: 9\nAmount: 10 €\nVAT included",
       "inv.pdf"
     );
     expect(result.document_type).toBe("invoice");
-    expect(result.document_preview).toContain("Invoice");
+    expect(result.document_preview).toContain("Zadeva:");
+    expect(result.document_preview).toContain("Za: ACME d.o.o.");
     expect(result.document_preview).toContain("inv.pdf");
   });
 
@@ -120,11 +124,11 @@ describe("Add-on 1 — document preview", () => {
 
     const result = enrichDocumentFromOcr(ocr, "image (18).png");
     expect(result.document_type).toBe("invoice");
-    expect(result.document_preview).toContain("Supplier: IKEA Hrvatska d.o.o. za trgovinu");
-    expect(result.document_preview).toContain("Invoice No: 185678/533/1");
-    expect(result.document_preview).toContain("Date: 1. 9. 2023.");
-    expect(result.document_preview).toMatch(/Amount:.*1\.160,34/);
-    expect(result.document_preview).not.toMatch(/Invoice No:\s*Stranica/i);
+    expect(result.document_preview).toContain("Za: Manuela Glavinic");
+    expect(result.document_preview).toContain("Datum:");
+    expect(result.document_preview).toMatch(/1\.\s*9\.\s*2023/);
+    expect(result.document_preview).not.toContain("Supplier:");
+    expect(result.document_preview).not.toMatch(/Za:\s*Stranica/i);
     expect(result.document_preview).toContain("image (18).png");
   });
 });
@@ -142,7 +146,7 @@ describe("Add-on 1 — timeline display", () => {
       },
       tSl
     );
-    expect(line).toBe("📄 Račun: #003 · Invoice_2025_018.pdf");
+    expect(line).toBe("📄 Račun · Invoice_2025_018.pdf");
   });
 
   it("uses English labels", () => {

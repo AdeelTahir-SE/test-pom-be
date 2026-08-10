@@ -7,6 +7,7 @@ import { api } from "@/lib/api-client";
 import { useLanguage } from "@/lib/useLanguage";
 import type { JobStatus } from "@/config/constants";
 import { Paperclip, GripVertical, X } from "lucide-react";
+import { toTelHref } from "@/lib/phone";
 import {
   DndContext,
   closestCenter,
@@ -761,6 +762,13 @@ export function WorkerDetailModal({
           const todo = updated.filter((t) => !t.completed);
           return [...done, ...todo];
         });
+        // Mark a13: each completed step must appear on timeline immediately
+        // (same invalidate path as file upload/hide).
+        if (jobId) {
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.job.timeline(jobId),
+          });
+        }
         onRefresh?.();
       } else {
         showToast(res.error?.message ?? t("modalConfirmStepMissingTitle"));
@@ -999,6 +1007,15 @@ export function WorkerDetailModal({
                       {details}
                     </div>
                   )}
+                  {worker?.phone?.trim() ? (
+                    <a
+                      href={toTelHref(worker.phone) ?? undefined}
+                      className="text-[#2b5493] text-[12px] font-medium mt-1 truncate hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {worker.phone}
+                    </a>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1715,6 +1732,15 @@ export function WorkerDetailModal({
                         </div>
                       );
                     })()}
+                    {worker?.phone?.trim() ? (
+                      <a
+                        href={toTelHref(worker.phone) ?? undefined}
+                        className="text-[#2b5493] text-[12px] font-medium mt-1 truncate hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {worker.phone}
+                      </a>
+                    ) : null}
                   </div>
                 </div>
               </div>
