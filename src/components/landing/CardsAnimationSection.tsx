@@ -13,6 +13,7 @@ export default function CardAnimationSection() {
   const [scale, setScale] = useState(0.85);
   const [isMobile, setIsMobile] = useState(false);
   const [showPointers, setShowPointers] = useState(false);
+  const [goDown, setGoDown] = useState(false);
 
   // Rotation controls for X, Y, Z axes
   const [rotateX, setRotateX] = useState(45);
@@ -61,12 +62,22 @@ export default function CardAnimationSection() {
     return () => observer.disconnect();
   }, []);
 
-  // Timer to sync pointer appearance and card hover launch (9 seconds)
+  // Timer to sync pointer appearance and card hover launch (8.5 seconds)
   useEffect(() => {
     if (inView) {
       const timer = setTimeout(() => {
         setShowPointers(true);
-      }, 9000);
+      }, 8500);
+      return () => clearTimeout(timer);
+    }
+  }, [inView]);
+
+  // Timer to trigger "go down" animation after all cards have arrived (7.0 seconds)
+  useEffect(() => {
+    if (inView) {
+      const timer = setTimeout(() => {
+        setGoDown(true);
+      }, 7000);
       return () => clearTimeout(timer);
     }
   }, [inView]);
@@ -159,11 +170,11 @@ export default function CardAnimationSection() {
   // isPointerCard triggers the rise-and-float animation at the end
   const cards = [
     { left: 450, top: 280, col: 2, row: 1, type: "order", data: previewOrders[0], delay: 0.0, isPointerCard: true },
-    { left: 0, top: 280, col: 1, row: 1, type: "worker", data: previewWorkers[0], delay: 1.5 },
-    { left: 450, top: 570, col: 2, row: 2, type: "order", data: previewOrders[1], delay: 3.0 },
-    { left: 900, top: 280, col: 3, row: 1, type: "message", data: previewMessages[0], delay: 4.5 },
-    { left: 0, top: 570, col: 1, row: 2, type: "worker", data: previewWorkers[1], delay: 6.0 },
-    { left: 900, top: 570, col: 3, row: 2, type: "message", data: previewMessages[1], delay: 7.5 }
+    { left: 0, top: 280, col: 1, row: 1, type: "worker", data: previewWorkers[0], delay: 0.6 },
+    { left: 450, top: 570, col: 2, row: 2, type: "order", data: previewOrders[1], delay: 1.2 },
+    { left: 900, top: 280, col: 3, row: 1, type: "message", data: previewMessages[0], delay: 1.8 },
+    { left: 0, top: 570, col: 1, row: 2, type: "worker", data: previewWorkers[1], delay: 2.4 },
+    { left: 900, top: 570, col: 3, row: 2, type: "message", data: previewMessages[1], delay: 3.0 }
   ];
 
   const renderCardContent = (c: typeof cards[0]) => {
@@ -248,7 +259,7 @@ export default function CardAnimationSection() {
             overflow: hidden;
             border-radius: 12px;
             opacity: 0;
-            animation: itp-card-slide-in 1.8s ease-in-out both;
+            animation: itp-card-slide-in 3.5s cubic-bezier(0.05, 0.95, 0.05, 1) both;
             animation-play-state: paused;
           }
           .itp-in-view .itp-card,
@@ -265,21 +276,16 @@ export default function CardAnimationSection() {
             20%  { 
               opacity: 1; 
             }
-            75%  {
-              opacity: 1;
-              transform: translate3d(0, 0, 40px);
-              box-shadow: -20px 40px 15px rgba(15, 23, 42, 0.28);
-            }
             100% { 
               opacity: 1; 
-              transform: translate3d(0, 0, 0); 
-              box-shadow: none;
+              transform: translate3d(0, 0, 40px);
+              box-shadow: -20px 40px 15px rgba(15, 23, 42, 0.28);
             }
           }
           /* Rise-up and fix styling in the air for top cards when pointers activate */
           .itp-card-hovering {
             opacity: 1 !important;
-            animation: itp-card-rise-up 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            animation: itp-card-rise-up 1.2s cubic-bezier(0.05, 0.95, 0.05, 1) forwards !important;
             animation-delay: 0s !important;
           }
           @keyframes itp-card-rise-up {
@@ -292,12 +298,46 @@ export default function CardAnimationSection() {
               box-shadow: -22px 44px 18px rgba(15, 23, 42, 0.22);
             }
           }
+          /* All cards go down together */
+          .itp-card.itp-go-down {
+            opacity: 1 !important;
+            animation: itp-card-go-down 1.2s cubic-bezier(0.05, 0.95, 0.05, 1) forwards;
+            animation-delay: 0s !important;
+          }
+          @keyframes itp-card-go-down {
+            0% {
+              opacity: 1;
+              transform: translate3d(0, 0, 40px);
+              box-shadow: -20px 40px 15px rgba(15, 23, 42, 0.28);
+            }
+            100% {
+              opacity: 1;
+              transform: translate3d(0, 0, 0);
+              box-shadow: none;
+            }
+          }
+          /* Overview and urgent blocks slide in completely to flat state */
+          @keyframes itp-block-slide-in {
+            0%   { 
+              opacity: 0; 
+              transform: translate3d(1200px, 800px, 200px); 
+              box-shadow: -80px 160px 45px rgba(15, 23, 42, 0.38);
+            }
+            20%  { 
+              opacity: 1; 
+            }
+            100% { 
+              opacity: 1; 
+              transform: translate3d(0, 0, 0); 
+              box-shadow: none;
+            }
+          }
           .itp-pointer {
             position: absolute; z-index: 300;
             display: flex; flex-direction: column; align-items: center;
             transform-origin: bottom center;
             opacity: 0;
-            animation: itp-pointer-fade-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+            animation: itp-pointer-fade-in 0.8s cubic-bezier(0.05, 0.95, 0.05, 1) both;
             transform-style: preserve-3d;
           }
           @keyframes itp-pointer-fade-in {
@@ -309,7 +349,7 @@ export default function CardAnimationSection() {
             display: flex; flex-direction: column; align-items: center;
             transform-origin: bottom center;
             opacity: 0;
-            animation: itp-pointer-flat-fade-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+            animation: itp-pointer-flat-fade-in 0.8s cubic-bezier(0.05, 0.95, 0.05, 1) both;
             transform-style: preserve-3d;
           }
           @keyframes itp-pointer-flat-fade-in {
@@ -351,8 +391,8 @@ export default function CardAnimationSection() {
               style={{
                 opacity: inView ? 1 : 0,
                 transform: inView ? "translateY(0)" : "translateY(80px)",
-                transition: `transform 1.4s ease-in-out, opacity 1.4s ease-in-out`,
-                transitionDelay: `11.0s`,
+                transition: `transform 3.5s cubic-bezier(0.05, 0.95, 0.05, 1), opacity 3.5s ease-out`,
+                transitionDelay: `10.5s`,
                 width: "100%",
               }}
             >
@@ -386,8 +426,8 @@ export default function CardAnimationSection() {
               style={{
                 opacity: inView ? 1 : 0,
                 transform: inView ? "translateY(0)" : "translateY(80px)",
-                transition: `transform 1.4s ease-in-out, opacity 1.4s ease-in-out`,
-                transitionDelay: `12.5s`,
+                transition: `transform 3.5s cubic-bezier(0.05, 0.95, 0.05, 1), opacity 3.5s ease-out`,
+                transitionDelay: `12.0s`,
                 width: "100%",
               }}
             >
@@ -438,7 +478,7 @@ export default function CardAnimationSection() {
                 style={{
                   opacity: inView ? 1 : 0,
                   transform: inView ? "translateY(0)" : "translateY(80px)",
-                  transition: `transform 1.4s ease-in-out, opacity 1.4s ease-in-out`,
+                  transition: `transform 3.5s cubic-bezier(0.05, 0.95, 0.05, 1), opacity 3.5s ease-out`,
                   transitionDelay: `${c.delay}s`,
                   width: "100%",
                 }}
@@ -509,9 +549,9 @@ export default function CardAnimationSection() {
                     flexDirection: "column",
                     gap: 14,
                     opacity: 0,
-                    animation: "itp-card-slide-in 1.8s ease-in-out both",
+                    animation: "itp-block-slide-in 3.5s cubic-bezier(0.05, 0.95, 0.05, 1) both",
                     animationPlayState: inView ? "running" : "paused",
-                    animationDelay: "12.5s",
+                    animationDelay: "12.0s",
                     overflow: "hidden"
                   }}
                 >
@@ -570,9 +610,9 @@ export default function CardAnimationSection() {
                     flexDirection: "column",
                     gap: 14,
                     opacity: 0,
-                    animation: "itp-card-slide-in 1.8s ease-in-out both",
+                    animation: "itp-block-slide-in 3.5s cubic-bezier(0.05, 0.95, 0.05, 1) both",
                     animationPlayState: inView ? "running" : "paused",
-                    animationDelay: "11.0s",
+                    animationDelay: "10.5s",
                     overflow: "hidden"
                   }}
                 >
@@ -606,7 +646,7 @@ export default function CardAnimationSection() {
                 {cards.map((c, i) => (
                   <div
                     key={i}
-                    className={`itp-card ${c.isPointerCard && showPointers ? "itp-card-hovering" : ""}`}
+                    className={`itp-card ${goDown ? "itp-go-down" : ""} ${c.isPointerCard && showPointers ? "itp-card-hovering" : ""}`}
                     style={{
                       left: c.left,
                       top: c.top,
