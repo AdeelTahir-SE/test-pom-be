@@ -46,6 +46,10 @@ export default function CardAnimationSection() {
     const el = viewportRef.current;
     if (!el) return;
 
+    // Use a smaller threshold on mobile since the stacked cards are much taller
+    const isMobileViewport = window.innerWidth < 768;
+    const threshold = isMobileViewport ? 0.08 : 0.3;
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -55,7 +59,7 @@ export default function CardAnimationSection() {
           }
         });
       },
-      { threshold: 0.3 }
+      { threshold }
     );
 
     observer.observe(el);
@@ -224,7 +228,7 @@ export default function CardAnimationSection() {
       {/* Animation Viewport */}
       <div
         ref={viewportRef}
-        className="relative w-full rounded-[44px] border border-slate-200/80 dark:border-white/10 overflow-hidden bg-white/60 dark:bg-[#101827]/60 backdrop-blur-md shadow-xl transition-all duration-300"
+        className="relative w-full rounded-[24px] md:rounded-[44px] border border-slate-200/80 dark:border-white/10 overflow-hidden bg-white/60 dark:bg-[#101827]/60 backdrop-blur-md shadow-xl transition-all duration-300"
         style={{ height: isMobile ? "auto" : "780px" }}
       >
         <style>{`
@@ -406,14 +410,11 @@ export default function CardAnimationSection() {
 
         {/* Block Header */}
         <div className="text-left pt-10 md:pt-12 px-6 md:px-12 pb-4 flex flex-col items-start relative md:absolute md:left-0 md:top-0 w-full md:max-w-2xl z-20">
-          <span className="font-['Inter',sans-serif] text-[10px] md:text-sm font-semibold tracking-wider text-[#60A5FA] uppercase">
-            {t('cmdCenterLabel')}
-          </span>
           <h2 className="font-['Inter',sans-serif] text-[30px] md:text-[40px] lg:text-5xl font-light tracking-tight leading-tight text-slate-900 dark:text-white mt-2">
             {t('cmdCenterTitle')}
           </h2>
           <p className="font-['Inter',sans-serif] text-[16px] md:text-lg font-normal text-slate-500 dark:text-slate-400 mt-4 max-w-2xl leading-relaxed">
-            {t('cmdCenterSubtitle')}
+            Enostavno dodajanje in sledenje
           </p>
         </div>
 
