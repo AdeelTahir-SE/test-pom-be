@@ -8,7 +8,7 @@ import { CommunicationCard } from "@/components/dashboard/CommunicationCard";
 
 export default function CardAnimationSection() {
   const { t } = useLanguage();
-  const sectionRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(false);
   const [scale, setScale] = useState(0.85);
   const [isMobile, setIsMobile] = useState(false);
@@ -43,7 +43,7 @@ export default function CardAnimationSection() {
 
   // Intersection observer to trigger animation once
   useEffect(() => {
-    const el = sectionRef.current;
+    const el = viewportRef.current;
     if (!el) return;
 
     const observer = new IntersectionObserver(
@@ -55,7 +55,7 @@ export default function CardAnimationSection() {
           }
         });
       },
-      { threshold: 0.15 }
+      { threshold: 0.3 }
     );
 
     observer.observe(el);
@@ -217,7 +217,6 @@ export default function CardAnimationSection() {
 
   return (
     <section
-      ref={sectionRef}
       id="komandni-center"
       className="max-w-7xl mx-auto px-3 md:px-6 pb-20 w-full relative"
     >
@@ -236,6 +235,7 @@ export default function CardAnimationSection() {
 
       {/* Animation Viewport */}
       <div
+        ref={viewportRef}
         className="relative w-full rounded-[44px] border border-slate-200/80 dark:border-white/10 overflow-hidden bg-white/60 dark:bg-[#101827]/60 backdrop-blur-md shadow-xl transition-all duration-300"
         style={{ height: isMobile ? "auto" : "880px" }}
       >
@@ -357,25 +357,15 @@ export default function CardAnimationSection() {
             position: absolute; z-index: 300;
             display: flex; flex-direction: column; align-items: center;
             transform-origin: bottom center;
-            opacity: 0;
-            animation: itp-pointer-fade-in 0.8s cubic-bezier(0.05, 0.95, 0.05, 1) both;
+            transform: translate3d(-50%, 0, 45px) rotateZ(${rotateZ * -1}deg) rotateY(${rotateY * -1}deg) rotateX(${rotateX * -1}deg);
             transform-style: preserve-3d;
-          }
-          @keyframes itp-pointer-fade-in {
-            from { opacity: 0; transform: translate3d(-50%, 15px, 45px) rotate(31deg) rotateX(-45deg); }
-            to   { opacity: 1; transform: translate3d(-50%, 0, 45px) rotate(31deg) rotateX(-45deg); }
           }
           .itp-pointer-flat {
             position: absolute; z-index: 300;
             display: flex; flex-direction: column; align-items: center;
             transform-origin: bottom center;
-            opacity: 0;
-            animation: itp-pointer-flat-fade-in 0.8s cubic-bezier(0.05, 0.95, 0.05, 1) both;
+            transform: translate3d(-50%, 0, 0px) rotateZ(${rotateZ * -1}deg) rotateY(${rotateY * -1}deg) rotateX(${rotateX * -1}deg);
             transform-style: preserve-3d;
-          }
-          @keyframes itp-pointer-flat-fade-in {
-            from { opacity: 0; transform: translate3d(-50%, 15px, 0px) rotate(31deg) rotateX(-45deg); }
-            to   { opacity: 1; transform: translate3d(-50%, 0, 0px) rotate(31deg) rotateX(-45deg); }
           }
           .itp-pointer-label {
             border-radius: 999px; background: #2F6BFF;
@@ -383,12 +373,35 @@ export default function CardAnimationSection() {
             letter-spacing: 0.05em; color: #fff;
             box-shadow: 0 10px 25px rgba(47, 107, 255, 0.35);
             white-space: nowrap;
+            transform-origin: bottom center;
+            transform: scale(0);
+            opacity: 0;
+            animation: itp-label-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+            animation-delay: calc(var(--ptr-delay, 0s) + 0.7s);
           }
-          .itp-pointer-line { height: 40px; width: 2px; background: #2F6BFF; }
+          @keyframes itp-label-pop {
+            to { transform: scale(1); opacity: 1; }
+          }
+          .itp-pointer-line {
+            height: 40px; width: 2px; background: #2F6BFF;
+            transform-origin: bottom center;
+            transform: scaleY(0);
+            animation: itp-line-grow 0.5s ease-out forwards;
+            animation-delay: calc(var(--ptr-delay, 0s) + 0.3s);
+          }
+          @keyframes itp-line-grow {
+            to { transform: scaleY(1); }
+          }
           .itp-pointer-dot {
             height: 10px; width: 10px; border-radius: 50%;
             border: 2px solid #2F6BFF; background: #fff;
             box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            transform: scale(0);
+            animation: itp-dot-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+            animation-delay: var(--ptr-delay, 0s);
+          }
+          @keyframes itp-dot-pop {
+            to { transform: scale(1); }
           }
           @keyframes itp-float-slow {
             0%, 100% { transform: translateY(0px) scale(1); }
@@ -413,7 +426,7 @@ export default function CardAnimationSection() {
                 opacity: inView ? 1 : 0,
                 transform: inView ? "translateY(0)" : "translateY(80px)",
                 transition: `transform 3.5s cubic-bezier(0.05, 0.95, 0.05, 1), opacity 3.5s ease-out`,
-                transitionDelay: `10.5s`,
+                transitionDelay: `12.0s`,
                 width: "100%",
               }}
             >
@@ -448,7 +461,7 @@ export default function CardAnimationSection() {
                 opacity: inView ? 1 : 0,
                 transform: inView ? "translateY(0)" : "translateY(80px)",
                 transition: `transform 3.5s cubic-bezier(0.05, 0.95, 0.05, 1), opacity 3.5s ease-out`,
-                transitionDelay: `12.0s`,
+                transitionDelay: `13.5s`,
                 width: "100%",
               }}
             >
@@ -528,7 +541,7 @@ export default function CardAnimationSection() {
                 {showPointers && (
                   <>
                     {/* Pointer 2 - Left Column (Teren) */}
-                    <div className="itp-pointer-flat" style={{ left: 0 + 197, top: 230, animationDelay: '1.2s' }}>
+                    <div className="itp-pointer-flat" style={{ left: 0 + 197, top: 230, '--ptr-delay': '0.2s' } as React.CSSProperties}>
                       <div className="flex flex-col items-center">
                         <div className="itp-pointer-label">{t('ptrField')}</div>
                         <div className="itp-pointer-line" />
@@ -537,7 +550,7 @@ export default function CardAnimationSection() {
                     </div>
 
                     {/* Pointer 1 - Middle Column (Opomniki za šefa) */}
-                    <div className="itp-pointer" style={{ left: 450 + 197, top: 230, animationDelay: '1.2s' }}>
+                    <div className="itp-pointer" style={{ left: 450 + 197, top: 230, '--ptr-delay': '1.0s' } as React.CSSProperties}>
                       <div className="flex flex-col items-center">
                         <div className="itp-pointer-label">{t('ptrReminders')}</div>
                         <div className="itp-pointer-line" />
@@ -546,7 +559,7 @@ export default function CardAnimationSection() {
                     </div>
 
                     {/* Pointer 3 - Right Column (Komunikacija) */}
-                    <div className="itp-pointer-flat" style={{ left: 900 + 197, top: 230, animationDelay: '1.2s' }}>
+                    <div className="itp-pointer-flat" style={{ left: 900 + 197, top: 230, '--ptr-delay': '1.8s' } as React.CSSProperties}>
                       <div className="flex flex-col items-center">
                         <div className="itp-pointer-label">{t('ptrCommunication')}</div>
                         <div className="itp-pointer-line" />
@@ -574,7 +587,7 @@ export default function CardAnimationSection() {
                     opacity: 0,
                     animation: "itp-block-slide-in 3.5s cubic-bezier(0.05, 0.95, 0.05, 1) both",
                     animationPlayState: inView ? "running" : "paused",
-                    animationDelay: "12.0s",
+                    animationDelay: "13.5s",
                     overflow: "hidden"
                   }}
                 >
@@ -635,7 +648,7 @@ export default function CardAnimationSection() {
                     opacity: 0,
                     animation: "itp-block-slide-in 3.5s cubic-bezier(0.05, 0.95, 0.05, 1) both",
                     animationPlayState: inView ? "running" : "paused",
-                    animationDelay: "10.5s",
+                    animationDelay: "12.0s",
                     overflow: "hidden"
                   }}
                 >
