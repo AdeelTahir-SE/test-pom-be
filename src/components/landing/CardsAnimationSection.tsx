@@ -220,18 +220,6 @@ export default function CardAnimationSection() {
       id="komandni-center"
       className="max-w-7xl mx-auto px-3 md:px-6 pb-20 w-full relative"
     >
-      {/* Block Header */}
-      <div className="text-center mb-10 flex flex-col items-center">
-        <span className="font-['Inter',sans-serif] text-[10px] md:text-sm font-semibold tracking-wider text-[#60A5FA] uppercase">
-          {t('cmdCenterLabel')}
-        </span>
-        <h2 className="font-['Inter',sans-serif] text-[30px] md:text-[40px] lg:text-5xl font-light tracking-tight leading-tight text-slate-900 dark:text-white mt-2">
-          {t('cmdCenterTitle')}
-        </h2>
-        <p className="font-['Inter',sans-serif] text-[16px] md:text-lg font-normal text-slate-500 dark:text-slate-400 mt-4 max-w-2xl leading-relaxed">
-          {t('cmdCenterSubtitle')}
-        </p>
-      </div>
 
       {/* Animation Viewport */}
       <div
@@ -415,6 +403,19 @@ export default function CardAnimationSection() {
         {/* Ambient Decorative Glowing Orbs */}
         <div className="absolute top-[10%] left-[5%] w-[160px] h-[160px] rounded-full bg-blue-400/5 dark:bg-blue-500/10 blur-2xl pointer-events-none" style={{ animation: "itp-float-slow 7s ease-in-out infinite" }} />
         <div className="absolute bottom-[15%] right-[10%] w-[220px] h-[220px] rounded-full bg-indigo-400/5 dark:bg-indigo-500/10 blur-3xl pointer-events-none" style={{ animation: "itp-float-slow 9s ease-in-out infinite 1s" }} />
+
+        {/* Block Header */}
+        <div className="text-left pt-10 md:pt-12 px-6 md:px-12 pb-4 flex flex-col items-start relative md:absolute md:left-0 md:top-0 w-full md:max-w-2xl z-20">
+          <span className="font-['Inter',sans-serif] text-[10px] md:text-sm font-semibold tracking-wider text-[#60A5FA] uppercase">
+            {t('cmdCenterLabel')}
+          </span>
+          <h2 className="font-['Inter',sans-serif] text-[30px] md:text-[40px] lg:text-5xl font-light tracking-tight leading-tight text-slate-900 dark:text-white mt-2">
+            {t('cmdCenterTitle')}
+          </h2>
+          <p className="font-['Inter',sans-serif] text-[16px] md:text-lg font-normal text-slate-500 dark:text-slate-400 mt-4 max-w-2xl leading-relaxed">
+            {t('cmdCenterSubtitle')}
+          </p>
+        </div>
 
         {isMobile ? (
           /* Responsive Mobile Layout (Flat stack, no 3D) */
