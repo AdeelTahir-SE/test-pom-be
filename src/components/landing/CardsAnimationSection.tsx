@@ -9,7 +9,7 @@ import { CommunicationCard } from "@/components/dashboard/CommunicationCard";
 export default function CardAnimationSection() {
   const { t } = useLanguage();
   const sectionRef = useRef<HTMLDivElement>(null);
-  const [inView, setInView] = useState(true);
+  const [inView, setInView] = useState(false);
   const [scale, setScale] = useState(0.85);
   const [isMobile, setIsMobile] = useState(false);
   const [showPointers, setShowPointers] = useState(false);
@@ -248,7 +248,7 @@ export default function CardAnimationSection() {
             overflow: hidden;
             border-radius: 12px;
             opacity: 0;
-            animation: itp-card-slide-in 1.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+            animation: itp-card-slide-in 1.8s ease-in-out both;
             animation-play-state: paused;
           }
           .itp-in-view .itp-card,
@@ -351,7 +351,7 @@ export default function CardAnimationSection() {
               style={{
                 opacity: inView ? 1 : 0,
                 transform: inView ? "translateY(0)" : "translateY(80px)",
-                transition: `transform 1.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 1.4s ease-out`,
+                transition: `transform 1.4s ease-in-out, opacity 1.4s ease-in-out`,
                 transitionDelay: `11.0s`,
                 width: "100%",
               }}
@@ -386,7 +386,7 @@ export default function CardAnimationSection() {
               style={{
                 opacity: inView ? 1 : 0,
                 transform: inView ? "translateY(0)" : "translateY(80px)",
-                transition: `transform 1.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 1.4s ease-out`,
+                transition: `transform 1.4s ease-in-out, opacity 1.4s ease-in-out`,
                 transitionDelay: `12.5s`,
                 width: "100%",
               }}
@@ -438,7 +438,7 @@ export default function CardAnimationSection() {
                 style={{
                   opacity: inView ? 1 : 0,
                   transform: inView ? "translateY(0)" : "translateY(80px)",
-                  transition: `transform 1.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 1.4s ease-out`,
+                  transition: `transform 1.4s ease-in-out, opacity 1.4s ease-in-out`,
                   transitionDelay: `${c.delay}s`,
                   width: "100%",
                 }}
@@ -509,7 +509,7 @@ export default function CardAnimationSection() {
                     flexDirection: "column",
                     gap: 14,
                     opacity: 0,
-                    animation: "itp-card-slide-in 1.8s cubic-bezier(0.16, 1, 0.3, 1) both",
+                    animation: "itp-card-slide-in 1.8s ease-in-out both",
                     animationPlayState: inView ? "running" : "paused",
                     animationDelay: "12.5s",
                     overflow: "hidden"
@@ -570,7 +570,7 @@ export default function CardAnimationSection() {
                     flexDirection: "column",
                     gap: 14,
                     opacity: 0,
-                    animation: "itp-card-slide-in 1.8s cubic-bezier(0.16, 1, 0.3, 1) both",
+                    animation: "itp-card-slide-in 1.8s ease-in-out both",
                     animationPlayState: inView ? "running" : "paused",
                     animationDelay: "11.0s",
                     overflow: "hidden"
