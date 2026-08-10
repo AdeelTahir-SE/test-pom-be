@@ -61,12 +61,12 @@ export default function CardAnimationSection() {
     return () => observer.disconnect();
   }, []);
 
-  // Timer to sync pointer appearance and card hover launch (12 seconds)
+  // Timer to sync pointer appearance and card hover launch (9 seconds)
   useEffect(() => {
     if (inView) {
       const timer = setTimeout(() => {
         setShowPointers(true);
-      }, 12000);
+      }, 9000);
       return () => clearTimeout(timer);
     }
   }, [inView]);
@@ -352,7 +352,7 @@ export default function CardAnimationSection() {
                 opacity: inView ? 1 : 0,
                 transform: inView ? "translateY(0)" : "translateY(80px)",
                 transition: `transform 1.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 1.4s ease-out`,
-                transitionDelay: `0.0s`,
+                transitionDelay: `11.0s`,
                 width: "100%",
               }}
             >
@@ -387,7 +387,7 @@ export default function CardAnimationSection() {
                 opacity: inView ? 1 : 0,
                 transform: inView ? "translateY(0)" : "translateY(80px)",
                 transition: `transform 1.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 1.4s ease-out`,
-                transitionDelay: `1.5s`,
+                transitionDelay: `12.5s`,
                 width: "100%",
               }}
             >
@@ -439,7 +439,7 @@ export default function CardAnimationSection() {
                   opacity: inView ? 1 : 0,
                   transform: inView ? "translateY(0)" : "translateY(80px)",
                   transition: `transform 1.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 1.4s ease-out`,
-                  transitionDelay: `${c.delay + 3.0}s`,
+                  transitionDelay: `${c.delay}s`,
                   width: "100%",
                 }}
               >
@@ -462,10 +462,10 @@ export default function CardAnimationSection() {
                 }}
               >
                 {/* 3D Column Pointers */}
-                {inView && (
+                {showPointers && (
                   <>
                     {/* Pointer 2 - Left Column (Teren) */}
-                    <div className="itp-pointer-flat" style={{ left: 0 + 197, top: 230, animationDelay: '13.2s' }}>
+                    <div className="itp-pointer-flat" style={{ left: 0 + 197, top: 230, animationDelay: '1.2s' }}>
                       <div className="flex flex-col items-center">
                         <div className="itp-pointer-label">{t('ptrField')}</div>
                         <div className="itp-pointer-line" />
@@ -474,7 +474,7 @@ export default function CardAnimationSection() {
                     </div>
 
                     {/* Pointer 1 - Middle Column (Opomniki za šefa) */}
-                    <div className="itp-pointer" style={{ left: 450 + 197, top: 230, animationDelay: '13.2s' }}>
+                    <div className="itp-pointer" style={{ left: 450 + 197, top: 230, animationDelay: '1.2s' }}>
                       <div className="flex flex-col items-center">
                         <div className="itp-pointer-label">{t('ptrReminders')}</div>
                         <div className="itp-pointer-line" />
@@ -483,7 +483,7 @@ export default function CardAnimationSection() {
                     </div>
 
                     {/* Pointer 3 - Right Column (Komunikacija) */}
-                    <div className="itp-pointer-flat" style={{ left: 900 + 197, top: 230, animationDelay: '13.2s' }}>
+                    <div className="itp-pointer-flat" style={{ left: 900 + 197, top: 230, animationDelay: '1.2s' }}>
                       <div className="flex flex-col items-center">
                         <div className="itp-pointer-label">{t('ptrCommunication')}</div>
                         <div className="itp-pointer-line" />
@@ -511,7 +511,7 @@ export default function CardAnimationSection() {
                     opacity: 0,
                     animation: "itp-card-slide-in 1.8s cubic-bezier(0.16, 1, 0.3, 1) both",
                     animationPlayState: inView ? "running" : "paused",
-                    animationDelay: "1.5s",
+                    animationDelay: "12.5s",
                     overflow: "hidden"
                   }}
                 >
@@ -572,7 +572,7 @@ export default function CardAnimationSection() {
                     opacity: 0,
                     animation: "itp-card-slide-in 1.8s cubic-bezier(0.16, 1, 0.3, 1) both",
                     animationPlayState: inView ? "running" : "paused",
-                    animationDelay: "0.0s",
+                    animationDelay: "11.0s",
                     overflow: "hidden"
                   }}
                 >
@@ -610,7 +610,7 @@ export default function CardAnimationSection() {
                     style={{
                       left: c.left,
                       top: c.top,
-                      animationDelay: `${c.delay + 3.0}s`,
+                      animationDelay: `${c.delay}s`,
                       zIndex: Math.round(c.left + c.top),
                     }}
                   >

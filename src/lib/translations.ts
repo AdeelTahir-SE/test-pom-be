@@ -936,7 +936,7 @@ export const translations = {
     modalDeleteStepSubmit: "Delete",
 
     // Card fallbacks & tooltips (live)
-    cardUnased: "Unased",
+    cardUnassigned: "Unassigned",
     cardSenderOffice: "Office",
     cardUnknownSender: "Unknown",
     cardNoTask: "No task",
@@ -959,7 +959,7 @@ export const translations = {
     // Timeline event labels (live)
     timelineJobCreated: "Job order created",
     timelineCard: "Card",
-    timelineWorkerAsed: "Worker ased",
+    timelineWorkerAssigned: "Worker assigned",
     timelineJobUpdated: "Job order updated",
     timelineJobHidden: "Card hidden from board",
     timelineChecklistCompleted: "Completed step",
