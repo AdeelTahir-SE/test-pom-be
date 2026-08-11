@@ -49,8 +49,8 @@ describe("Add-on 1 — document classification", () => {
   });
 });
 
-describe("Add-on 1 — document preview", () => {
-  it("builds Mark a13 preview: Zadeva, Datum, Za (not sender)", () => {
+describe("Add-on 1 — document preview (Mark pack 2)", () => {
+  it("invoice: Slovenian type + number, raw values, amount, no labels", () => {
     const preview = buildDocumentPreview(
       "invoice",
       [
@@ -60,22 +60,25 @@ describe("Add-on 1 — document preview", () => {
         "Kupac: Novak d.o.o.",
         "Invoice No: 2025-018",
         "Date: 12.06.2025",
-        "Amount: 684,20 €",
+        "Znesek: 684,20 €",
       ].join("\n"),
       "Invoice_2025_018.pdf"
     );
-    expect(preview).toContain("Zadeva:");
-    expect(preview).toContain("Datum:");
-    expect(preview).toContain("Za: Novak d.o.o.");
+    expect(preview.startsWith("Račun 2025-018")).toBe(true);
+    expect(preview).toContain("Novak d.o.o.");
+    expect(preview).toContain("684,20");
+    expect(preview).not.toContain("Zadeva:");
+    expect(preview).not.toContain("Datum:");
+    expect(preview).not.toContain("Za:");
     expect(preview).not.toContain("Supplier:");
-    expect(preview).toContain("Invoice_2025_018.pdf");
+    expect(preview).not.toContain("Invoice");
     expect(preview.length).toBeLessThanOrEqual(DOCUMENT_PREVIEW_MAX_CHARS);
   });
 
-  it("falls back to filename + first OCR lines when unstructured", () => {
+  it("other docs use Dokument - filename (not OCR dump)", () => {
     const preview = buildDocumentPreview("other", "line one\nline two\nline three", "scan.pdf");
-    expect(preview.startsWith("scan.pdf")).toBe(true);
-    expect(preview).toContain("line one");
+    expect(preview).toBe("Dokument - scan.pdf");
+    expect(preview).not.toContain("line one");
   });
 
   it("never exceeds the stored preview budget", () => {
@@ -84,18 +87,45 @@ describe("Add-on 1 — document preview", () => {
     expect(preview.length).toBeLessThanOrEqual(DOCUMENT_PREVIEW_MAX_CHARS);
   });
 
+  it("truncate does not split Slovene characters", () => {
+    const long = `${"č".repeat(DOCUMENT_PREVIEW_MAX_CHARS + 10)}šž`;
+    const preview = buildDocumentPreview("other", "noise", long);
+    expect(preview.includes("�")).toBe(false);
+    expect(preview.endsWith("…")).toBe(true);
+  });
+
+  it("contract shows duration; service shows work", () => {
+    const contract = buildDocumentPreview(
+      "contract",
+      "Contract\nDuration: 24 months\nNaročnik: Hiša d.o.o.",
+      "c.pdf"
+    );
+    expect(contract.startsWith("Pogodba")).toBe(true);
+    expect(contract).toContain("24 months");
+    expect(contract).toContain("Hiša d.o.o.");
+
+    const service = buildDocumentPreview(
+      "service_report",
+      "Service Report\nPerformed work: Boiler maintenance\nStranka: Marko",
+      "s.pdf"
+    );
+    expect(service.startsWith("Servis")).toBe(true);
+    expect(service).toContain("Boiler maintenance");
+    expect(service).toContain("Marko");
+  });
+
   it("enrichDocumentFromOcr classifies and previews in one pass", () => {
     const result = enrichDocumentFromOcr(
-      "Zadeva: Servis kotla\nKupac: ACME d.o.o.\nDate: 01.02.2026\nInvoice No: 9\nAmount: 10 €\nVAT included",
+      "Zadeva: Servis kotla\nKupac: ACME d.o.o.\nDate: 01.02.2026\nInvoice No: 9\nZnesek: 10 €\nVAT included",
       "inv.pdf"
     );
     expect(result.document_type).toBe("invoice");
-    expect(result.document_preview).toContain("Zadeva:");
-    expect(result.document_preview).toContain("Za: ACME d.o.o.");
-    expect(result.document_preview).toContain("inv.pdf");
+    expect(result.document_preview.startsWith("Račun 9")).toBe(true);
+    expect(result.document_preview).toContain("ACME d.o.o.");
+    expect(result.document_preview).not.toContain("Zadeva:");
   });
 
-  it("parses Croatian/IKEA-style OCR without treating 'Stranica' as invoice no", () => {
+  it("parses Croatian/IKEA-style OCR without Stranica as invoice no", () => {
     const ocr = [
       "![img-0.jpeg](img-0.jpeg)",
       "",
@@ -124,12 +154,24 @@ describe("Add-on 1 — document preview", () => {
 
     const result = enrichDocumentFromOcr(ocr, "image (18).png");
     expect(result.document_type).toBe("invoice");
-    expect(result.document_preview).toContain("Za: Manuela Glavinic");
-    expect(result.document_preview).toContain("Datum:");
+    expect(result.document_preview.startsWith("Račun 185678/533/1")).toBe(true);
+    expect(result.document_preview).toContain("Manuela Glavinic");
     expect(result.document_preview).toMatch(/1\.\s*9\.\s*2023/);
+    expect(result.document_preview).toMatch(/1\.160,34/);
+    expect(result.document_preview).not.toContain("Zadeva:");
     expect(result.document_preview).not.toContain("Supplier:");
-    expect(result.document_preview).not.toMatch(/Za:\s*Stranica/i);
-    expect(result.document_preview).toContain("image (18).png");
+  });
+
+  it("does not treat long content lines with heading keywords as section headings", () => {
+    const preview = buildDocumentPreview(
+      "invoice",
+      ["## Kupac:", "Naročnik Gradnje d.o.o.", "Datum računa: 12.06.2025", "Invoice No: 1"].join(
+        "\n"
+      ),
+      "inv.pdf"
+    );
+    expect(preview).toContain("Naročnik Gradnje d.o.o.");
+    expect(preview.startsWith("Račun 1")).toBe(true);
   });
 });
 

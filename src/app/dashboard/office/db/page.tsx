@@ -19,18 +19,20 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+  ArrowLeft,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AddTaskModal } from '@/components/dashboard/AddTaskModal';
 import { TeamManagementModal } from '@/components/dashboard/TeamManagementModal';
 import { AddWorkerCard } from '@/components/dashboard/AddWorkerCard';
 import { AuraFileInput } from '@/components/dashboard/AuraForm';
+import { parseNoteText } from '@/components/dashboard/CustomerNotesBanner';
 
 interface TeamUser {
   id: string;
   email: string;
   full_name: string;
-  role: 'owner' | 'director' | 'manager' | 'worker';
+  role: 'owner' | 'manager' | 'worker';
   phone: string | null;
   is_active: boolean;
   created_at: string;
@@ -42,7 +44,8 @@ interface DbJobRow {
   date: string;
   customer: string;
   project: string;
-  notes: string;
+  workerId: string | null;
+  workerName: string;
 }
 
 interface DbAttachmentRow {
@@ -52,8 +55,15 @@ interface DbAttachmentRow {
   project: string;
   name: string;
   aiDetails: string;
+  uploadedByName: string;
   category: DbAttachmentCategory;
   signedUrl: string | null;
+}
+
+interface DbZaznamekRow {
+  customerId: string;
+  customerName: string;
+  notes: { id: string; note: string }[];
 }
 
 interface DbOfficeNoteRow {
@@ -75,6 +85,8 @@ interface ApiFileRow {
   document_preview: string | null;
   created_at: string;
   signed_url: string | null;
+  uploaded_by?: string | null;
+  uploaded_by_name?: string | null;
 }
 
 export default function DatabaseDashboard() {
@@ -94,10 +106,19 @@ export default function DatabaseDashboard() {
   const [staffLoading, setStaffLoading] = useState(true);
   const [jobsList, setJobsList] = useState<DbJobRow[]>([]);
   const [jobsLoading, setJobsLoading] = useState(false);
+  const [jobsCustomerFilter, setJobsCustomerFilter] = useState<string | null>(null);
+  const [jobsWorkerFilter, setJobsWorkerFilter] = useState<string | null>(null);
   const [attachmentsList, setAttachmentsList] = useState<DbAttachmentRow[]>([]);
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [zaznamkiList, setZaznamkiList] = useState<DbZaznamekRow[]>([]);
+  const [zaznamkiLoading, setZaznamkiLoading] = useState(false);
+  const [zaznamkiCustomerName, setZaznamkiCustomerName] = useState('');
+  const [zaznamkiNoteText, setZaznamkiNoteText] = useState('');
+  const [zaznamkiSaving, setZaznamkiSaving] = useState(false);
   const [officeNotes, setOfficeNotes] = useState<DbOfficeNoteRow[]>([]);
   const [notesLoading, setNotesLoading] = useState(false);
+  const [previewAttachmentUrl, setPreviewAttachmentUrl] = useState<string | null>(null);
+  const [previewAttachmentName, setPreviewAttachmentName] = useState<string>('');
   const [dataError, setDataError] = useState<string | null>(null);
 
   // Modals state
@@ -119,9 +140,7 @@ export default function DatabaseDashboard() {
     2: '',
     4: '',
   });
-  const [staffRoleFilter, setStaffRoleFilter] = useState<'all' | 'owner' | 'director' | 'manager' | 'worker'>(
-    'all'
-  );
+  const [staffRoleFilter, setStaffRoleFilter] = useState<'all' | 'owner' | 'manager' | 'worker'>('all');
   const [showFilterPanel, setShowFilterPanel] = useState(false);
 
   // Pagination & Sorting State
@@ -187,7 +206,15 @@ export default function DatabaseDashboard() {
     setJobsLoading(true);
     setDataError(null);
     try {
-      const res = await api.get<{ jobs: ApiJob[] }>('/api/jobs');
+      const params = new URLSearchParams();
+      if (jobsCustomerFilter) params.set('customer', jobsCustomerFilter);
+      if (jobsWorkerFilter) params.set('worker_id', jobsWorkerFilter);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const res = await api.get<{
+        jobs: Array<
+          ApiJob & { worker_name?: string | null; worker_phone?: string | null }
+        >;
+      }>(`/api/jobs${qs}`);
       if (res.status !== 200) {
         setDataError(res.error?.message ?? 'Opravil ni bilo mogoče naložiti.');
         setJobsList([]);
@@ -199,7 +226,8 @@ export default function DatabaseDashboard() {
           date: j.scheduled_at || j.created_at,
           customer: j.customer?.trim() || '—',
           project: j.title,
-          notes: j.description?.trim() || '',
+          workerId: j.worker_id,
+          workerName: j.worker_name?.trim() || '—',
         }))
       );
     } catch (err) {
@@ -208,7 +236,7 @@ export default function DatabaseDashboard() {
     } finally {
       setJobsLoading(false);
     }
-  }, []);
+  }, [jobsCustomerFilter, jobsWorkerFilter]);
 
   const loadAttachments = useCallback(async () => {
     setAttachmentsLoading(true);
@@ -232,6 +260,7 @@ export default function DatabaseDashboard() {
           project: f.job_title || '—',
           name: f.file_name,
           aiDetails: f.document_preview?.trim() || '—',
+          uploadedByName: f.uploaded_by_name?.trim() || '—',
           category,
           signedUrl: f.signed_url,
         });
@@ -242,6 +271,35 @@ export default function DatabaseDashboard() {
       setAttachmentsList([]);
     } finally {
       setAttachmentsLoading(false);
+    }
+  }, []);
+
+  const loadZaznamki = useCallback(async () => {
+    setZaznamkiLoading(true);
+    try {
+      const res = await api.get<{
+        customers: Array<{
+          id: string;
+          name: string;
+          notes?: { id: string; note: string }[];
+        }>;
+      }>('/api/customers');
+      if (res.status !== 200) {
+        setZaznamkiList([]);
+        return;
+      }
+      setZaznamkiList(
+        (res.data?.customers ?? []).map((c) => ({
+          customerId: c.id,
+          customerName: c.name,
+          notes: c.notes ?? [],
+        }))
+      );
+    } catch (err) {
+      console.error(err);
+      setZaznamkiList([]);
+    } finally {
+      setZaznamkiLoading(false);
     }
   }, []);
 
@@ -287,6 +345,7 @@ export default function DatabaseDashboard() {
   useEffect(() => {
     if (authLoading || !user) return;
     if (activeTab === 1) void loadJobs();
+    if (activeTab === 2) void loadZaznamki();
     if (activeTab === 3) void loadAttachments();
     if (activeTab === 4) void loadOfficeNotes();
   }, [
@@ -294,6 +353,7 @@ export default function DatabaseDashboard() {
     authLoading,
     user,
     loadJobs,
+    loadZaznamki,
     loadAttachments,
     loadOfficeNotes,
   ]);
@@ -400,10 +460,23 @@ export default function DatabaseDashboard() {
         (j) =>
           j.customer.toLowerCase().includes(query) ||
           j.project.toLowerCase().includes(query) ||
-          j.notes.toLowerCase().includes(query)
+          j.workerName.toLowerCase().includes(query)
       );
     }
     return getSortedData(result);
+  };
+
+  const getFilteredZaznamki = () => {
+    let result = [...zaznamkiList];
+    const query = searchQueries[2]?.toLowerCase() || '';
+    if (query) {
+      result = result.filter(
+        (c) =>
+          c.customerName.toLowerCase().includes(query) ||
+          c.notes.some((n) => parseNoteText(n.note).text.toLowerCase().includes(query))
+      );
+    }
+    return result.sort((a, b) => a.customerName.localeCompare(b.customerName));
   };
 
   // Attachments filtering & sorting — category from saved DB fields
@@ -415,7 +488,9 @@ export default function DatabaseDashboard() {
           ? attachmentsList.filter((a) => a.category === 'invoice')
           : attachmentSubTab === 2
             ? attachmentsList.filter((a) => a.category === 'document')
-            : attachmentsList.filter((a) => a.category === 'image');
+            : attachmentSubTab === 3
+              ? attachmentsList.filter((a) => a.category === 'image')
+              : attachmentsList.filter((a) => a.category === 'other');
 
     return getSortedData(result);
   };
@@ -437,17 +512,22 @@ export default function DatabaseDashboard() {
     return getSortedData(result);
   };
 
-  // Select filtered items based on current active tab
+  // Select filtered items based on current active tab.
+  // Tab 5 (Podatki podjetja) has its own company-profile UI — not a table dataset.
   const getActiveDataset = () => {
     switch (activeTab) {
       case 0:
         return getFilteredStaff();
       case 1:
         return getFilteredJobs();
+      case 2:
+        return getFilteredZaznamki();
       case 3:
         return getFilteredAttachments();
       case 4:
         return getFilteredNotes();
+      case 5:
+        return [];
       default:
         return [];
     }
@@ -467,6 +547,7 @@ export default function DatabaseDashboard() {
   const tableLoading =
     (activeTab === 0 && staffLoading) ||
     (activeTab === 1 && jobsLoading) ||
+    (activeTab === 2 && zaznamkiLoading) ||
     (activeTab === 3 && attachmentsLoading) ||
     (activeTab === 4 && notesLoading);
 
@@ -573,6 +654,51 @@ export default function DatabaseDashboard() {
     }
   };
 
+  const handleAddZaznamek = async () => {
+    const customerName = zaznamkiCustomerName.trim();
+    const note = zaznamkiNoteText.trim();
+    if (!customerName || !note) {
+      alert('Vnesite stranko in zaznamek.');
+      return;
+    }
+    if (zaznamkiSaving) return;
+    setZaznamkiSaving(true);
+    try {
+      const res = await api.post('/api/customers/notes', {
+        customer_name: customerName,
+        note,
+      });
+      if (res.status === 201 || res.status === 200) {
+        setZaznamkiNoteText('');
+        await loadZaznamki();
+      } else if (res.status === 409) {
+        const again = window.confirm(
+          res.error?.message || 'Podoben zaznamek že obstaja. Dodam vseeno?'
+        );
+        if (again) {
+          const forced = await api.post('/api/customers/notes', {
+            customer_name: customerName,
+            note,
+            force: true,
+          });
+          if (forced.status === 201 || forced.status === 200) {
+            setZaznamkiNoteText('');
+            await loadZaznamki();
+          } else {
+            alert(forced.error?.message || 'Zaznamka ni bilo mogoče dodati.');
+          }
+        }
+      } else {
+        alert(res.error?.message || 'Zaznamka ni bilo mogoče dodati.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Težava pri povezavi z strežnikom.');
+    } finally {
+      setZaznamkiSaving(false);
+    }
+  };
+
   const handleUploadAttachment = async () => {
     if (!attachJobId || !attachFile) {
       alert('Izberite opravilo in datoteko.');
@@ -592,7 +718,14 @@ export default function DatabaseDashboard() {
         setIsAddAttachmentOpen(false);
         setAttachFile(null);
         setAttachJobId('');
+        // Immediate list refresh, then OCR/preview may arrive async — re-poll.
         await loadAttachments();
+        window.setTimeout(() => {
+          void loadAttachments();
+        }, 2500);
+        window.setTimeout(() => {
+          void loadAttachments();
+        }, 6000);
       } else {
         alert(res.error?.message || 'Priponke ni bilo mogoče naložiti.');
       }
@@ -684,34 +817,14 @@ export default function DatabaseDashboard() {
       {/* LEFT SIDEBAR */}
       <aside className="w-64 bg-white border-r border-slate-200 shrink-0 flex flex-col justify-between py-6 px-4">
         <div className="flex flex-col gap-6">
-          {/* Logo */}
-          <div className="px-3 flex items-center gap-2">
-            <Link
-              href="/"
-              className="flex items-center justify-center rounded-full hover:-translate-y-0.5 transition-all duration-300"
-              style={{
-                boxSizing: 'border-box',
-                padding: '8px 16px',
-                width: '111px',
-                height: '34px',
-                background: 'linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)',
-                border: 'none',
-                boxShadow: '0px 1px 2px rgba(15,23,42,0.04)',
-              }}
-            >
-              <span className="text-sm font-bold tracking-tight text-white" style={{ fontFamily: "'Inter', sans-serif" }}>
-                pomocnik.net
-              </span>
-            </Link>
-          </div>
-
-          {/* User account / Pill Button (8px Border Radius) */}
+          {/* Nazaj — leave DB page back to office board (Mark a13) */}
           <div className="px-3">
             <Link
               href="/dashboard/office"
-              className="w-full block bg-indigo-600 hover:bg-indigo-700 text-white rounded-[8px] text-xs font-semibold py-2.5 px-4 text-center shadow-sm transition-colors cursor-pointer"
+              className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-[#1c305a] transition-colors"
             >
-              UPORABNIŠKI RAČUN
+              <ArrowLeft className="h-4 w-4 shrink-0" />
+              Nazaj
             </Link>
           </div>
 
@@ -743,10 +856,14 @@ export default function DatabaseDashboard() {
 
             <button
               onClick={() => setActiveTab(2)}
-              className="hidden"
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-[8px] text-xs font-medium transition-all cursor-pointer text-left w-full ${
+                activeTab === 2
+                  ? 'bg-slate-100 text-slate-900 font-semibold'
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+              }`}
             >
               <Folder className="h-[18px] w-[18px] shrink-0 text-slate-500" />
-              <span className='font-inter font-medium text-base leading-6 align-middle'>Naročniki</span>
+              <span className='font-inter font-medium text-base leading-6 align-middle'>Zaznamki</span>
             </button>
 
             <button
@@ -818,6 +935,16 @@ export default function DatabaseDashboard() {
             </button>
           </nav>
         </div>
+
+        {/* Account lower + separated; brand blue, no purple (Mark a13) */}
+        <div className="px-3 pt-4 border-t border-slate-200">
+          <Link
+            href="/dashboard/office"
+            className="w-full block bg-[#2b5493] hover:bg-[#1c305a] text-white rounded-[8px] text-xs font-semibold py-2.5 px-4 text-center shadow-sm transition-colors cursor-pointer"
+          >
+            UPORABNIŠKI RAČUN
+          </Link>
+        </div>
       </aside>
 
       {/* MAIN VIEWPORT */}
@@ -868,13 +995,14 @@ export default function DatabaseDashboard() {
           >
             {activeTab === 0 && 'Zaposleni'}
             {activeTab === 1 && 'Dela'}
+            {activeTab === 2 && 'Zaznamki'}
             {activeTab === 3 && 'Priponke'}
             {activeTab === 4 && 'Pisarna'}
             {activeTab === 5 && 'Podatki podjetja'}
           </h1>
 
           {/* Search Bar for Tabs 0, 1, 2, 4 */}
-          {(activeTab === 0 || activeTab === 1 || activeTab === 4) && (
+          {(activeTab === 0 || activeTab === 1 || activeTab === 2 || activeTab === 4) && (
             <div className="flex flex-col gap-3 mb-6">
               <div className="flex items-center gap-4">
               <div className="flex-1 relative">
@@ -919,7 +1047,6 @@ export default function DatabaseDashboard() {
                   >
                     <option value="all">Vsi</option>
                     <option value="owner">Vodja</option>
-                    <option value="director">Direktor</option>
                     <option value="manager">Pisarna</option>
                     <option value="worker">Teren</option>
                   </select>
@@ -943,7 +1070,7 @@ export default function DatabaseDashboard() {
               {/* Panoga row */}
               <div className="flex gap-12 py-2 border-b border-slate-100">
                 <span className="w-32 text-[#8A94A6] text-sm">Panoga</span>
-                <span className="text-[#242731] text-sm font-medium">{company?.business_module || 'Whatever they write'}</span>
+                <span className="text-[#242731] text-sm font-medium">{company?.business_module || '—'}</span>
               </div>
               
               {/* Telefon row */}
@@ -1014,19 +1141,20 @@ export default function DatabaseDashboard() {
                             {renderHeaderCell('Dodano', 'created_at', true)}
                             {renderHeaderCell('Telefon', undefined, false)}
                             {renderHeaderCell('E-pošta', undefined, false)}
+                            {renderHeaderCell('Geslo', undefined, false)}
                             <th className="px-6 py-4 font-normal text-slate-500 text-xs tracking-normal text-right"></th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {staffLoading ? (
                             <tr>
-                              <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                              <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
                                 Nalaganje podatkov zaposlenih...
                               </td>
                             </tr>
                           ) : paginatedDataset.length === 0 ? (
                             <tr>
-                              <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                              <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
                                 Ni najdenih zaposlenih z izbranimi filtri.
                               </td>
                             </tr>
@@ -1039,11 +1167,9 @@ export default function DatabaseDashboard() {
                                 <td className="px-6 py-4 text-slate-800" style={tdStyle14}>
                                   {member.role === 'owner'
                                     ? 'Vodja'
-                                    : member.role === 'director'
-                                      ? 'Direktor'
-                                      : member.role === 'manager'
-                                        ? 'Pisarna'
-                                        : 'Teren'}
+                                    : member.role === 'manager'
+                                      ? 'Pisarna'
+                                      : 'Teren'}
                                 </td>
                                 <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
                                   {formatDate(member.created_at)}
@@ -1054,8 +1180,11 @@ export default function DatabaseDashboard() {
                                 <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
                                   {member.email}
                                 </td>
+                                <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle12}>
+                                  {member.role === 'owner' ? '—' : member.login_pin || '—'}
+                                </td>
                                 <td className="px-6 py-4 text-right" style={tdStyle10}>
-                                  {member.role !== 'owner' && member.role !== 'director' ? (
+                                  {member.role !== 'owner' ? (
                                     <button
                                       onClick={() => setUserToDelete(member)}
                                       className="hover:underline cursor-pointer"
@@ -1079,6 +1208,33 @@ export default function DatabaseDashboard() {
                 {/* TAB 1: DELA (JOBS) */}
                 {activeTab === 1 && (
                   <div>
+                    {(jobsCustomerFilter || jobsWorkerFilter) && (
+                      <div className="px-6 py-2 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between gap-3 text-xs">
+                        <span className="text-slate-600">
+                          Filter:{' '}
+                          {jobsCustomerFilter
+                            ? `stranka “${jobsCustomerFilter}”`
+                            : null}
+                          {jobsCustomerFilter && jobsWorkerFilter ? ' · ' : null}
+                          {jobsWorkerFilter
+                            ? `terenec “${
+                                jobsList.find((j) => j.workerId === jobsWorkerFilter)
+                                  ?.workerName || jobsWorkerFilter
+                              }”`
+                            : null}
+                        </span>
+                        <button
+                          type="button"
+                          className="text-[#2b5493] hover:underline font-medium cursor-pointer"
+                          onClick={() => {
+                            setJobsCustomerFilter(null);
+                            setJobsWorkerFilter(null);
+                          }}
+                        >
+                          Počisti filter
+                        </button>
+                      </div>
+                    )}
                     <div className="overflow-x-auto w-full">
                       <table className="w-full text-left border-collapse text-xs">
                         <thead>
@@ -1086,7 +1242,7 @@ export default function DatabaseDashboard() {
                             {renderHeaderCell('Datum', 'date', true)}
                             {renderHeaderCell('Stranka', 'customer', true)}
                             {renderHeaderCell('Dela', undefined, false)}
-                            {renderHeaderCell('Zaznamki', undefined, false)}
+                            {renderHeaderCell('Terenec', 'workerName', true)}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -1109,7 +1265,20 @@ export default function DatabaseDashboard() {
                                   {formatDate(job.date)}
                                 </td>
                                 <td className="px-6 py-4 text-slate-800 font-medium" style={tdStyle12}>
-                                  {job.customer}
+                                  {job.customer !== '—' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setJobsWorkerFilter(null);
+                                        setJobsCustomerFilter(job.customer);
+                                      }}
+                                      className="text-left hover:underline cursor-pointer bg-transparent border-none p-0 outline-none text-[#2b5493]"
+                                    >
+                                      {job.customer}
+                                    </button>
+                                  ) : (
+                                    '—'
+                                  )}
                                 </td>
                                 <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
                                   <button
@@ -1119,8 +1288,118 @@ export default function DatabaseDashboard() {
                                     {job.project}
                                   </button>
                                 </td>
-                                <td className="px-6 py-4 text-slate-800 max-w-[300px] break-words whitespace-pre-line" style={tdStyle12}>
-                                  {job.notes || '—'}
+                                <td className="px-6 py-4 text-slate-800" style={tdStyle12}>
+                                  {job.workerId ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setJobsCustomerFilter(null);
+                                        setJobsWorkerFilter(job.workerId);
+                                      }}
+                                      className="text-left hover:underline cursor-pointer bg-transparent border-none p-0 outline-none text-[#2b5493]"
+                                    >
+                                      {job.workerName}
+                                    </button>
+                                  ) : (
+                                    '—'
+                                  )}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 2: ZAZNAMKI (customer notes) */}
+                {activeTab === 2 && (
+                  <div>
+                    <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/40 flex flex-col sm:flex-row gap-3">
+                      <input
+                        type="text"
+                        list="zaznamki-customer-options"
+                        value={zaznamkiCustomerName}
+                        onChange={(e) => setZaznamkiCustomerName(e.target.value)}
+                        placeholder="Stranka"
+                        className="h-9 flex-1 min-w-[140px] rounded-[8px] border border-slate-200 px-3 text-xs text-slate-800 bg-white"
+                      />
+                      <datalist id="zaznamki-customer-options">
+                        {zaznamkiList.map((c) => (
+                          <option key={c.customerId} value={c.customerName} />
+                        ))}
+                      </datalist>
+                      <input
+                        type="text"
+                        value={zaznamkiNoteText}
+                        onChange={(e) => setZaznamkiNoteText(e.target.value)}
+                        placeholder="Nov zaznamek…"
+                        maxLength={280}
+                        className="h-9 flex-[2] min-w-[180px] rounded-[8px] border border-slate-200 px-3 text-xs text-slate-800 bg-white"
+                      />
+                      <button
+                        type="button"
+                        disabled={zaznamkiSaving}
+                        onClick={() => void handleAddZaznamek()}
+                        className="h-9 shrink-0 px-4 rounded-[8px] bg-[#0A1128] hover:bg-[#152042] text-white text-xs font-semibold disabled:opacity-50 transition-colors cursor-pointer"
+                      >
+                        {zaznamkiSaving ? '…' : 'Dodaj'}
+                      </button>
+                    </div>
+                    <div className="overflow-x-auto w-full">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50/60">
+                            {renderHeaderCell('Stranka', 'customerName', true)}
+                            {renderHeaderCell('Zaznamki', undefined, false)}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {zaznamkiLoading ? (
+                            <tr>
+                              <td colSpan={2} className="px-6 py-12 text-center text-slate-400">
+                                Nalaganje…
+                              </td>
+                            </tr>
+                          ) : paginatedDataset.length === 0 ? (
+                            <tr>
+                              <td colSpan={2} className="px-6 py-12 text-center text-slate-400">
+                                Ni zaznamkov.
+                              </td>
+                            </tr>
+                          ) : (
+                            paginatedDataset.map((row: DbZaznamekRow) => (
+                              <tr key={row.customerId} className="hover:bg-slate-50/50 transition-colors">
+                                <td className="px-6 py-4 text-slate-800 font-medium align-top" style={tdStyle12}>
+                                  {row.customerName}
+                                </td>
+                                <td className="px-6 py-4 text-slate-800 align-top" style={tdStyle12}>
+                                  {row.notes.length === 0 ? (
+                                    <span className="text-slate-400">—</span>
+                                  ) : (
+                                    <ul className="flex flex-col gap-2 list-none p-0 m-0">
+                                      {row.notes.map((n) => {
+                                          const { text } = parseNoteText(n.note);
+                                          return (
+                                        <li key={n.id} className="flex items-start justify-between gap-3">
+                                          <span className="whitespace-pre-line break-words">{text || '—'}</span>
+                                          <button
+                                            type="button"
+                                            className="shrink-0 text-[11px] hover:underline cursor-pointer"
+                                            style={{ color: '#24273166' }}
+                                            onClick={async () => {
+                                              const res = await api.delete(`/api/customer-notes/${n.id}`);
+                                              if (res.status === 200) void loadZaznamki();
+                                            }}
+                                          >
+                                            Izbriši
+                                          </button>
+                                        </li>
+                                          );
+                                        })}
+                                    </ul>
+                                  )}
                                 </td>
                               </tr>
                             ))
@@ -1137,7 +1416,7 @@ export default function DatabaseDashboard() {
                     {/* Category bar matching the exact screenshot visual layout */}
                     <div className="px-6 py-3 border-b border-slate-100 bg-slate-50/30 flex items-center justify-between">
                       <div className="flex gap-6">
-                        {['Vse', 'Računi', 'Dokumenti', 'Slike'].map((sub, idx) => (
+                        {['Vse', 'Računi', 'Dokumenti', 'Slike', 'Ostalo'].map((sub, idx) => (
                           <button
                             key={idx}
                             onClick={() => {
@@ -1172,6 +1451,7 @@ export default function DatabaseDashboard() {
                           <tr className="border-b border-slate-200 bg-slate-50/60">
                             {renderHeaderCell('Datum', 'date', true)}
                             {renderHeaderCell('Dela', 'project', true)}
+                            {renderHeaderCell('Dodal', 'uploadedByName', true)}
                             {renderHeaderCell('ime priponke', undefined, false)}
                             {renderHeaderCell('AI Extract', undefined, false)}
                           </tr>
@@ -1179,13 +1459,13 @@ export default function DatabaseDashboard() {
                         <tbody className="divide-y divide-slate-100">
                           {tableLoading ? (
                             <tr>
-                              <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
+                              <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
                                 Nalaganje…
                               </td>
                             </tr>
                           ) : paginatedDataset.length === 0 ? (
                             <tr>
-                              <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
+                              <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
                                 Ni najdenih datotek v tej kategoriji.
                               </td>
                             </tr>
@@ -1203,16 +1483,21 @@ export default function DatabaseDashboard() {
                                     {item.project}
                                   </button>
                                 </td>
+                                <td className="px-6 py-2 align-top text-slate-800" style={tdStyle12}>
+                                  {item.uploadedByName}
+                                </td>
                                 <td className="px-6 py-2 align-top text-blue-600 font-medium" style={tdStyle12}>
                                   {item.signedUrl ? (
-                                    <a
-                                      href={item.signedUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="hover:underline"
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setPreviewAttachmentName(item.name);
+                                        setPreviewAttachmentUrl(item.signedUrl);
+                                      }}
+                                      className="text-left hover:underline cursor-pointer bg-transparent border-none p-0 outline-none text-blue-600"
                                     >
                                       {item.name}
-                                    </a>
+                                    </button>
                                   ) : (
                                     item.name
                                   )}
@@ -1227,7 +1512,7 @@ export default function DatabaseDashboard() {
                       </table>
                     </div>
                   </div>
-          )}
+                )}
 
                 {/* TAB 4: OFFICE NOTES (PISARNA) */}
                 {activeTab === 4 && (
@@ -1410,8 +1695,9 @@ export default function DatabaseDashboard() {
               email: w.email,
               full_name: w.name,
               role: w.role,
-              phone: w.phone || undefined,
-              password: w.password || undefined,
+              phone: w.phone,
+              // PIN from the form = Auth password (login: email + PIN).
+              password: w.password,
             });
             if (res.status === 201 || res.status === 200) {
               await loadStaff();
@@ -1512,6 +1798,32 @@ export default function DatabaseDashboard() {
               {attachUploading ? 'Nalagam…' : 'Naloži'}
             </button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Attachment inline preview (Mark a13: open, don't force download) */}
+      <Dialog
+        open={!!previewAttachmentUrl}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPreviewAttachmentUrl(null);
+            setPreviewAttachmentName('');
+          }
+        }}
+      >
+        <DialogContent className="max-w-4xl w-[min(96vw,900px)] h-[min(90vh,720px)] p-0 overflow-hidden flex flex-col">
+          <DialogHeader className="px-4 py-3 border-b border-slate-100 shrink-0">
+            <DialogTitle className="text-sm font-semibold truncate pr-8">
+              {previewAttachmentName || 'Predogled'}
+            </DialogTitle>
+          </DialogHeader>
+          {previewAttachmentUrl ? (
+            <iframe
+              title={previewAttachmentName}
+              src={previewAttachmentUrl}
+              className="flex-1 w-full border-0 bg-slate-50"
+            />
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>

@@ -38,12 +38,17 @@ function isNoiseLine(line: string): boolean {
 }
 
 function isSectionHeading(line: string): boolean {
+  // Mark: only short lines (1–2 words) are section headings — not content
+  // that merely contains a heading keyword (e.g. "Naročnik Gradnje d.o.o.").
+  const cleaned = line.replace(/[:\-]\s*$/, "").trim();
+  if (!cleaned) return false;
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  if (words.length === 0 || words.length > 2) return false;
   return /^(kupac|prodavatelj|dobavitelj|supplier|vendor|seller|customer|client|naro[cč]nik|stranka|adresa|podaci\s+o|invoice|delivery|parties|merchant)\b/i.test(
-    line.replace(/[:\-]\s*$/, "")
+    cleaned
   );
 }
 
-/** Value looks like a page marker / garbage, not a field. */
 function isNoiseValue(value: string): boolean {
   if (/^(stranica|page)\b/i.test(value)) return true;
   if (/^\d+\s+od\s+\d+$/i.test(value)) return true;
@@ -75,7 +80,6 @@ function findLabeledValue(text: string, labels: RegExp[]): string | null {
         }
       }
 
-      // Heading-only label → take next meaningful line.
       const headingOnly = new RegExp(`^(?:#{0,3}\\s*)?${label.source}\\s*[:\\-]?\\s*$`, "i");
       if (headingOnly.test(line)) {
         for (let j = i + 1; j < Math.min(lines.length, i + 5); j++) {
@@ -92,42 +96,31 @@ function findLabeledValue(text: string, labels: RegExp[]): string | null {
   return null;
 }
 
+/** Slovenian type names for preview line 1 (Mark — no English). */
 function typeHeading(type: DocumentType): string {
   switch (type) {
     case "invoice":
-      return "Invoice";
+      return "Račun";
     case "delivery_note":
-      return "Delivery Note";
+      return "Dobavnica";
     case "contract":
-      return "Contract";
+      return "Pogodba";
     case "service_report":
-      return "Service Report";
+      return "Servis";
     case "offer":
-      return "Offer / Quotation";
+      return "Ponudba";
     case "receipt":
-      return "Receipt";
+      return "Potrdilo";
     default:
-      return "Document";
+      return "Dokument";
   }
 }
 
 function extractInvoiceNo(text: string): string | null {
-  // Prefer explicit invoice-number labels — never bare "Račun" (that ate "Stranica").
   return findLabeledValue(text, [
     /broj\s+ra[cč]una/i,
     /št(?:evilka|\.?)\s*ra[cč]una/i,
     /invoice\s*(?:no\.?|number|#|nr\.?)/i,
-  ]);
-}
-
-function extractSupplier(text: string): string | null {
-  return findLabeledValue(text, [
-    /prodavatelj/i,
-    /dobavitelj/i,
-    /supplier/i,
-    /vendor/i,
-    /seller/i,
-    /from/i,
   ]);
 }
 
@@ -142,30 +135,28 @@ function extractCustomer(text: string): string | null {
 }
 
 function extractInvoiceDate(text: string): string | null {
-  // Prefer invoice date over order date.
   const preferred = findLabeledValue(text, [
     /datum\s+ra[cč]una/i,
     /invoice\s*date/i,
   ]);
   if (preferred) {
-    // Keep date portion if time is appended: "1. 9. 2023. 23:11:17"
-    const dateOnly = preferred.match(
-      /(\d{1,2}\.\s*\d{1,2}\.\s*\d{2,4}\.?)/
-    );
+    const dateOnly = preferred.match(/(\d{1,2}\.\s*\d{1,2}\.\s*\d{2,4}\.?)/);
     return dateOnly?.[1]?.replace(/\s+/g, " ").trim() ?? preferred;
   }
   return findLabeledValue(text, [/\bdate\b/i, /\bdatum\b/i]);
 }
 
 function extractAmount(text: string): string | null {
+  // Slovenian / EN first — do not lead with Croatian "ukupan iznos eur" (Mark).
   const labeled = findLabeledValue(text, [
-    /ukupan\s+iznos\s+eur/i,
-    /ukupan\s+iznos/i,
+    /\bznesek\b/i,
+    /\bvsota\b/i,
+    /skupaj/i,
+    /za\s+pla[cč]ilo/i,
     /amount\s*due/i,
     /\btotal\b/i,
     /\bamount\b/i,
-    /\bznesek\b/i,
-    /\bvsota\b/i,
+    /ukupan\s+iznos(?:\s+eur)?/i,
   ]);
   if (labeled) {
     const withCurrency = labeled.match(
@@ -174,31 +165,36 @@ function extractAmount(text: string): string | null {
     return (withCurrency?.[1] ?? labeled).replace(/\s+/g, " ").trim();
   }
 
-  // Fallback: bold total line often rendered as "Ukupan iznos EUR: 1.160,34 €"
   const inline = stripMarkdownNoise(text).match(
-    /ukupan\s+iznos\s+eur\s*[:\-]?\s*([0-9.]+,[0-9]{2}\s*€?)/i
+    /(?:znesek|vsota|skupaj|total|amount(?:\s*due)?|ukupan\s+iznos(?:\s+eur)?)\s*[:\-]?\s*([0-9.]+,[0-9]{2}\s*€?)/i
   );
   return inline?.[1]?.trim() ?? null;
 }
 
-function extractSubject(text: string): string | null {
-  return findLabeledValue(text, [
-    /zadeva/i,
-    /predmet/i,
-    /subject/i,
-    /regarding/i,
-    /opis\s+dela/i,
-    /vrsta\s+dela/i,
-  ]);
+function extractDuration(text: string): string | null {
+  return findLabeledValue(text, [/(?:duration|trajanje|veljavnost)/i]);
+}
+
+function extractWork(text: string): string | null {
+  return firstNonEmpty(
+    findLabeledValue(text, [
+      /(?:performed\s*work|opravljeno\s*delo|work\s*done)/i,
+      /opis\s+dela/i,
+      /vrsta\s+dela/i,
+      /zadeva/i,
+      /predmet/i,
+    ])
+  );
+}
+
+function extractItems(text: string): string | null {
+  return findLabeledValue(text, [/(?:items|postavke|št\.\s*postavk)/i]);
 }
 
 function extractForWhom(text: string): string | null {
-  // Prefer the party the document is FOR — never the sender/supplier.
   return firstNonEmpty(
     extractCustomer(text),
     findLabeledValue(text, [
-      /za\b/i,
-      /for\b/i,
       /bill\s*to/i,
       /naslovnik/i,
       /prejemnik/i,
@@ -206,55 +202,80 @@ function extractForWhom(text: string): string | null {
   );
 }
 
+function pushRaw(lines: string[], value: string | null | undefined): void {
+  const v = value?.trim();
+  if (v) lines.push(v);
+}
+
 /**
- * Mark a13: AI Extract must be three useful lines —
- * Subject (Zadeva), Date, For whom — not sender/supplier noise.
+ * Type-specific preview lines — raw values only, no "Zadeva:" / "Datum:" labels (Mark).
+ * Line 1 = Slovenian type (+ document number when available).
  */
 function extractStructuredLines(type: DocumentType, text: string): string[] {
   const lines: string[] = [];
-
-  const subject =
-    extractSubject(text) ??
-    (type !== "other" ? typeHeading(type) : null);
+  const heading = typeHeading(type);
+  const docNo = extractInvoiceNo(text);
   const date = extractInvoiceDate(text);
   const forWhom = extractForWhom(text);
+  const amount = extractAmount(text);
 
-  if (subject) lines.push(`Zadeva: ${subject}`);
-  if (date) lines.push(`Datum: ${date}`);
-  if (forWhom) lines.push(`Za: ${forWhom}`);
-
-  // If structured trio is empty, keep a light type-specific fallback so
-  // invoices still show something useful beyond filename.
-  if (lines.length === 0) {
-    const invoiceNo = extractInvoiceNo(text);
-    const amount = extractAmount(text);
-    if (invoiceNo) lines.push(`Št.: ${invoiceNo}`);
-    if (amount) lines.push(`Znesek: ${amount}`);
+  switch (type) {
+    case "invoice":
+      lines.push(docNo ? `${heading} ${docNo}` : heading);
+      pushRaw(lines, date);
+      pushRaw(lines, forWhom);
+      pushRaw(lines, amount);
+      break;
+    case "offer":
+      lines.push(docNo ? `${heading} ${docNo}` : heading);
+      pushRaw(lines, date);
+      pushRaw(lines, forWhom);
+      pushRaw(lines, amount);
+      break;
+    case "receipt":
+      lines.push(heading);
+      pushRaw(lines, date);
+      pushRaw(lines, amount);
+      break;
+    case "delivery_note":
+      lines.push(heading);
+      pushRaw(lines, date);
+      pushRaw(lines, forWhom);
+      pushRaw(lines, extractItems(text));
+      break;
+    case "contract":
+      lines.push(heading);
+      pushRaw(lines, extractDuration(text));
+      pushRaw(lines, forWhom);
+      break;
+    case "service_report":
+      lines.push(heading);
+      pushRaw(lines, extractWork(text));
+      pushRaw(lines, forWhom);
+      break;
+    default:
+      break;
   }
 
   return lines;
 }
 
-function fallbackPreview(fileName: string, ocrText: string): string {
-  const firstLines = stripMarkdownNoise(ocrText)
-    .split(/\n/)
-    .map(cleanLine)
-    .filter((l) => l && !isNoiseLine(l) && !/^!\["/.test(l))
-    .slice(0, 4)
-    .join("\n");
-  const body = firstNonEmpty(firstLines, ocrText.slice(0, 200)) ?? "";
-  const combined = fileName ? `${fileName}\n${body}` : body;
-  return truncate(combined.trim());
+/** Mark: other docs → "Dokument - filename"; not OCR dump. */
+function fallbackPreview(fileName: string): string {
+  const name = fileName.trim() || "datoteka";
+  return truncate(`Dokument - ${name}`);
 }
 
+/** Truncate by Unicode code points so Slovene letters (č/š/ž) are not split. */
 function truncate(text: string): string {
-  if (text.length <= DOCUMENT_PREVIEW_MAX_CHARS) return text;
-  return `${text.slice(0, DOCUMENT_PREVIEW_MAX_CHARS - 1).trimEnd()}…`;
+  const chars = Array.from(text);
+  if (chars.length <= DOCUMENT_PREVIEW_MAX_CHARS) return text;
+  return `${chars.slice(0, DOCUMENT_PREVIEW_MAX_CHARS - 1).join("").trimEnd()}…`;
 }
 
 /**
- * Build a concise stored preview once after OCR (Add-on 1 §4–§5).
- * Prefer structured fields; always fall back to filename + first OCR lines.
+ * Build a concise stored preview once after OCR.
+ * Typed docs: type-specific raw lines. Other: Dokument - filename.
  */
 export function buildDocumentPreview(
   documentType: DocumentType,
@@ -262,20 +283,17 @@ export function buildDocumentPreview(
   fileName: string
 ): string {
   const text = ocrText.trim();
-  if (!text) return truncate(fileName || "Document");
+  if (!text) return fallbackPreview(fileName);
 
   if (documentType === "other") {
-    return fallbackPreview(fileName, text);
+    return fallbackPreview(fileName);
   }
 
   const structured = extractStructuredLines(documentType, text);
-  // Need at least one extracted field.
   if (structured.length === 0) {
-    return fallbackPreview(fileName, text);
+    return fallbackPreview(fileName);
   }
 
-  // Keep filename secondary under the structured block (Add-on 1 §3).
-  if (fileName) structured.push(fileName);
   return truncate(structured.join("\n"));
 }
 

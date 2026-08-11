@@ -374,7 +374,7 @@ export function AddTaskModal({ isOpen, onOpenChange, workers, defaultDate = "", 
                            onChange={e => setWorkerId(e.target.value)}
                            required
                         >
-                          <option value="" disabled>{t("modalTaskWorkerSelect") || (lang === 'sl' ? "Izberite delavca" : "Select worker")}</option>
+                          <option value="" disabled>{t("modalTaskWorkerSelect") || (lang === 'sl' ? "Izberi terenca" : "Select field worker")}</option>
                           {workers.map((w) => (
                             <option key={w.id} value={w.id}>
                               {w.name}

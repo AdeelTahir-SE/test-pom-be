@@ -940,8 +940,9 @@ export default function OfficeDashboard() {
         email: workerData.email,
         full_name: workerData.name,
         role: workerData.role,
-        phone: workerData.phone || undefined,
-        password: workerData.password || undefined,
+        phone: workerData.phone,
+        // PIN from the form = Auth password (login: email + PIN).
+        password: workerData.password,
       },
     );
     if (res.status !== 201 || !res.data?.user) {
@@ -961,11 +962,6 @@ export default function OfficeDashboard() {
         if (prev.some((w) => w.id === createdUser.id)) return prev;
         return [...prev, createdUser];
       });
-    }
-    if (res.data.temporary_password) {
-      alert(
-        `Račun ustvarjen za ${workerData.email}.\nZačasno geslo: ${res.data.temporary_password}\n\nZapišite si to geslo; prikazano je tudi na seznamu levo.`,
-      );
     }
     void refreshBoard();
   };
@@ -2205,7 +2201,7 @@ export default function OfficeDashboard() {
                 Pošlji sporočilo
               </h2>
               <p className="text-slate-500 text-[13px] font-medium">
-                Izberite prejemnika in vrsto sporočila.
+                Imeti mora odprto kartico v prvem stolpcu.
               </p>
             </div>
 
@@ -2223,8 +2219,8 @@ export default function OfficeDashboard() {
                 >
                   <option value="" disabled>
                     {composeWorkerOptions.length === 0
-                      ? 'Ni delavcev z odprto kartico danes'
-                      : 'Izberite delavca'}
+                      ? 'Imeti mora odprto kartico v prvem stolpcu.'
+                      : 'Izberi terenca'}
                   </option>
                   {composeWorkerOptions.map((w) => (
                     <option key={w.id} value={w.id}>
@@ -2256,7 +2252,7 @@ export default function OfficeDashboard() {
                   if (!composeWorkerId) return;
                   handleComposeMessage(composeWorkerId);
                 }}
-                className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-400 hover:border-blue-400 transition-all cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed group"
+                className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 transition-all cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed group"
               >
                 <div
                   className={`w-16 h-16 rounded-[20px] flex items-center justify-center border transition-all ${
@@ -2294,7 +2290,7 @@ export default function OfficeDashboard() {
                   if (!composeWorkerId) return;
                   handleComposeMessage(composeWorkerId);
                 }}
-                className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-400 hover:border-blue-400 transition-all cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed group"
+                className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 transition-all cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed group"
               >
                 <div
                   className={`w-16 h-16 rounded-[20px] flex items-center justify-center border transition-all ${

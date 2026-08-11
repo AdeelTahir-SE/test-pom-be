@@ -8,6 +8,7 @@ import { processImage } from "@/lib/storage/image";
 import { classifyUpload } from "@/lib/services/files";
 import { extractText } from "@/lib/integrations/mistral";
 import { enrichDocumentFromOcr } from "@/lib/documents/preview";
+import { extractOfficeText, isOfficeDocument } from "@/lib/documents/officeParse";
 import { LIMITS } from "@/config/constants";
 
 export const dynamic = "force-dynamic";
@@ -59,10 +60,12 @@ interface PreparedUpload {
   fileSize: number;
   fileHash: string;
   upload: { path: string; buffer: Buffer; contentType: string }[];
-  // OCR runs on whatever we actually stored (Document OCR add-on §4): the
-  // processed main image for images, the untouched bytes for PDFs. Docs
-  // (doc/docx/txt) aren't in the OCR-supported input list, so null for those.
-  ocrInput: { buffer: Buffer; contentType: string } | null;
+  // Text for classification/preview — Mistral OCR for PDF/images only.
+  // Word/Excel use direct parsers (mammoth / xlsx); never rasterize for OCR (Mark).
+  textExtract:
+    | { kind: "ocr"; buffer: Buffer; contentType: string }
+    | { kind: "office"; buffer: Buffer; fileName: string }
+    | null;
 }
 
 // POST /api/jobs/[id]/files — multipart upload (field name "files", repeatable).
@@ -166,7 +169,7 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
             { path: storagePath, buffer: main.buffer, contentType: main.contentType },
             { path: thumbnailPath, buffer: thumbnail.buffer, contentType: thumbnail.contentType },
           ],
-          ocrInput: { buffer: main.buffer, contentType: main.contentType },
+          textExtract: { kind: "ocr", buffer: main.buffer, contentType: main.contentType },
         };
       }
 
@@ -181,8 +184,11 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
         fileSize: originalBuffer.length,
         fileHash,
         upload: [{ path: storagePath, buffer: originalBuffer, contentType }],
-        ocrInput:
-          classification.attachmentType === "pdf" ? { buffer: originalBuffer, contentType } : null,
+        textExtract: isOfficeDocument(file.name)
+          ? { kind: "office", buffer: originalBuffer, fileName: file.name }
+          : classification.attachmentType === "pdf"
+            ? { kind: "ocr", buffer: originalBuffer, contentType }
+            : null,
       };
     })
   );
@@ -239,21 +245,24 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     });
   }
 
-  // OCR + Add-on 1 classification must never block the upload response
+  // Text extract + Add-on 1 classification must never block the upload response
   // (Failure Rule §9 + Mark: card updates were waiting 15–30s on Mistral).
   // Files are returned immediately; enrichment runs in the background.
-  const ocrInputByHash = new Map(prepared.map((item) => [item.fileHash, item.ocrInput]));
+  const textExtractByHash = new Map(prepared.map((item) => [item.fileHash, item.textExtract]));
   const companyId = auth.companyId;
   const jobId = params.id;
   const jobSeq = job.company_seq;
 
   void Promise.all(
     inserted.map(async (record) => {
-      const ocrInput = ocrInputByHash.get(record.file_hash);
-      if (!ocrInput) return;
+      const textExtract = textExtractByHash.get(record.file_hash);
+      if (!textExtract) return;
 
       try {
-        const text = await extractText(ocrInput.buffer, ocrInput.contentType);
+        const text =
+          textExtract.kind === "office"
+            ? await extractOfficeText(textExtract.buffer, textExtract.fileName)
+            : await extractText(textExtract.buffer, textExtract.contentType);
         if (!text) return;
 
         const enrichment = enrichDocumentFromOcr(text, record.file_name);
@@ -278,7 +287,7 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
           .select()
           .single();
         if (updateError || !updated) {
-          console.error("[ocr_update_failed]", record.id, updateError?.message);
+          console.error("[text_extract_update_failed]", record.id, updateError?.message);
           return;
         }
 
@@ -296,10 +305,11 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
             file_name: record.file_name,
             document_type: enrichment.document_type,
             document_preview: enrichment.document_preview,
+            extract_kind: textExtract.kind,
           },
         });
       } catch (err) {
-        console.error("[ocr_background_failed]", record.id, err);
+        console.error("[text_extract_background_failed]", record.id, err);
       }
     })
   );

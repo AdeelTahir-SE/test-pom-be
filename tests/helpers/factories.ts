@@ -75,14 +75,19 @@ export interface CreatedCompanyUser {
 // (POST /api/users) — exercises the real endpoint rather than inserting directly.
 export async function createCompanyUser(
   ownerToken: string,
-  overrides: Partial<{ email: string; password: string; full_name: string; role: string }> = {}
+  overrides: Partial<{
+    email: string;
+    password: string;
+    full_name: string;
+    role: string;
+    phone: string;
+  }> = {}
 ): Promise<CreatedCompanyUser> {
   const email = overrides.email ?? uniqueEmail("member");
   const role = overrides.role ?? "worker";
-  // Workers: company sets a 4-character PIN. Managers: 8+ or omit for auto-temp.
-  const password =
-    overrides.password ??
-    (role === "worker" ? "1111" : "MemberPass123!");
+  // Company-set 4-digit PIN for both Pisarna (manager) and Teren (worker).
+  const password = overrides.password ?? "1111";
+  const phone = overrides.phone ?? "051-111-111";
 
   const res = await api.post<{
     data?: {
@@ -96,6 +101,7 @@ export async function createCompanyUser(
       password,
       full_name: overrides.full_name ?? "Test Member",
       role,
+      phone,
     },
   });
 

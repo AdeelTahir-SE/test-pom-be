@@ -27,7 +27,7 @@ interface AddWorkerCardProps {
 }
 
 // Vloge, ki štejejo za "Pisarna" sekcijo (case-insensitive primerjava)
-const OFFICE_ROLES = ['manager', 'owner', 'director'];
+const OFFICE_ROLES = ['manager', 'owner'];
 const PASSWORD_REGEX = /^\d{4}$/;
 
 function normalizeRole(role?: string): string {
@@ -124,13 +124,9 @@ export function AddWorkerCard({
   };
 
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Workers: company PIN — digits only, max 4 (Mark).
-    // Managers: normal password (min 8), separate from company self-registration.
-    if (role === 'worker') {
-      setPassword(e.target.value.replace(/\D/g, '').slice(0, 4));
-    } else {
-      setPassword(e.target.value.slice(0, 64));
-    }
+    // Pisarna + Teren: company-set 4-digit PIN (Mark). Owner self-register stays 8+ elsewhere.
+    const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 4);
+    setPassword(digitsOnly);
     if (passwordError) setPasswordError(null);
   };
 
@@ -155,18 +151,17 @@ export function AddWorkerCard({
       valid = false;
     }
 
-    if (phone && !isValidPhone(phone)) {
+    // Mark: phone is required (with email + PIN) when adding staff.
+    if (!phone.trim()) {
+      setPhoneError('Mobilna številka je obvezna.');
+      valid = false;
+    } else if (!isValidPhone(phone)) {
       setPhoneError(t('modalPhoneInvalid') || 'Neveljavna številka');
       valid = false;
     }
 
-    if (role === 'worker') {
-      if (!PASSWORD_REGEX.test(password)) {
-        setPasswordError('Geslo mora vsebovati natanko 4 znake (npr. 1111).');
-        valid = false;
-      }
-    } else if (password.length < 8) {
-      setPasswordError('Geslo za pisarno mora imeti vsaj 8 znakov.');
+    if (!PASSWORD_REGEX.test(password)) {
+      setPasswordError('Geslo mora vsebovati natanko 4 številke (npr. 3845).');
       valid = false;
     }
 
@@ -279,7 +274,7 @@ export function AddWorkerCard({
                             <div className="w-[3px] h-[3px] rounded-full bg-[#19233B] shrink-0"></div>
                             <span className="truncate">{u.full_name}</span>
                           </div>
-                          {u.login_pin ? (
+                          {u.role !== 'owner' && u.login_pin ? (
                             <span className="shrink-0 font-mono text-[11px] text-slate-500">{u.login_pin}</span>
                           ) : null}
                         </div>
@@ -303,7 +298,7 @@ export function AddWorkerCard({
                             <div className="w-[3px] h-[3px] rounded-full bg-[#19233B] shrink-0"></div>
                             <span className="truncate">{u.full_name}</span>
                           </div>
-                          {u.login_pin ? (
+                          {u.role !== 'owner' && u.login_pin ? (
                             <span className="shrink-0 font-mono text-[11px] text-slate-500">{u.login_pin}</span>
                           ) : null}
                         </div>
@@ -331,6 +326,7 @@ export function AddWorkerCard({
               <div>
                 <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-widest mb-1.5">Ime</label>
                 <input
+                  required
                   className={`w-full h-11 px-4 rounded-[8px] border ${nameError ? 'border-red-300 ring-1 ring-red-300 bg-red-50' : 'border-slate-300 bg-[#F1F5F9]'} text-[#0f172a] text-[13px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all placeholder:text-slate-400`}
                   value={name}
                   onChange={handleNameChange}
@@ -346,6 +342,7 @@ export function AddWorkerCard({
                   <input
                      type="tel"
                      inputMode="tel"
+                     required
                      className={`w-full h-11 px-4 rounded-[8px] border ${phoneError ? 'border-red-300 ring-1 ring-red-300 bg-red-50' : 'border-slate-300 bg-[#F1F5F9]'} text-[#0f172a] text-[13px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all placeholder:text-slate-400`}
                      value={phone}
                      onChange={handlePhoneChange}
@@ -357,6 +354,7 @@ export function AddWorkerCard({
                   <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-widest mb-1.5">Email</label>
                   <input
                      type="email"
+                     required
                      className={`w-full h-11 px-4 rounded-[8px] border ${emailError ? 'border-red-300 ring-1 ring-red-300 bg-red-50' : 'border-slate-300 bg-[#F1F5F9]'} text-[#0f172a] text-[13px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all placeholder:text-slate-400`}
                      value={email}
                      onChange={handleEmailChange}
@@ -399,21 +397,22 @@ export function AddWorkerCard({
                 </div>
               </div>
 
-              {/* Geslo — workers: 4-char company PIN; managers: 8+ */}
+              {/* Geslo — 4-digit PIN = Auth password (login: email + this PIN). Mark */}
               <div>
                 <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-widest mb-1.5">
-                  {role === 'worker' ? 'Geslo (4 znaki)' : 'Geslo (min. 8 znakov)'}
+                  Geslo (4 številke)
                 </label>
                 <div className="relative">
                   <input
                      type={showPassword ? 'text' : 'password'}
-                     inputMode={role === 'worker' ? 'numeric' : 'text'}
+                     inputMode="numeric"
                      autoComplete="new-password"
-                     className={`w-full h-11 pl-4 pr-11 rounded-[8px] border ${passwordError ? 'border-red-300 ring-1 ring-red-300 bg-red-50' : 'border-slate-300 bg-[#F1F5F9]'} text-[#0f172a] text-[16px] ${role === 'worker' ? 'tracking-[0.5em] text-center font-bold' : 'tracking-normal text-left font-medium'} focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all placeholder:text-slate-400 placeholder:tracking-normal placeholder:font-light`}
+                     required
+                     className={`w-full h-11 pl-4 pr-11 rounded-[8px] border ${passwordError ? 'border-red-300 ring-1 ring-red-300 bg-red-50' : 'border-slate-300 bg-[#F1F5F9]'} text-[#0f172a] text-[16px] tracking-[0.5em] text-center font-bold focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all placeholder:text-slate-400 placeholder:tracking-normal placeholder:font-light`}
                      value={password}
                      onChange={handlePasswordChange}
-                     placeholder={role === 'worker' ? '1111' : 'Geslo'}
-                     maxLength={role === 'worker' ? 4 : 64}
+                     placeholder="3845"
+                     maxLength={4}
                   />
                   <button
                     type="button"
@@ -425,6 +424,9 @@ export function AddWorkerCard({
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                <p className="text-slate-500 text-[11px] font-medium mt-1.5 leading-relaxed">
+                  Prijava: email + ta PIN (4 številke).
+                </p>
                 {passwordError && <p className="text-red-600 text-[11px] font-medium mt-1">{passwordError}</p>}
               </div>
 

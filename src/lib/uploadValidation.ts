@@ -8,12 +8,14 @@ export const JOB_ATTACHMENT_EXTENSIONS = [
   "pdf",
   "doc",
   "docx",
+  "xls",
+  "xlsx",
   "txt",
 ] as const;
 
 /** `<input accept>` hint — still validate in JS. */
 export const JOB_ATTACHMENT_ACCEPT =
-  ".jpg,.jpeg,.png,image/jpeg,image/png,.pdf,application/pdf,.doc,.docx,.txt,text/plain";
+  ".jpg,.jpeg,.png,image/jpeg,image/png,.pdf,application/pdf,.doc,.docx,.xls,.xlsx,.txt,text/plain";
 
 export type JobAttachmentValidationError = "file_too_large" | "file_type_unsupported";
 

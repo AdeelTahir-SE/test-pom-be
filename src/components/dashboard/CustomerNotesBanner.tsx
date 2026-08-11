@@ -16,7 +16,7 @@ interface CustomerNotesBannerProps {
   compact?: boolean;
 }
 
-/** Notes may be plain text or JSON `{ text, jobId }` for one-time (this-job) notes. */
+/** Notes may be plain text or JSON `{ text, jobId }` / `{ text, jobid }` for one-time notes. */
 export function parseNoteText(note: string): { text: string; jobId: string | null } {
   try {
     if (note.startsWith("{") && note.endsWith("}")) {
@@ -27,9 +27,10 @@ export function parseNoteText(note: string): { text: string; jobId: string | nul
         "text" in parsed &&
         typeof (parsed as { text: unknown }).text === "string"
       ) {
-        const jobId = (parsed as { jobId?: unknown }).jobId;
+        const obj = parsed as { text: string; jobId?: unknown; jobid?: unknown };
+        const jobId = obj.jobId ?? obj.jobid;
         return {
-          text: (parsed as { text: string }).text,
+          text: obj.text,
           jobId: typeof jobId === "string" ? jobId : null,
         };
       }

@@ -24,7 +24,9 @@ export const GET = withAuth<{ id: string }>(
     if (!userRow) {
       throw new ApiError("not_found", "User not found.");
     }
-    return ok({ user: userRow });
+    const user =
+      userRow.role === "owner" ? { ...userRow, login_pin: null } : userRow;
+    return ok({ user });
   },
   { roles: ["owner", "manager"] }
 );
@@ -101,7 +103,9 @@ export const PATCH = withAuth<{ id: string }>(
       throw new ApiError("internal", "Failed to update user.", updateError?.message);
     }
 
-    return ok({ user: updated });
+    const user =
+      updated.role === "owner" ? { ...updated, login_pin: null } : updated;
+    return ok({ user });
   },
   { roles: ["owner"] }
 );

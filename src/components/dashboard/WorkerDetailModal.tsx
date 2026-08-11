@@ -35,7 +35,7 @@ import {
   AuraTextarea,
   auraCard,
 } from "./AuraForm";
-import { describeTimelineEvent, attachmentDisplayTitle, shouldShowTimelineEvent } from "@/lib/timeline/describe";
+import { describeTimelineEvent, shouldShowTimelineEvent } from "@/lib/timeline/describe";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
 import { fetchJobFiles, fetchJobTimeline } from "@/lib/query/office";
@@ -947,8 +947,6 @@ export function WorkerDetailModal({
 
   const firstIncompleteId = tasks.find((t) => !t.completed)?.id ?? null;
   const taskIds = React.useMemo(() => tasks.map((t) => t.id), [tasks]);
-  const canPreviewAttachment = (att: AttachmentItem): boolean =>
-    !!att.documentPreview && !!att.documentType && att.documentType !== "other";
 
   if (!worker) {
     if (!isOpen) return null;
@@ -1228,15 +1226,6 @@ export function WorkerDetailModal({
                     </span>
                   )}
                   {attachments.map((att) => {
-                    const { title, showFileNameSub } = attachmentDisplayTitle(
-                      {
-                        fileName: att.name,
-                        attachmentType: att.attachmentType,
-                        documentType: att.documentType,
-                      },
-                      t
-                    );
-                    const showPreview = canPreviewAttachment(att);
                     return (
                       <button
                         key={att.id}
@@ -1252,22 +1241,11 @@ export function WorkerDetailModal({
                               fontWeight: 400,
                               color: "#0F172A",
                             }}
-                            className="group-hover:text-[#1B3A6B] transition-colors"
+                            className="group-hover:text-[#1B3A6B] transition-colors truncate"
                           >
-                            {title}
+                            {att.name}
                           </span>
-                          {showFileNameSub && (
-                            <span className="text-[10px] text-slate-400 truncate font-light">{att.name}</span>
-                          )}
-                          {showPreview && (
-                            <span className="text-[10px] text-slate-500 line-clamp-2 whitespace-pre-line leading-relaxed font-light">
-                              {att.documentPreview}
-                            </span>
-                          )}
                         </div>
-                        <span className="text-[12px] text-[#64748B] font-light shrink-0 text-right whitespace-nowrap">
-                          {att.date ? `${att.date} · ${att.time}` : att.time}
-                        </span>
                       </button>
                     );
                   })}
@@ -1538,15 +1516,6 @@ export function WorkerDetailModal({
                   </span>
                 )}
                 {attachments.map((att) => {
-                  const { title, showFileNameSub } = attachmentDisplayTitle(
-                    {
-                      fileName: att.name,
-                      attachmentType: att.attachmentType,
-                      documentType: att.documentType,
-                    },
-                    t
-                  );
-                  const showPreview = canPreviewAttachment(att);
                   return (
                     <button
                       key={att.id}
@@ -1562,22 +1531,11 @@ export function WorkerDetailModal({
                             fontWeight: 400,
                             color: "#0F172A",
                           }}
-                          className="group-hover:text-[#1B3A6B] transition-colors"
+                          className="group-hover:text-[#1B3A6B] transition-colors truncate"
                         >
-                          {title}
+                          {att.name}
                         </span>
-                        {showFileNameSub && (
-                          <span className="text-[10px] text-slate-400 truncate font-light">{att.name}</span>
-                        )}
-                        {showPreview && (
-                          <span className="text-[10px] text-slate-500 line-clamp-2 whitespace-pre-line leading-relaxed font-light">
-                            {att.documentPreview}
-                          </span>
-                        )}
                       </div>
-                      <span className="text-[12px] text-[#64748B] font-light shrink-0 text-right whitespace-nowrap">
-                        {att.date ? `${att.date} · ${att.time}` : att.time}
-                      </span>
                     </button>
                   );
                 })}

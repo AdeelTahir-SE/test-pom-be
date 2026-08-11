@@ -63,6 +63,30 @@ describe("Phase 3 — User Management", () => {
     expect(loginRes.status).toBe(200);
   });
 
+  it("company-set 4-char Pisarna PIN is stored, listed, and works for login", async () => {
+    const owner = await registerCompany();
+    createdCompanies.push(owner);
+
+    const pin = "9999";
+    const manager = await createCompanyUser(owner.accessToken!, {
+      role: "manager",
+      password: pin,
+      full_name: "Pin Office",
+    });
+    expect(manager.status).toBe(201);
+    expect(manager.password).toBe(pin);
+
+    const list = await api.get<{
+      data?: { users: { id: string; login_pin?: string | null; role: string }[] };
+    }>("/api/users", { token: owner.accessToken! });
+    const row = list.body.data?.users.find((u) => u.id === manager.userId);
+    expect(row?.role).toBe("manager");
+    expect(row?.login_pin).toBe(pin);
+
+    const loginRes = await loginAs(manager.email, pin);
+    expect(loginRes.status).toBe(200);
+  });
+
   it("worker create without 4-char password is rejected", async () => {
     const owner = await registerCompany();
     createdCompanies.push(owner);
@@ -73,6 +97,60 @@ describe("Phase 3 — User Management", () => {
         email: `nopin-${Date.now()}@example.com`,
         full_name: "No Pin",
         role: "worker",
+        phone: "051-222-333",
+      },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("staff create without phone is rejected", async () => {
+    const owner = await registerCompany();
+    createdCompanies.push(owner);
+
+    const res = await api.post("/api/users", {
+      token: owner.accessToken!,
+      body: {
+        email: `nophone-${Date.now()}@example.com`,
+        full_name: "No Phone",
+        role: "worker",
+        password: "1234",
+      },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("owner login_pin is never returned in users list", async () => {
+    const owner = await registerCompany();
+    createdCompanies.push(owner);
+
+    await createCompanyUser(owner.accessToken!, {
+      role: "worker",
+      password: "3333",
+    });
+
+    const list = await api.get<{
+      data?: { users: { id: string; role: string; login_pin?: string | null }[] };
+    }>("/api/users", { token: owner.accessToken! });
+    expect(list.status).toBe(200);
+    const ownerRow = list.body.data?.users.find((u) => u.id === owner.userId);
+    expect(ownerRow?.role).toBe("owner");
+    expect(ownerRow?.login_pin).toBeNull();
+    const staff = list.body.data?.users.filter((u) => u.role !== "owner") ?? [];
+    expect(staff.some((u) => u.login_pin === "3333")).toBe(true);
+  });
+
+  it("manager create without 4-char password is rejected", async () => {
+    const owner = await registerCompany();
+    createdCompanies.push(owner);
+
+    const res = await api.post("/api/users", {
+      token: owner.accessToken!,
+      body: {
+        email: `nopin-mgr-${Date.now()}@example.com`,
+        full_name: "No Pin Office",
+        role: "manager",
+        password: "MemberPass123!",
+        phone: "051-222-334",
       },
     });
     expect(res.status).toBe(400);
