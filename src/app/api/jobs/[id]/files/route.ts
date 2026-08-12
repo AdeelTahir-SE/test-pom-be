@@ -3,7 +3,13 @@ import { created, ok, ApiError } from "@/lib/http/responses";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { loadJobWithAccess } from "@/lib/services/jobAccess";
 import { createTimelineEvent } from "@/lib/timeline/events";
-import { sha256Hex, buildStoragePath, uploadToStorage, getSignedUrl } from "@/lib/storage/upload";
+import {
+  sha256Hex,
+  buildStoragePath,
+  uploadToStorage,
+  deleteFromStorage,
+  getSignedUrl,
+} from "@/lib/storage/upload";
 import { processImage } from "@/lib/storage/image";
 import { classifyUpload } from "@/lib/services/files";
 import { extractText } from "@/lib/integrations/mistral";
@@ -193,14 +199,39 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     })
   );
 
-  // Upload everything to storage first (valid only if storage succeeds AND
-  // the DB insert succeeds — Supabase Storage add-on §6). Independent writes,
-  // so run them concurrently too.
+  // Upload everything to storage first. If any storage upload fails, remove
+// all objects uploaded by this batch. If the DB insert fails, the same
+// cleanup runs below.
+  const uploadedStoragePaths: string[] = [];
+
+try {
   await Promise.all(
     prepared.flatMap((item) =>
-      item.upload.map((target) => uploadToStorage(db, target.path, target.buffer, target.contentType))
+      item.upload.map(async (target) => {
+        await uploadToStorage(
+          db,
+          target.path,
+          target.buffer,
+          target.contentType
+        );
+
+        uploadedStoragePaths.push(target.path);
+      })
     )
   );
+} catch (error) {
+  await Promise.all(
+    uploadedStoragePaths.map((storagePath) =>
+      deleteFromStorage(db, storagePath)
+    )
+  );
+
+  throw new ApiError(
+    "internal",
+    "Failed to upload files.",
+    error instanceof Error ? error.message : undefined
+  );
+}
 
   const { data: inserted, error: insertError } = await db
     .from("job_files")
@@ -221,14 +252,18 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     .select();
 
   if (insertError || !inserted) {
-    // Storage objects for this batch are now orphaned — spec explicitly
-    // tolerates this: "orphan files ignored; no cleanup system in MVP."
-    throw new ApiError(
-      "internal",
-      "Files were uploaded but could not be recorded.",
-      insertError?.message
-    );
-  }
+  await Promise.all(
+    uploadedStoragePaths.map((storagePath) =>
+      deleteFromStorage(db, storagePath)
+    )
+  );
+
+  throw new ApiError(
+    "internal",
+    "Files were uploaded but could not be recorded.",
+    insertError?.message
+  );
+}
 
   for (const record of inserted) {
     await createTimelineEvent(db, {
@@ -268,20 +303,19 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
         const enrichment = enrichDocumentFromOcr(text, record.file_name);
         const isImage = record.attachment_type === "image";
         // Photos often OCR into noise → "Dokument". Only publish typed docs
-        // (invoice/contract/…) or any PDF enrichment. Images with type "other"
-        // keep ocr_text only — no fake label, no second timeline row (Mark a9).
-        const publishClassification = !isImage || enrichment.document_type !== "other";
+        // (invoice/contract/…) or any PDF enrichment on the timeline (Mark a9).
+        // Always store document_preview so Priponke AI Extract is never blank
+        // "—" — other → "Dokument - filename" (Mark).
+        const publishTyped = !isImage || enrichment.document_type !== "other";
 
         const { data: updated, error: updateError } = await db
           .from("job_files")
           .update({
             ocr_text: text,
-            ...(publishClassification
-              ? {
-                  document_type: enrichment.document_type,
-                  document_preview: enrichment.document_preview,
-                }
-              : {}),
+            document_preview: enrichment.document_preview,
+            ...(publishTyped
+              ? { document_type: enrichment.document_type }
+              : { document_type: "other" }),
           })
           .eq("id", record.id)
           .select()
@@ -291,7 +325,7 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
           return;
         }
 
-        if (!publishClassification) return;
+        if (!publishTyped) return;
 
         await createTimelineEvent(db, {
           companyId,

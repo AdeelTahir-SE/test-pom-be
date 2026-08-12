@@ -124,13 +124,15 @@ function extractInvoiceNo(text: string): string | null {
   ]);
 }
 
+/** Mark: party synonyms only — naročnik, stranka, kupec, customer, client, kupac. */
 function extractCustomer(text: string): string | null {
   return findLabeledValue(text, [
-    /kupac/i,
-    /customer/i,
-    /client/i,
     /naro[cč]nik/i,
     /stranka/i,
+    /kupec/i,
+    /customer/i,
+    /client/i,
+    /kupac/i,
   ]);
 }
 
@@ -192,14 +194,7 @@ function extractItems(text: string): string | null {
 }
 
 function extractForWhom(text: string): string | null {
-  return firstNonEmpty(
-    extractCustomer(text),
-    findLabeledValue(text, [
-      /bill\s*to/i,
-      /naslovnik/i,
-      /prejemnik/i,
-    ])
-  );
+  return extractCustomer(text);
 }
 
 function pushRaw(lines: string[], value: string | null | undefined): void {
@@ -221,15 +216,17 @@ function extractStructuredLines(type: DocumentType, text: string): string[] {
 
   switch (type) {
     case "invoice":
+      // Mark: Račun # / party / date / amount (date is 3rd).
       lines.push(docNo ? `${heading} ${docNo}` : heading);
-      pushRaw(lines, date);
       pushRaw(lines, forWhom);
+      pushRaw(lines, date);
       pushRaw(lines, amount);
       break;
     case "offer":
+      // Predračun / Ponudba — same party→date→amount order as Račun.
       lines.push(docNo ? `${heading} ${docNo}` : heading);
-      pushRaw(lines, date);
       pushRaw(lines, forWhom);
+      pushRaw(lines, date);
       pushRaw(lines, amount);
       break;
     case "receipt":

@@ -50,7 +50,7 @@ describe("Add-on 1 — document classification", () => {
 });
 
 describe("Add-on 1 — document preview (Mark pack 2)", () => {
-  it("invoice: Slovenian type + number, raw values, amount, no labels", () => {
+  it("invoice: Slovenian type + number, party, date, amount (Mark order)", () => {
     const preview = buildDocumentPreview(
       "invoice",
       [
@@ -64,15 +64,38 @@ describe("Add-on 1 — document preview (Mark pack 2)", () => {
       ].join("\n"),
       "Invoice_2025_018.pdf"
     );
-    expect(preview.startsWith("Račun 2025-018")).toBe(true);
-    expect(preview).toContain("Novak d.o.o.");
-    expect(preview).toContain("684,20");
+    expect(preview).toBe(
+      ["Račun 2025-018", "Novak d.o.o.", "12.06.2025", "684,20 €"].join("\n")
+    );
     expect(preview).not.toContain("Zadeva:");
     expect(preview).not.toContain("Datum:");
     expect(preview).not.toContain("Za:");
     expect(preview).not.toContain("Supplier:");
     expect(preview).not.toContain("Invoice");
     expect(preview.length).toBeLessThanOrEqual(DOCUMENT_PREVIEW_MAX_CHARS);
+  });
+
+  it("invoice party synonyms: naročnik / stranka / kupec / customer / client / kupac", () => {
+    for (const label of ["Naročnik", "Stranka", "Kupec", "Customer", "Client", "Kupac"]) {
+      const preview = buildDocumentPreview(
+        "invoice",
+        [`${label}: Acme d.o.o.`, "Invoice No: 1", "Date: 01.01.2026", "Znesek: 10 €"].join(
+          "\n"
+        ),
+        "a.pdf"
+      );
+      expect(preview).toContain("Acme d.o.o.");
+      const lines = preview.split("\n");
+      expect(lines[0]).toBe("Račun 1");
+      expect(lines[1]).toBe("Acme d.o.o.");
+      expect(lines[2]).toBe("01.01.2026");
+    }
+  });
+
+  it("classifies predračun as offer (Ponudba), not invoice", () => {
+    expect(
+      classifyDocument("Predračun št. 10\nNaročnik: Test d.o.o.\nZnesek: 50 €")
+    ).toBe("offer");
   });
 
   it("other docs use Dokument - filename (not OCR dump)", () => {
@@ -154,10 +177,12 @@ describe("Add-on 1 — document preview (Mark pack 2)", () => {
 
     const result = enrichDocumentFromOcr(ocr, "image (18).png");
     expect(result.document_type).toBe("invoice");
-    expect(result.document_preview.startsWith("Račun 185678/533/1")).toBe(true);
-    expect(result.document_preview).toContain("Manuela Glavinic");
-    expect(result.document_preview).toMatch(/1\.\s*9\.\s*2023/);
-    expect(result.document_preview).toMatch(/1\.160,34/);
+    expect(result.document_preview.split("\n")).toEqual([
+      "Račun 185678/533/1",
+      "Manuela Glavinic",
+      "1. 9. 2023.",
+      "1.160,34 €",
+    ]);
     expect(result.document_preview).not.toContain("Zadeva:");
     expect(result.document_preview).not.toContain("Supplier:");
   });

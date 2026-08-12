@@ -14,10 +14,12 @@ export function dbAttachmentCategory(input: {
   document_type: string | null;
 }): DbAttachmentCategory | null {
   if (input.attachment_type === "audio") return null;
-  if (input.attachment_type === "image") return "image";
 
   const doc = input.document_type as DocumentType | null;
+  // OCR invoice/receipt wins over image mime — scan of račun → Računi (Mark).
   if (doc === "invoice" || doc === "receipt") return "invoice";
+  if (doc && doc !== "other" && input.attachment_type === "image") return "document";
+  if (input.attachment_type === "image") return "image";
   if (input.attachment_type === "pdf") return "document";
   if (doc && doc !== "other") return "document";
 

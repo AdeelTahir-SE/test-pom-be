@@ -6,8 +6,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * GET /api/customers — company customers for DB / Stranke + Zaznamki (Mark a13).
- * Each row includes all notes (newest first) so one customer line can show
- * every remark without separate rows per note.
+ * Each row includes all notes (oldest / first-added on top) so one customer
+ * line can show every remark without separate rows per note.
  */
 export const GET = withAuth(
   async (_request, auth) => {
@@ -45,7 +45,7 @@ export const GET = withAuth(
         .select("id, customer_id, note, created_at")
         .eq("company_id", auth.companyId)
         .in("customer_id", customerIds)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: true });
       if (notesError) {
         throw new ApiError("internal", "Failed to load customer notes.", notesError.message);
       }
@@ -72,7 +72,7 @@ export const GET = withAuth(
         id: c.id,
         name: c.name,
         created_at: c.created_at,
-        latest_note: notes[0]?.note ?? null,
+        latest_note: notes[notes.length - 1]?.note ?? null,
         notes,
         jobs: related.slice(0, 5),
         job_count: related.length,

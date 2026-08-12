@@ -40,6 +40,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
 import { fetchJobFiles, fetchJobTimeline } from "@/lib/query/office";
 import { parseNoteText } from "./CustomerNotesBanner";
+import { AddCustomerNoteDialog } from "./AddCustomerNoteDialog";
 import { formatSiDateFromIso, formatSiTimeFromIso } from "@/lib/officeDate";
 import { isOptimisticId } from "@/lib/optimisticId";
 
@@ -348,9 +349,6 @@ export function WorkerDetailModal({
   const completeAfterSaveRef = React.useRef(false);
   const ocrTimeoutRef = React.useRef<number | null>(null);
   const [isAddNoteOpen, setIsAddNoteOpen] = React.useState(false);
-  const [newNoteText, setNewNoteText] = React.useState("");
-  const [newNoteType, setNewNoteType] = React.useState<"once" | "always">("once");
-  const [newNoteSaving, setNewNoteSaving] = React.useState(false);
   const [tasksSyncNonce, setTasksSyncNonce] = React.useState(0);
 
   const fromWorkerTasks = (workerTasks: Worker["tasks"]): TaskItem[] => {
@@ -525,52 +523,6 @@ export function WorkerDetailModal({
       return { success: false };
     }
   }
-
-  const submitNote = React.useCallback(async (force: boolean, isRetry = false): Promise<boolean> => {
-    const noteText = newNoteText.trim();
-    if (!noteText) return false;
-    if (!resolvedCustomerName) {
-      showToast("Naročnik je obvezen za dodajanje opombe.");
-      return false;
-    }
-    const result = await postCustomerNote(noteText, newNoteType, resolvedCustomerName, force, isRetry);
-    if (result.shouldRetry) {
-      const okAnyway = window.confirm(t("customerNotesDuplicateConfirm"));
-      if (okAnyway) {
-        return submitNote(true, true);
-      }
-      return false;
-    }
-    if (result.success) {
-      setNewNoteText("");
-      setIsAddNoteOpen(false);
-      if (mountedRef.current) {
-        void loadCustomerNotes(resolvedCustomerName);
-        // .catch dodan: gre za "fire and forget" klic, ki brez tega ne bi bil
-        // ujet nikjer navzgor po klicni verigi (unhandled promise rejection).
-        void refreshFilesAndTimeline().catch((err) => {
-          if (mountedRef.current) showToast(getErrorMessage(err));
-        });
-      }
-    }
-    return result.success;
-  }, [newNoteText, newNoteType, resolvedCustomerName, jobId, t, showToast, loadCustomerNotes, refreshFilesAndTimeline]);
-
-  const handleAddNote = async (force = false): Promise<void> => {
-    if (newNoteSaving) return;
-    setNewNoteSaving(true);
-    try {
-      await submitNote(force);
-    } catch (err) {
-      if (mountedRef.current) {
-        showToast(getErrorMessage(err));
-      }
-    } finally {
-      if (mountedRef.current) {
-        setNewNoteSaving(false);
-      }
-    }
-  };
 
   React.useEffect(() => {
     if (!isOpen) {
@@ -1048,8 +1000,6 @@ export function WorkerDetailModal({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setNewNoteText("");
-                      setNewNoteType("once");
                       setIsAddNoteOpen(true);
                     }}
                     className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
@@ -1386,8 +1336,6 @@ export function WorkerDetailModal({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  setNewNoteText("");
-                  setNewNoteType("once");
                   setIsAddNoteOpen(true);
                 }}
                 className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
@@ -2385,228 +2333,20 @@ export function WorkerDetailModal({
         </DialogContent>
       </Dialog>
 
-      {}
-      <Dialog open={isAddNoteOpen} onOpenChange={setIsAddNoteOpen}>
-        <DialogContent
-          showCloseButton={false}
-          className="w-full max-w-[calc(100%-2rem)] min-[450px]:w-[450px] min-[820px]:w-[760px] sm:max-w-[calc(100%-2rem)] outline-none mx-auto p-3 bg-[#f1f5f9] rounded-[24px] min-[820px]:rounded-[32px] border-none shadow-2xl flex flex-col gap-0"
-        >
-          <div className="flex flex-col min-[820px]:flex-row items-stretch w-full" style={{ gap: "12px" }}>
-            {/* Left Column (Hidden on mobile, visible on desktop) */}
-            <div className="hidden min-[820px]:flex flex-col w-[260px] shrink-0 min-[820px]:min-h-[581px]" style={{ gap: "12px" }}>
-              {/* Partner Card */}
-              <div className="relative bg-white rounded-[20px] p-6 shadow-sm border border-slate-100 flex flex-col">
-                <div className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-4">
-                  PARTNER
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-[14px] bg-[#2b5493] text-white flex items-center justify-center text-[18px] font-bold shadow-md shadow-blue-900/20 shrink-0">
-                    {resolvedCustomerName ? getInitials(resolvedCustomerName) : "JN"}
-                  </div>
-                  <div className="flex flex-col overflow-hidden">
-                    <div className="font-bold text-[#0f172a] text-[16px] truncate">
-                      {resolvedCustomerName || "Naročnik"}
-                    </div>
-                    {worker?.location && (
-                      <div className="text-[#64748b] text-[12px] font-medium mt-1 leading-snug">
-                        {worker.location}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Existing Notes Card */}
-              <div className="relative bg-white rounded-[20px] p-6 shadow-sm border border-slate-100 flex-1 flex flex-col">
-                <div className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-4">
-                  OBSTOJEČI ZAZNAMKI
-                </div>
-                <div className="flex flex-col gap-3 overflow-y-auto max-h-[320px] custom-ios-scrollbar pr-1 flex-grow">
-                  {(() => {
-                    const mappedNotes = customerNotes.map((n) => {
-                      const { text, jobId: noteJobId } = parseNoteText(n.note);
-                      return { ...n, noteText: text, noteJobId };
-                    });
-
-                    if (mappedNotes.length === 0) {
-                      return (
-                        <span className="text-xs text-slate-400 font-light">
-                          Ni obstoječih zaznamkov.
-                        </span>
-                      );
-                    }
-
-                    return mappedNotes.map((n, idx) => (
-                      <div key={n.id} className="flex items-start gap-2.5">
-                        <div className="bg-slate-200 text-slate-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 font-mono">
-                          {idx + 1}
-                        </div>
-                        <span className="text-xs text-[#0F172A] flex-1 min-w-0 font-normal leading-relaxed break-words">
-                          {n.noteText}
-                        </span>
-                      </div>
-                    ));
-                  })()}
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column */}
-            <div className="relative flex-1 bg-white rounded-[24px] p-6 sm:p-8 shadow-sm border border-slate-100 flex flex-col min-[820px]:min-h-[581px]">
-              {/* Close Button */}
-              <button
-                type="button"
-                onClick={() => setIsAddNoteOpen(false)}
-                className="absolute top-4 right-4 w-7 h-7 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 transition-colors cursor-pointer border-none"
-              >
-                <svg width="10" height="10" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-
-              <div className="flex flex-col gap-4 flex-grow">
-                <h2 className="text-[22px] font-bold text-[#0f172a] mb-1">
-                  Zaznamki za naročnika
-                </h2>
-                <p className="text-slate-500 text-[13px] font-medium mb-6">
-                  Dodajte opombo ali opomnik za tega partnerja.
-                </p>
-
-                {/* Existing Notes (Mobile only, rendered under the headline/subtitle in the same container) */}
-                <div className="flex min-[820px]:hidden flex-col w-full mb-4 pb-4 border-b border-slate-100">
-                  <div className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-3">
-                    OBSTOJEČI ZAZNAMKI
-                  </div>
-                  <div className="flex flex-col gap-3 overflow-y-auto max-h-[160px] custom-ios-scrollbar pr-1">
-                    {(() => {
-                      const mappedNotes = customerNotes.map((n) => {
-                        const { text, jobId: noteJobId } = parseNoteText(n.note);
-                        return { ...n, noteText: text, noteJobId };
-                      });
-
-                      if (mappedNotes.length === 0) {
-                        return (
-                          <span className="text-xs text-slate-400 font-light">
-                            Ni obstoječih zaznamkov.
-                          </span>
-                        );
-                      }
-
-                      return mappedNotes.map((n, idx) => (
-                        <div key={n.id} className="flex items-start gap-2.5">
-                          <div className="bg-slate-200 text-slate-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 font-mono">
-                            {idx + 1}
-                          </div>
-                          <span className="text-xs text-[#0F172A] flex-1 min-w-0 font-normal leading-relaxed break-words">
-                            {n.noteText}
-                          </span>
-                        </div>
-                      ));
-                    })()}
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-4">
-                  {/* Naročnik Input */}
-                  <div>
-                    <label className="block text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-1.5">
-                      NAROČNIK:
-                    </label>
-                    <input
-                      type="text"
-                      value={resolvedCustomerName}
-                      disabled
-                      className="w-full h-11 px-4 rounded-[8px] border border-slate-300 bg-slate-100/60 text-slate-500 text-[14px] font-medium cursor-not-allowed select-none focus:outline-none"
-                    />
-                  </div>
-
-                  {/* Note textarea */}
-                  <div>
-                    <div className="flex justify-between items-center mb-1.5">
-                      <label className="block text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
-                        ZAZNAMEK *
-                      </label>
-                      <span className="text-[10px] font-bold text-slate-400">{newNoteText.length}/60</span>
-                    </div>
-                    <textarea
-                      value={newNoteText}
-                      onChange={(e) => setNewNoteText(e.target.value.slice(0, 60))}
-                      maxLength={60}
-                      placeholder="Zapišite poljubno opombo za tega naročnika..."
-                      rows={3}
-                      className="w-full min-h-[80px] p-3 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1B3A6B]/20 focus:border-[#1B3A6B] transition-all placeholder:text-slate-400 resize-none"
-                    />
-                    <p className="mt-1.5 text-[10px] text-slate-400/90 leading-normal">
-                      Če gre za več opomnikov, je priporočljivo, da so zapisani ločeno, vsak za sebe.
-                    </p>
-                  </div>
-
-                  {/* Note type selection */}
-                  <div className="flex flex-col gap-3 my-2 pt-2 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => setNewNoteType("once")}
-                      className="flex items-center gap-3 text-left w-full bg-transparent border-none p-0 outline-none cursor-pointer group"
-                    >
-                      <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-all ${
-                        newNoteType === "once"
-                          ? "border-green-600 bg-green-50 text-green-600"
-                          : "border-slate-300 hover:border-slate-400 text-transparent"
-                      }`}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12"></polyline>
-                        </svg>
-                      </div>
-                      <span className="text-xs font-semibold text-slate-700 leading-snug group-hover:text-slate-900 transition-colors">
-                        Zaznamek samo tokrat
-                      </span>
-                    </button>
-
-                    <div className="text-[9px] font-extrabold text-slate-400/70 tracking-wider pl-8 uppercase">
-                      ali
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setNewNoteType("always")}
-                      className="flex items-center gap-3 text-left w-full bg-transparent border-none p-0 outline-none cursor-pointer group"
-                    >
-                      <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-all ${
-                        newNoteType === "always"
-                          ? "border-green-600 bg-green-50 text-green-600"
-                          : "border-slate-300 hover:border-slate-400 text-transparent"
-                      }`}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12"></polyline>
-                        </svg>
-                      </div>
-                      <span className="text-xs font-semibold text-slate-700 leading-snug group-hover:text-slate-900 transition-colors">
-                        Zaznamek vsakič pri tem naročniku; služi kot opomnik kasneje
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* DODAJ Button */}
-              <div className="flex mt-8 sm:mt-4">
-                <button
-                  type="button"
-                  disabled={newNoteSaving || !newNoteText.trim()}
-                  onClick={() => void handleAddNote()}
-                  className="w-full h-[48px] rounded-[8px] bg-[#0a1128] text-white font-bold text-[12px] uppercase tracking-widest shadow-lg shadow-[#0a1128]/20 hover:bg-[#152042] transition-all disabled:opacity-50 flex items-center justify-center cursor-pointer border-none"
-                >
-                  {newNoteSaving ? (
-                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                  ) : (
-                    "DODAJ"
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AddCustomerNoteDialog
+        open={isAddNoteOpen}
+        onOpenChange={setIsAddNoteOpen}
+        customerName={resolvedCustomerName}
+        location={worker?.location}
+        jobId={jobId}
+        onSuccess={() => {
+          if (!mountedRef.current) return;
+          void loadCustomerNotes(resolvedCustomerName);
+          void refreshFilesAndTimeline().catch((err) => {
+            if (mountedRef.current) showToast(getErrorMessage(err));
+          });
+        }}
+      />
     </>
   );
 }

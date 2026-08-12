@@ -4,8 +4,9 @@ import { ApiError } from "@/lib/http/responses";
 import { env } from "@/lib/env";
 
 // Signed URLs are time-limited; frontend must re-fetch expired ones
-// (Supabase Storage add-on §7). 5 minutes is enough for one page view.
-const SIGNED_URL_EXPIRY_SECONDS = 300;
+// (Supabase Storage add-on §7). 1 hour covers a DB/Priponke session;
+// open-preview still refreshes via GET /api/files/[id].
+const SIGNED_URL_EXPIRY_SECONDS = 3600;
 
 export function sha256Hex(buffer: Buffer): string {
   return createHash("sha256").update(buffer).digest("hex");
@@ -30,6 +31,19 @@ export async function uploadToStorage(
     .upload(path, buffer, { contentType, upsert: false });
   if (error) {
     throw new ApiError("internal", "Failed to upload file to storage.", error.message);
+  }
+}
+
+export async function deleteFromStorage(
+  db: SupabaseClient,
+  path: string
+): Promise<void> {
+  const { error } = await db.storage
+    .from(env.storageBucket)
+    .remove([path]);
+
+  if (error) {
+    console.error("[storage_delete_failed]", path, error.message);
   }
 }
 
