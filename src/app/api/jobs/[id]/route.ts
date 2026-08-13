@@ -7,6 +7,7 @@ import { createTimelineEvent } from "@/lib/timeline/events";
 import { notifyUser } from "@/lib/services/notifications";
 import { JOB_STATUSES, type JobStatus } from "@/config/constants";
 import { assertValidWorker } from "@/lib/services/jobs";
+import { assertJobCardMutable } from "@/lib/services/jobCardFreeze";
 
 export const dynamic = "force-dynamic";
 
@@ -124,6 +125,12 @@ export const PATCH = withAuth<{ id: string }>(async (request, auth, { params }) 
   if (isWorker && job.hidden_at) {
     throw new ApiError("forbidden", "You do not have access to this job.");
   }
+
+  // Mark a16: freeze cards older than yesterday (all roles).
+  assertJobCardMutable({
+    scheduled_at: job.scheduled_at ?? null,
+    created_at: job.created_at,
+  });
 
   const input = isWorker
     ? await parseJsonBody(request, workerUpdateSchema)

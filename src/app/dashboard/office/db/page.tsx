@@ -10,6 +10,7 @@ import { normalizePhone } from '@/lib/phone';
 import type { ApiJob, ApiChecklistItem, ApiOfficeReminder, ApiUser } from '@/lib/dashboardMappers';
 import { jobNumber, jobToWorkerCard } from '@/lib/dashboardMappers';
 import type { Worker } from '@/lib/mockData';
+import { isJobCardMutable } from '@/lib/officeDate';
 import { dbAttachmentCategory, type DbAttachmentCategory } from '@/lib/dbAttachmentCategory';
 import {
   jobAttachmentErrorMessage,
@@ -25,7 +26,6 @@ import {
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AddTaskModal } from '@/components/dashboard/AddTaskModal';
-import { TeamManagementModal } from '@/components/dashboard/TeamManagementModal';
 import { AddWorkerCard } from '@/components/dashboard/AddWorkerCard';
 import { WorkerDetailModal } from '@/components/dashboard/WorkerDetailModal';
 import { AuraFileInput } from '@/components/dashboard/AuraForm';
@@ -132,7 +132,6 @@ export default function DatabaseDashboard() {
   const [dataError, setDataError] = useState<string | null>(null);
 
   // Modals state
-  const [isTeamOpen, setIsTeamOpen] = useState(false);
   const [isAddWorkerOpen, setIsAddWorkerOpen] = useState(false);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [isAddAttachmentOpen, setIsAddAttachmentOpen] = useState(false);
@@ -1016,7 +1015,7 @@ export default function DatabaseDashboard() {
             </button>
 
             <button
-              onClick={() => setIsTeamOpen(true)}
+              onClick={() => setIsAddWorkerOpen(true)}
               className="flex items-center gap-3 px-3 py-2.5 rounded-[8px] text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer text-left w-full"
             >
               <Folder className="h-[18px] w-[18px] shrink-0 text-slate-500" />
@@ -1727,18 +1726,6 @@ export default function DatabaseDashboard() {
       </Dialog>
 
       {/* EXISTING DIALOGS CONNECTED TO SIDEBAR CLICKS */}
-      <TeamManagementModal
-        isOpen={isTeamOpen}
-        onOpenChange={setIsTeamOpen}
-        currentUserId={user?.id}
-        onChanged={loadStaff}
-        isOwner={user?.role === 'owner'}
-        onAddMember={() => {
-          setIsTeamOpen(false);
-          setIsAddWorkerOpen(true);
-        }}
-      />
-
       <AddWorkerCard
         isOpen={isAddWorkerOpen}
         onOpenChange={setIsAddWorkerOpen}
@@ -1764,7 +1751,56 @@ export default function DatabaseDashboard() {
               : new Error('Težava pri povezavi z strežnikom.');
           }
         }}
-        existingUsers={staffList}
+        existingUsers={staffList.filter((s) => s.is_active)}
+      />
+
+      <AddCustomerNoteDialog
+        open={isAddZaznamekOpen}
+        onOpenChange={setIsAddZaznamekOpen}
+        customerNameEditable
+        customerNameOptions={zaznamkiCustomerOptions}
+        onSuccess={() => {
+          void loadZaznamki();
+        }}
+      />
+
+      <WorkerDetailModal
+        key={detailJobId ?? 'db-job-detail'}
+        isOpen={isJobDetailOpen}
+        onOpenChange={(open) => {
+          setIsJobDetailOpen(open);
+          if (!open) {
+            setDetailJobId(null);
+            setDetailWorkerCard(null);
+          }
+        }}
+        worker={detailWorkerCard}
+        jobId={detailJobId}
+        cardNumber={
+          detailJobId && jobsById[detailJobId]
+            ? jobNumber(jobsById[detailJobId])
+            : null
+        }
+        customerName={
+          detailJobId ? jobsById[detailJobId]?.customer ?? null : null
+        }
+        scheduledAt={
+          detailJobId ? jobsById[detailJobId]?.scheduled_at ?? null : null
+        }
+        cardMutable={
+          detailJobId && jobsById[detailJobId]
+            ? isJobCardMutable({
+                scheduled_at: jobsById[detailJobId].scheduled_at,
+                created_at: jobsById[detailJobId].created_at,
+              })
+            : true
+        }
+        onRefresh={() => void loadJobs()}
+        jobStatus={detailJobId ? jobsById[detailJobId]?.status : undefined}
+        onChangeJobStatus={
+          detailJobId ? (status) => void handleDetailJobStatus(status) : undefined
+        }
+        canManageCustomerNotes
       />
 
       <AddCustomerNoteDialog
@@ -1811,11 +1847,13 @@ export default function DatabaseDashboard() {
       <AddTaskModal
         isOpen={isAddTaskOpen}
         onOpenChange={setIsAddTaskOpen}
-        workers={staffList.map((w) => ({
-  id: w.id,
-  name: w.full_name,
-  phone: w.phone,
-}))}
+        workers={staffList
+          .filter((w) => w.is_active)
+          .map((w) => ({
+            id: w.id,
+            name: w.full_name,
+            phone: w.phone,
+          }))}
         defaultDate={new Date().toLocaleDateString('sl-SI', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\s+/g, '')}
         onAddTask={async (taskData) => {
           try {

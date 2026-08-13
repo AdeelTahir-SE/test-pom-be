@@ -140,6 +140,7 @@ function scoreText(text: string, rule: TypeRule): number {
 }
 
 export function classifyDocument(ocrText: string): DocumentType {
+  // Bank-account "račun" / IBAN must not score as invoice; predračun → offer.
   const text = ocrText
     .trim()
     .replace(

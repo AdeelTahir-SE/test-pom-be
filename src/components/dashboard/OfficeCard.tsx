@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useId } from "react";
+import React, { useCallback, useId, useRef, useState } from "react";
 import type { Message } from "@/lib/types/messages";
+import { api } from "@/lib/api-client";
 
 export interface OfficeCardThreadItem {
   id: string;
@@ -9,6 +10,8 @@ export interface OfficeCardThreadItem {
   text: string;
   time: string;
   type: "glasovno" | "tekst";
+  /** job_files id for voice playback (Mark a16 #3). */
+  attachmentId?: string | null;
 }
 
 interface OfficeCardProps {
@@ -19,6 +22,31 @@ interface OfficeCardProps {
   showRedButton?: boolean;
   /** When set (and length > 0), render replies under the same box. */
   thread?: OfficeCardThreadItem[];
+}
+
+function SpeakerIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <path
+        d="M11 5L6 9H2v6h4l5 4V5z"
+        fill="#3B82F6"
+      />
+      <path
+        d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"
+        stroke="#3B82F6"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 function MessageTypeIcon({ type }: { type: "glasovno" | "tekst" | "document" }) {
@@ -52,26 +80,63 @@ function MessageTypeIcon({ type }: { type: "glasovno" | "tekst" | "document" }) 
       </svg>
     );
   }
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path
-        d="M12 2c1.66 0 3 1.34 3 3v6c0 1.66-1.34 3-3 3s-3-1.34-3-3V5c0-1.66 1.34-3 3-3z"
-        fill="#3B82F6"
-      />
-      <path
-        d="M19 10v1c0 3.87-3.13 7-7 7s-7-3.13-7-7v-1M12 18v4M8 22h8"
-        stroke="#3B82F6"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+  return <SpeakerIcon />;
 }
 
 function typeLabel(type: "glasovno" | "tekst", iconType: "mic" | "document"): string {
   if (iconType === "document") return "Sporočilo";
   return type === "glasovno" ? "Glasovno sporočilo" : "Tekstovno sporočilo";
+}
+
+function VoicePlayButton({
+  attachmentId,
+  active,
+  loading,
+  onToggle,
+}: {
+  attachmentId: string;
+  active: boolean;
+  loading: boolean;
+  onToggle: (attachmentId: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggle(attachmentId);
+      }}
+      disabled={loading}
+      title="Predvajaj posnetek"
+      aria-label="Predvajaj posnetek"
+      style={{
+        boxSizing: "border-box",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: "32px",
+        height: "32px",
+        background: active ? "#DBEAFE" : "#EFF6FF",
+        border: active
+          ? "1px solid rgba(59, 130, 246, 0.55)"
+          : "0.5px solid rgba(29, 78, 216, 0.3)",
+        borderRadius: "12px",
+        flexShrink: 0,
+        cursor: loading ? "wait" : "pointer",
+        padding: 0,
+      }}
+    >
+      {loading ? (
+        <span
+          className="w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"
+          aria-hidden
+        />
+      ) : (
+        <SpeakerIcon />
+      )}
+    </button>
+  );
 }
 
 export function OfficeCard({
@@ -83,6 +148,16 @@ export function OfficeCard({
   thread,
 }: OfficeCardProps) {
   const urgentClipId = useId();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [playError, setPlayError] = useState<string | null>(null);
+  const [errorAttachmentId, setErrorAttachmentId] = useState<string | null>(
+    null
+  );
+  const urlCacheRef = useRef<Map<string, string>>(new Map());
+
   const threadItems =
     thread && thread.length > 0
       ? thread
@@ -95,6 +170,54 @@ export function OfficeCard({
             type: message.type,
           } satisfies OfficeCardThreadItem,
         ];
+
+  const stopPlayback = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setPlayingId(null);
+    setAudioUrl(null);
+  }, []);
+
+  const toggleVoicePlay = useCallback(
+    async (attachmentId: string) => {
+      setPlayError(null);
+      setErrorAttachmentId(null);
+      if (playingId === attachmentId) {
+        stopPlayback();
+        return;
+      }
+
+      stopPlayback();
+      setLoadingId(attachmentId);
+      try {
+        let url = urlCacheRef.current.get(attachmentId) ?? null;
+        if (!url) {
+          const res = await api.get<{
+            file: { signed_url: string | null };
+          }>(`/api/files/${attachmentId}`);
+          url = res.data?.file?.signed_url ?? null;
+          if (res.status !== 200 || !url) {
+            setErrorAttachmentId(attachmentId);
+            setPlayError(
+              res.error?.message ?? "Posnetka ni bilo mogoče predvajati."
+            );
+            return;
+          }
+          urlCacheRef.current.set(attachmentId, url);
+        }
+        setAudioUrl(url);
+        setPlayingId(attachmentId);
+      } catch {
+        setErrorAttachmentId(attachmentId);
+        setPlayError("Napaka pri predvajanju posnetka.");
+      } finally {
+        setLoadingId(null);
+      }
+    },
+    [playingId, stopPlayback]
+  );
 
   return (
     <div
@@ -296,68 +419,118 @@ export function OfficeCard({
           {message.targetTask || "Brez opravila"}
         </p>
 
-        {threadItems.map((item, index) => (
-          <div key={`${item.id}-${index}`} className="w-full" style={{ marginTop: index === 0 ? 0 : 4 }}>
-            <div className="flex items-start gap-[12px] w-full">
-              <div
-                style={{
-                  boxSizing: "border-box",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: "32px",
-                  height: "32px",
-                  background: "#EFF6FF",
-                  border: "0.5px solid rgba(29, 78, 216, 0.3)",
-                  borderRadius: "12px",
-                  flexShrink: 0,
-                }}
-              >
-                <MessageTypeIcon
-                  type={iconType === "document" ? "document" : item.type}
-                />
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <span
-                  style={{
-                    fontFamily: "'Inter', sans-serif",
-                    fontWeight: 300,
-                    lineHeight: "18px",
-                    color: "#465467",
-                  }}
-                  className="text-xs md:text-sm"
-                >
-                  {typeLabel(item.type, iconType)}
-                </span>
-                <span
-                  style={{
-                    fontFamily: "'PT Sans', sans-serif",
-                    fontWeight: 400,
-                    lineHeight: "15px",
-                    color: "rgba(70, 84, 103, 0.5)",
-                    textTransform: "uppercase",
-                  }}
-                  className="text-[10px] md:text-xs"
-                >
-                  {item.senderLabel} • {item.time}
-                </span>
-              </div>
-            </div>
-            <p
-              style={{
-                fontFamily: "'Inter', sans-serif",
-                fontWeight: 300,
-                lineHeight: "18px",
-                color: "#465467",
-                marginTop: "8px",
-                width: "100%",
-              }}
-              className="text-xs md:text-sm"
+        {threadItems.map((item, index) => {
+          const isVoice = item.type === "glasovno" && iconType !== "document";
+          const canPlay = isVoice && !!item.attachmentId;
+          const isThisPlaying = !!(
+            item.attachmentId && playingId === item.attachmentId
+          );
+
+          return (
+            <div
+              key={`${item.id}-${index}`}
+              className="w-full"
+              style={{ marginTop: index === 0 ? 0 : 4 }}
             >
-              {item.text}
-            </p>
-          </div>
-        ))}
+              <div className="flex items-start gap-[12px] w-full">
+                {canPlay ? (
+                  <VoicePlayButton
+                    attachmentId={item.attachmentId!}
+                    active={isThisPlaying}
+                    loading={loadingId === item.attachmentId}
+                    onToggle={toggleVoicePlay}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      boxSizing: "border-box",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: "32px",
+                      height: "32px",
+                      background: "#EFF6FF",
+                      border: "0.5px solid rgba(29, 78, 216, 0.3)",
+                      borderRadius: "12px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <MessageTypeIcon
+                      type={iconType === "document" ? "document" : item.type}
+                    />
+                  </div>
+                )}
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <span
+                    style={{
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: 300,
+                      lineHeight: "18px",
+                      color: "#465467",
+                    }}
+                    className="text-xs md:text-sm"
+                  >
+                    {typeLabel(item.type, iconType)}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: "'PT Sans', sans-serif",
+                      fontWeight: 400,
+                      lineHeight: "15px",
+                      color: "rgba(70, 84, 103, 0.5)",
+                      textTransform: "uppercase",
+                    }}
+                    className="text-[10px] md:text-xs"
+                  >
+                    {item.senderLabel} • {item.time}
+                  </span>
+                </div>
+              </div>
+              {/* Transcript / text stays intact; play is on top (Mark a16 #3). */}
+              <p
+                style={{
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: 300,
+                  lineHeight: "18px",
+                  color: "#465467",
+                  marginTop: "8px",
+                  width: "100%",
+                }}
+                className="text-xs md:text-sm"
+              >
+                {item.text}
+              </p>
+              {isThisPlaying && audioUrl && (
+                <div
+                  className="mt-2 w-full"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                >
+                  <audio
+                    ref={(el) => {
+                      audioRef.current = el;
+                    }}
+                    key={audioUrl}
+                    src={audioUrl}
+                    controls
+                    autoPlay
+                    className="w-full h-9"
+                    onEnded={stopPlayback}
+                  />
+                </div>
+              )}
+              {canPlay &&
+                playError &&
+                errorAttachmentId === item.attachmentId && (
+                  <p className="mt-1 text-[11px] text-red-600 font-medium">
+                    {playError}
+                  </p>
+                )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

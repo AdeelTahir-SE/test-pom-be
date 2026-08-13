@@ -168,7 +168,16 @@ export function reminderToCard(
     workerId: "",
     workerName: t("cardSenderOffice"),
     hasEmail: r.actions.includes("email"),
-    hasAttachment: r.actions.includes("attachment"),
+    // Paperclip only when a file is actually stored (Mark a16 #2).
+    hasAttachment: (() => {
+      if (!r.link) return false;
+      try {
+        const linkData = JSON.parse(r.link) as { storagePath?: string };
+        return !!linkData.storagePath;
+      } catch {
+        return false;
+      }
+    })(),
     attachmentName: (() => {
       if (!r.link) return "";
       try {

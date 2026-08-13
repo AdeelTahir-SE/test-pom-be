@@ -23,6 +23,8 @@ interface AddWorkerCardProps {
     full_name: string;
     role: string;
     login_pin?: string | null;
+    /** Soft-deleted staff must be omitted from this list (Mark). */
+    is_active?: boolean;
   }[];
 }
 
@@ -73,10 +75,13 @@ export function AddWorkerCard({
     setPrevCount(existingUsers.length);
   }, [existingUsers.length, prevCount]);
 
-  const officeUsers = existingUsers.filter((u) =>
+  // Soft-deleted staff stay in DB/history but must not appear in worker lists (Mark).
+  const activeUsers = existingUsers.filter((u) => u.is_active !== false);
+
+  const officeUsers = activeUsers.filter((u) =>
     OFFICE_ROLES.includes(normalizeRole(u.role))
   );
-  const fieldUsers = existingUsers.filter(
+  const fieldUsers = activeUsers.filter(
     (u) => normalizeRole(u.role) === 'worker'
   );
 
@@ -311,7 +316,7 @@ export function AddWorkerCard({
               </div>
 
               <div className="mt-auto pt-4 shrink-0">
-                <div className="text-right text-[11px] text-slate-700 font-bold">Dodano: {existingUsers.length}</div>
+                <div className="text-right text-[11px] text-slate-700 font-bold">Dodano: {activeUsers.length}</div>
               </div>
             </div>
           </div>

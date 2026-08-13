@@ -16,7 +16,7 @@ import type { ApiNotification } from "@/lib/dashboardMappers";
 import type { Message } from "@/lib/types/messages";
 import type { OfficeCardThreadItem } from "@/components/dashboard/OfficeCard";
 import { LIMITS } from "@/config/constants";
-import { formatSiDateTimeCompact } from "@/lib/officeDate";
+import { formatSiDateTimeCompact, isJobCardMutable } from "@/lib/officeDate";
 import { toTelHref } from "@/lib/phone";
 import { playMessageBeep } from "@/lib/playMessageBeep";
 import {
@@ -896,6 +896,14 @@ export default function WorkerDashboard() {
             cardNumber={job ? jobNumber(job) : null}
             customerName={job?.customer ?? null}
             scheduledAt={job?.scheduled_at ?? null}
+            cardMutable={
+              job
+                ? isJobCardMutable({
+                    scheduled_at: job.scheduled_at,
+                    created_at: job.created_at,
+                  })
+                : true
+            }
             onRefresh={loadAll}
             jobStatus={job?.status}
             onChangeJobStatus={handleChangeJobStatus}

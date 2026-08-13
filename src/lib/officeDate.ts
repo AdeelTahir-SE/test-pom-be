@@ -140,6 +140,41 @@ export function boardTodayKey(): string {
   return toIsoDate(startOfLocalDay());
 }
 
+/** Shift a `YYYY-MM-DD` key by N calendar days (local date arithmetic). */
+export function shiftDayKey(dayKey: string, deltaDays: number): string {
+  const parsed = parseFlexibleDate(dayKey);
+  if (!parsed) return dayKey;
+  return toIsoDate(addDays(parsed, deltaDays));
+}
+
+/**
+ * Board day for a job card: scheduled day, else created day (Mark a16 freeze).
+ */
+export function jobBoardDayKey(job: {
+  scheduled_at: string | null;
+  created_at: string;
+}): string {
+  return (
+    isoToLocalDayKey(job.scheduled_at) ??
+    isoToLocalDayKey(job.created_at) ??
+    boardTodayKey()
+  );
+}
+
+/**
+ * Mark a16: cards for today + yesterday stay mutable for everyone;
+ * cards from 2+ calendar days ago are frozen (anti-falsification).
+ * Based on board day vs current day — not created_at + 48h wall clock.
+ */
+export function isJobCardMutable(
+  job: { scheduled_at: string | null; created_at: string },
+  todayKey: string = boardTodayKey()
+): boolean {
+  const cardDay = jobBoardDayKey(job);
+  const earliestEditable = shiftDayKey(todayKey, -1);
+  return cardDay >= earliestEditable;
+}
+
 const CALENDAR_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Office board `?date=` query param — valid YYYY-MM-DD or default today (local). */

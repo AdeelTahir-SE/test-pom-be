@@ -2,6 +2,7 @@ import { withAuth } from "@/lib/http/handler";
 import { created, ok, ApiError } from "@/lib/http/responses";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { loadJobWithAccess } from "@/lib/services/jobAccess";
+import { assertJobCardMutable } from "@/lib/services/jobCardFreeze";
 import { createTimelineEvent } from "@/lib/timeline/events";
 import {
   sha256Hex,
@@ -82,6 +83,10 @@ interface PreparedUpload {
 export const POST = withAuth<{ id: string }>(async (request, auth, { params }) => {
   const db = getAdminClient();
   const { job } = await loadJobWithAccess(db, auth, params.id);
+  assertJobCardMutable({
+    scheduled_at: (job.scheduled_at as string | null) ?? null,
+    created_at: String(job.created_at),
+  });
 
   const formData = await request.formData();
   const files = formData.getAll("files").filter((f): f is File => f instanceof File);

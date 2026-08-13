@@ -10,12 +10,13 @@ import {
   parseOnceNoteContent,
 } from "@/lib/services/customers";
 import { createTimelineEvent } from "@/lib/timeline/events";
+import { assertJobCardMutable } from "@/lib/services/jobCardFreeze";
 
 export const dynamic = "force-dynamic";
 
 const NOTE_MAX = 280;
 
-// GET /api/customers/notes?name=... — newest first. Empty list if customer unknown.
+// GET /api/customers/notes?name=... — oldest first (Mark: OPOMNIKI). Empty if unknown.
 export const GET = withAuth(
   async (request, auth) => {
     const name = new URL(request.url).searchParams.get("name")?.trim() ?? "";
@@ -48,6 +49,27 @@ export const POST = withAuth(
   async (request, auth) => {
     const input = await parseJsonBody(request, createNoteSchema);
     const db = getAdminClient();
+
+    const parsedPreview = parseOnceNoteContent(input.note);
+    const freezeJobId = input.job_id ?? parsedPreview.jobId;
+    if (freezeJobId) {
+      const { data: freezeJob, error: freezeError } = await db
+        .from("jobs")
+        .select("id, scheduled_at, created_at")
+        .eq("id", freezeJobId)
+        .eq("company_id", auth.companyId)
+        .maybeSingle();
+      if (freezeError) {
+        throw new ApiError("internal", "Failed to load job for note.", freezeError.message);
+      }
+      if (freezeJob) {
+        assertJobCardMutable({
+          scheduled_at: freezeJob.scheduled_at ?? null,
+          created_at: freezeJob.created_at,
+        });
+      }
+    }
+
     const customer = await findOrCreateCustomer(db, auth.companyId, input.customer_name);
 
     const { data: existingNotes, error: listError } = await db

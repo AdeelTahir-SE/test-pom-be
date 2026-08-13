@@ -43,6 +43,7 @@ import { parseNoteText } from "./CustomerNotesBanner";
 import { AddCustomerNoteDialog } from "./AddCustomerNoteDialog";
 import { formatSiDateFromIso, formatSiTimeFromIso } from "@/lib/officeDate";
 import { isOptimisticId } from "@/lib/optimisticId";
+import { JOB_CARD_FROZEN_MESSAGE } from "@/lib/services/jobCardFreeze";
 
 interface CustomerNoteDto {
   id: string;
@@ -66,6 +67,8 @@ interface WorkerDetailModalProps {
   onDeleteCard?: () => void;
   canManageCustomerNotes?: boolean;
   onChecklistReorder?: (orderedIds: string[]) => void;
+  /** Mark a16: false when card board-day is 2+ days before today. */
+  cardMutable?: boolean;
 }
 
 interface TaskItem {
@@ -295,6 +298,7 @@ export function WorkerDetailModal({
   onDeleteCard,
   canManageCustomerNotes = false,
   onChecklistReorder,
+  cardMutable = true,
 }: WorkerDetailModalProps) {
   const { t, lang } = useLanguage();
   const [addStepOpen, setAddStepOpen] = React.useState(false);
@@ -329,6 +333,16 @@ export function WorkerDetailModal({
       }
     }, 2500);
   }, []);
+
+  const showFrozenToast = React.useCallback(() => {
+    showToast(JOB_CARD_FROZEN_MESSAGE);
+  }, [showToast]);
+
+  const guardMutable = React.useCallback((): boolean => {
+    if (cardMutable) return true;
+    showFrozenToast();
+    return false;
+  }, [cardMutable, showFrozenToast]);
 
   React.useEffect(() => {
     return () => {
@@ -599,7 +613,7 @@ export function WorkerDetailModal({
         if (mountedRef.current) {
           setCustomerNotes((prev) => {
             const newNote: CustomerNoteDto = { id: `temp-${Date.now()}`, note, created_at: new Date().toISOString() };
-            return [newNote, ...prev];
+            return [...prev, newNote];
           });
           void loadCustomerNotes(customer);
         }
@@ -640,6 +654,7 @@ export function WorkerDetailModal({
   );
 
   const handleTaskDragEnd = async (event: DragEndEvent): Promise<void> => {
+    if (!guardMutable()) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     if (!jobReady || tasks.some((t) => isOptimisticId(t.id))) {
@@ -694,6 +709,7 @@ export function WorkerDetailModal({
   };
 
   const handleToggleComplete = async (task: TaskItem): Promise<void> => {
+    if (!guardMutable()) return;
     try {
       const res = await api.patch<{ item: { id: string; is_completed: boolean; completed_at: string | null } }>(
         `/api/checklist-items/${task.id}`,
@@ -733,6 +749,7 @@ export function WorkerDetailModal({
   };
 
   const handleDeleteTask = async (taskId: string): Promise<void> => {
+    if (!guardMutable()) return;
     try {
       const res = await api.delete(`/api/checklist-items/${taskId}`);
       if (!mountedRef.current) return;
@@ -750,6 +767,7 @@ export function WorkerDetailModal({
   };
 
   const handleAddStep = async (e: React.FormEvent): Promise<void> => {
+    if (!guardMutable()) return;
     e.preventDefault();
     if (!stepText.trim() || !jobId) return;
     if (!jobReady) {
@@ -829,12 +847,14 @@ export function WorkerDetailModal({
   };
 
   const openAttachDialog = (stepId?: string | null) => {
+    if (!guardMutable()) return;
     setAttachForStepId(stepId ?? null);
     setAttachOnlyFile(null);
     setAttachOnlyOpen(true);
   };
 
   const handleHideAttachment = async (fileId: string): Promise<void> => {
+    if (!guardMutable()) return;
     try {
       const res = await api.patch(`/api/files/${fileId}`, { hidden: true });
       if (!mountedRef.current) return;
@@ -1000,6 +1020,7 @@ export function WorkerDetailModal({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (!guardMutable()) return;
                       setIsAddNoteOpen(true);
                     }}
                     className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
@@ -1074,7 +1095,7 @@ export function WorkerDetailModal({
                     {t("customerNotesSaveBtn")}
                   </button>
                 )}
-                {onDeleteCard && (
+                {onDeleteCard && cardMutable && (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -1100,6 +1121,12 @@ export function WorkerDetailModal({
             )}
             {!(onDeleteCard || jobStatus === "completed") && <div className="mb-10" />}
 
+            {!cardMutable && (
+              <p className="text-xs text-amber-800/90 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mb-2">
+                {JOB_CARD_FROZEN_MESSAGE}
+              </p>
+            )}
+
             <div className="flex flex-col gap-6">
               {/* PREDVIDENA DELA (Tasks) */}
               <div className="flex flex-col gap-3">
@@ -1110,6 +1137,7 @@ export function WorkerDetailModal({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (!guardMutable()) return;
                       setAddStepOpen(true);
                     }}
                     className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
@@ -1267,7 +1295,7 @@ export function WorkerDetailModal({
                     {t("customerNotesSaveBtn")}
                   </button>
                 )}
-                {onDeleteCard && (
+                {onDeleteCard && cardMutable && (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -1336,6 +1364,7 @@ export function WorkerDetailModal({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (!guardMutable()) return;
                   setIsAddNoteOpen(true);
                 }}
                 className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
@@ -1393,6 +1422,7 @@ export function WorkerDetailModal({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (!guardMutable()) return;
                   setAddStepOpen(true);
                 }}
                 className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"

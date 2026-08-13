@@ -31,7 +31,11 @@ export const GET = withAuth<{ id: string }>(async (_request, auth, { params }) =
       throw new ApiError("internal", "Failed to generate signed URL.");
     }
 
-    return ok({ url: signedUrl, fileName: linkData.fileName });
+    return ok({
+      url: signedUrl,
+      fileName: linkData.fileName ?? "priponka",
+      attachmentType: linkData.attachmentType ?? null,
+    });
   } catch (err) {
     console.error("Failed to parse reminder link:", err);
     throw new ApiError("internal", "Invalid attachment data.");

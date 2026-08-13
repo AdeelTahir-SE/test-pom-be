@@ -57,8 +57,11 @@ import { WorkerDetailModal } from '@/components/dashboard/WorkerDetailModal';
 import { AddTaskModal } from '@/components/dashboard/AddTaskModal';
 import { AddReminderModal } from '@/components/dashboard/AddReminderModal';
 import { AttachmentDialog } from '@/components/dashboard/AttachmentDialog';
+import {
+  AttachmentLightbox,
+  type AttachmentLightboxItem,
+} from '@/components/dashboard/AttachmentLightbox';
 import { AddWorkerCard } from '@/components/dashboard/AddWorkerCard';
-import { TeamManagementModal } from '@/components/dashboard/TeamManagementModal';
 import { SearchModal } from '@/components/dashboard/SearchModal';
 import { CompanySettingsModal } from '@/components/dashboard/CompanySettingsModal';
 import { SortableItem } from '@/components/dashboard/SortableItem';
@@ -73,6 +76,7 @@ import {
   formatSiDate,
   formatSiDateFromDayKey,
   isoToLocalDayKey,
+  isJobCardMutable,
   jobBelongsToDay,
   localDayToScheduledAt,
   normalizeRemindTime,
@@ -201,9 +205,10 @@ export default function OfficeDashboard() {
   const [reminderEditTarget, setReminderEditTarget] = useState<string | null>(null);
   const [isAttachmentDialogOpen, setIsAttachmentDialogOpen] = useState(false);
   const [attachmentDialogReminderId, setAttachmentDialogReminderId] = useState<string | null>(null);
+  const [reminderPreview, setReminderPreview] =
+    useState<AttachmentLightboxItem | null>(null);
   const [isAddWorkerOpen, setIsAddWorkerOpen] = useState(false);
   const [companyUsers, setCompanyUsers] = useState<ApiUser[]>([]);
-  const [isTeamOpen, setIsTeamOpen] = useState(false);
 
   // Full company roster (all roles + login_pin) for the add-worker left list.
   useEffect(() => {
@@ -326,7 +331,8 @@ export default function OfficeDashboard() {
         setIsCompanySettingsOpen(true);
         window.history.replaceState({}, '', window.location.pathname);
       } else if (openParam === 'team') {
-        setIsTeamOpen(true);
+        // Mark: Ekipa popup not shown — open Dodaj sodelavca instead.
+        setIsAddWorkerOpen(true);
         window.history.replaceState({}, '', window.location.pathname);
       }
     }
@@ -594,24 +600,25 @@ export default function OfficeDashboard() {
   };
 
   const handleOpenReminderAttachment = async (reminderId: string) => {
-    const reminder = reminders.find(r => r.id === reminderId);
-    if (!reminder) {
-      showToast('Opomnik ni najden.');
-      return;
-    }
-
-    if (!reminder.link) {
-      // No attachment yet - open the upload dialog
-      handleReminderAttachmentDialog(reminderId);
+    const reminder = reminders.find((r) => r.id === reminderId);
+    if (!reminder?.link) {
+      // Preview-only: no file stored → no paperclip should show; never open upload (Mark a16 #2).
+      showToast('Priponka ni na voljo.');
       return;
     }
 
     try {
-      const res = await api.get<{ url: string; fileName: string }>(
-        `/api/office-reminders/${reminderId}/attachment-url`
-      );
+      const res = await api.get<{
+        url: string;
+        fileName: string;
+        attachmentType?: string | null;
+      }>(`/api/office-reminders/${reminderId}/attachment-url`);
       if (res.status === 200 && res.data?.url) {
-        window.open(res.data.url, '_blank', 'noopener,noreferrer');
+        setReminderPreview({
+          url: res.data.url,
+          fileName: res.data.fileName || 'priponka',
+          attachmentType: res.data.attachmentType ?? null,
+        });
       } else {
         showToast(res.error?.message || 'Datoteke ni bilo mogoče odpreti.');
       }
@@ -805,7 +812,10 @@ export default function OfficeDashboard() {
     }
 
     const actions: string[] = [];
-    if (reminderData.hasAttachment) actions.push('attachment');
+    // Only mark attachment when a file will actually be stored (Mark a16 #2).
+    if (reminderData.hasAttachment && reminderData.attachmentFile) {
+      actions.push('attachment');
+    }
     if (reminderData.hasEmail) actions.push('email');
     if (reminderData.phoneNumber) actions.push('phone');
     if (reminderData.hasConfirm) actions.push('confirm');
@@ -850,10 +860,36 @@ export default function OfficeDashboard() {
         },
       );
       if (res.status === 201 && res.data) {
+        const created = res.data.reminder;
         setReminders(
-          (prev) => prev.map((r) => (r.id === tempId ? res.data!.reminder : r)),
+          (prev) => prev.map((r) => (r.id === tempId ? created : r)),
           remindOnKey,
         );
+
+        // Store file on create so PISARNA paperclip can preview it (Mark a16 #2).
+        if (reminderData.attachmentFile) {
+          const formData = new FormData();
+          formData.append('files', reminderData.attachmentFile);
+          const uploadRes = await api.post<{ reminder: ApiOfficeReminder }>(
+            `/api/office-reminders/${created.id}/files`,
+            formData,
+          );
+          if (uploadRes.status === 201 && uploadRes.data?.reminder) {
+            setReminders(
+              (prev) =>
+                prev.map((r) =>
+                  r.id === created.id ? uploadRes.data!.reminder : r,
+                ),
+              remindOnKey,
+            );
+          } else {
+            showToast(
+              uploadRes.error?.message ??
+                'Opomnik ustvarjen, vendar priponke ni bilo mogoče naložiti.',
+            );
+          }
+        }
+
         void refreshBoard();
       } else {
         setReminders((prev) => prev.filter((r) => r.id !== tempId), remindOnKey);
@@ -1359,7 +1395,7 @@ export default function OfficeDashboard() {
                 </button>
                 <button
                   onClick={() => setIsAddWorkerOpen(true)}
-                  title={t('teamTitle')}
+                  title="Dodaj sodelavca"
                   className="hidden sm:block p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
                 >
                   <img
@@ -1785,6 +1821,7 @@ export default function OfficeDashboard() {
                       text: m.content,
                       time: formatTime(m.created_at),
                       type: m.message_type === 'voice' ? 'glasovno' : 'tekst',
+                      attachmentId: m.attachment_id ?? null,
                     }))}
                     iconType="mic"
                     onDismiss={() =>
@@ -1887,6 +1924,14 @@ export default function OfficeDashboard() {
         cardNumber={selectedJob ? jobNumber(selectedJob) : null}
         customerName={selectedJob?.customer ?? null}
         scheduledAt={selectedJob?.scheduled_at ?? null}
+        cardMutable={
+          selectedJob
+            ? isJobCardMutable({
+                scheduled_at: selectedJob.scheduled_at,
+                created_at: selectedJob.created_at,
+              })
+            : true
+        }
         onRefresh={() => void refreshBoard()}
         onChecklistReorder={(orderedIds) => {
           if (!selectedWorkerJobId || isOptimisticId(selectedWorkerJobId))
@@ -2132,23 +2177,15 @@ export default function OfficeDashboard() {
         targetId={attachmentDialogReminderId || ""}
         onUploadSuccess={() => void refreshBoard()}
       />
+      <AttachmentLightbox
+        item={reminderPreview}
+        onClose={() => setReminderPreview(null)}
+      />
       <AddWorkerCard
         isOpen={isAddWorkerOpen}
         onOpenChange={setIsAddWorkerOpen}
         onAddWorker={handleAddWorker}
-        existingUsers={companyUsers}
-      />
-
-      <TeamManagementModal
-        isOpen={isTeamOpen}
-        onOpenChange={setIsTeamOpen}
-        currentUserId={user?.id}
-        onChanged={() => void refreshBoard()}
-        isOwner={user?.role === 'owner'}
-        onAddMember={() => {
-          setIsTeamOpen(false);
-          setIsAddWorkerOpen(true);
-        }}
+        existingUsers={companyUsers.filter((u) => u.is_active)}
       />
 
       <SearchModal
