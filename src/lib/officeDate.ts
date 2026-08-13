@@ -41,7 +41,12 @@ export function remindTimeSortMinutes(raw: string | null | undefined): number {
   const normalized = normalizeRemindTime(raw);
   if (!normalized) return Number.POSITIVE_INFINITY;
   const [h, m] = normalized.split(":").map(Number);
-  return h * 60 + m;
+
+if (h === undefined || m === undefined) {
+  return Number.POSITIVE_INFINITY;
+}
+
+return h * 60 + m;
 }
 
 /** `YYYY-MM-DD` → `DD.MM.YYYY` for display. */
