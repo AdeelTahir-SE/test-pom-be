@@ -7,7 +7,7 @@ export const JOB_CARD_FROZEN_MESSAGE =
 
 /**
  * Block all card mutations when the job's board day is 2+ days before today.
- * Communication endpoints are intentionally not covered yet (Mark: later).
+ * New messages/voice are gated separately via assertJobCommunicationAllowed (a16 #4).
  */
 export function assertJobCardMutable(job: {
   scheduled_at: string | null;

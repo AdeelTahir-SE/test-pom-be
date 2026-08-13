@@ -33,6 +33,17 @@ export function normalizeRemindTime(raw: string | null | undefined): string | nu
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
+/**
+ * Minutes from midnight for PISARNA schedule sort (Mark: big remind time).
+ * Missing/invalid time → +Infinity so those cards sort last.
+ */
+export function remindTimeSortMinutes(raw: string | null | undefined): number {
+  const normalized = normalizeRemindTime(raw);
+  if (!normalized) return Number.POSITIVE_INFINITY;
+  const [h, m] = normalized.split(":").map(Number);
+  return h * 60 + m;
+}
+
 /** `YYYY-MM-DD` → `DD.MM.YYYY` for display. */
 export function formatSiDateFromDayKey(dayKey: string | null | undefined): string {
   if (!dayKey || !/^\d{4}-\d{2}-\d{2}$/.test(dayKey)) return "";
@@ -138,6 +149,25 @@ export function localDayToScheduledAt(d: Date): string {
 
 export function boardTodayKey(): string {
   return toIsoDate(startOfLocalDay());
+}
+
+/**
+ * Mark a16 #4: new communication (send/reply) only on the current calendar day.
+ * History stays visible; listening stays allowed.
+ */
+export function isCommunicationDayAllowed(
+  dayKey: string,
+  todayKey: string = boardTodayKey()
+): boolean {
+  return dayKey === todayKey;
+}
+
+/** True when this job's board day is today — worker/office may send messages. */
+export function isJobCommunicationAllowed(
+  job: { scheduled_at: string | null; created_at: string },
+  todayKey: string = boardTodayKey()
+): boolean {
+  return isCommunicationDayAllowed(jobBoardDayKey(job), todayKey);
 }
 
 /** Shift a `YYYY-MM-DD` key by N calendar days (local date arithmetic). */

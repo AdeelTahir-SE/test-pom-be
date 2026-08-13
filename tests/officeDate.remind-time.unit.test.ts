@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeRemindTime } from "@/lib/officeDate";
+import { normalizeRemindTime, remindTimeSortMinutes } from "@/lib/officeDate";
 
 describe("normalizeRemindTime", () => {
   it("accepts HH:mm and pads H:mm", () => {
@@ -19,5 +19,15 @@ describe("normalizeRemindTime", () => {
     expect(normalizeRemindTime("12:60")).toBeNull();
     expect(normalizeRemindTime("noon")).toBeNull();
     expect(normalizeRemindTime("abc")).toBeNull();
+  });
+});
+
+describe("remindTimeSortMinutes", () => {
+  it("orders earliest first; empty last", () => {
+    const times = ["16:30", "15:30", "", null];
+    const sorted = [...times].sort(
+      (a, b) => remindTimeSortMinutes(a) - remindTimeSortMinutes(b),
+    );
+    expect(sorted).toEqual(["15:30", "16:30", "", null]);
   });
 });

@@ -16,9 +16,10 @@ import type { ApiNotification } from "@/lib/dashboardMappers";
 import type { Message } from "@/lib/types/messages";
 import type { OfficeCardThreadItem } from "@/components/dashboard/OfficeCard";
 import { LIMITS } from "@/config/constants";
-import { formatSiDateTimeCompact, isJobCardMutable } from "@/lib/officeDate";
+import { formatSiDateTimeCompact, isJobCardMutable, isJobCommunicationAllowed } from "@/lib/officeDate";
+import { JOB_COMMUNICATION_TODAY_ONLY_MESSAGE } from "@/lib/services/jobCommunication";
 import { toTelHref } from "@/lib/phone";
-import { playMessageBeep } from "@/lib/playMessageBeep";
+import { playMessageBeep, unlockMessageBeep } from "@/lib/playMessageBeep";
 import {
   JOB_ATTACHMENT_ACCEPT,
   jobAttachmentErrorMessage,
@@ -45,6 +46,13 @@ export default function WorkerDashboard() {
   const router = useRouter();
   const { user, officeContact, loading: authLoading, logout } = useCurrentUser();
 
+  // Only workers use this screen. Pisarna (manager) + company (owner) → command center (Mark).
+  useEffect(() => {
+    if (!authLoading && user && user.role !== "worker") {
+      router.replace("/dashboard/office");
+    }
+  }, [authLoading, user, router]);
+
   const [job, setJob] = useState<ApiJob | null>(null);
   const [checklist, setChecklist] = useState<ApiChecklistItem[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
@@ -65,6 +73,8 @@ export default function WorkerDashboard() {
   const [inboundNotifs, setInboundNotifs] = useState<ApiNotification[]>([]);
   const prevUnreadRef = useRef(0);
   const unreadPrimedRef = useRef(false);
+  const seenJobAssignedIdsRef = useRef<Set<string> | null>(null);
+  const seenJobIdsRef = useRef<Set<string> | null>(null);
 
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -141,22 +151,79 @@ export default function WorkerDashboard() {
     if (!authLoading && user) loadAll();
   }, [authLoading, user, loadAll]);
 
-  // Mark a11 #8: clear interval AND ignore in-flight poll responses after unmount.
+  // Unlock Web Audio after first tap (browsers block beeps otherwise).
+  useEffect(() => {
+    const unlock = () => unlockMessageBeep();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    return () => window.removeEventListener("pointerdown", unlock);
+  }, []);
+
+  // Mark: beep when a new card is assigned or a communication arrives.
   useEffect(() => {
     let cancelled = false;
     const interval = setInterval(async () => {
-      const res = await api.get<{ unread_count: number }>("/api/messages/unread-count");
+      const [unreadRes, notifsRes, jobsRes] = await Promise.all([
+        api.get<{ unread_count: number }>("/api/messages/unread-count"),
+        api.get<{ notifications: ApiNotification[] }>("/api/notifications"),
+        api.get<{ jobs: ApiJob[] }>("/api/jobs"),
+      ]);
       if (cancelled) return;
-      if (res.status !== 200 || !res.data) return;
-      const next = res.data.unread_count;
-      if (unreadPrimedRef.current && next > prevUnreadRef.current) {
-        playMessageBeep();
-        void loadAll();
-      } else {
-        setUnreadCount(next);
+
+      let shouldBeep = false;
+      let shouldReload = false;
+
+      if (unreadRes.status === 200 && unreadRes.data) {
+        const next = unreadRes.data.unread_count;
+        if (unreadPrimedRef.current && next > prevUnreadRef.current) {
+          shouldBeep = true;
+          shouldReload = true;
+        } else {
+          setUnreadCount(next);
+        }
+        prevUnreadRef.current = next;
+        unreadPrimedRef.current = true;
       }
-      prevUnreadRef.current = next;
-      unreadPrimedRef.current = true;
+
+      if (notifsRes.status === 200 && notifsRes.data) {
+        const assigned = (notifsRes.data.notifications ?? []).filter(
+          (n) => n.type === "job_assigned" && !n.hidden_at,
+        );
+        const ids = new Set(assigned.map((n) => n.id));
+        if (seenJobAssignedIdsRef.current) {
+          for (const n of assigned) {
+            if (!seenJobAssignedIdsRef.current.has(n.id)) {
+              shouldBeep = true;
+              shouldReload = true;
+              break;
+            }
+          }
+          seenJobAssignedIdsRef.current = ids;
+        } else {
+          seenJobAssignedIdsRef.current = ids;
+        }
+      }
+
+      if (jobsRes.status === 200 && jobsRes.data) {
+        const openJobs = (jobsRes.data.jobs ?? []).filter(
+          (j) => j.status !== "completed" && j.status !== "cancelled" && !j.hidden_at,
+        );
+        const jobIds = new Set(openJobs.map((j) => j.id));
+        if (seenJobIdsRef.current) {
+          for (const id of jobIds) {
+            if (!seenJobIdsRef.current.has(id)) {
+              shouldBeep = true;
+              shouldReload = true;
+              break;
+            }
+          }
+          seenJobIdsRef.current = jobIds;
+        } else {
+          seenJobIdsRef.current = jobIds;
+        }
+      }
+
+      if (shouldBeep) playMessageBeep();
+      if (shouldReload) void loadAll();
     }, 15000);
     return () => {
       cancelled = true;
@@ -223,7 +290,11 @@ export default function WorkerDashboard() {
       });
       if (res.status === 200 && res.data) {
         setChecklist((prev) =>
-          prev.map((c) => (c.id === id ? { ...res.data!.item, has_attachment: true } : c))
+          prev.map((c) =>
+            c.id === id
+              ? { ...res.data!.item, has_attachment: !!c.has_attachment }
+              : c,
+          ),
         );
         showToast(t("workerTaskUpdated"));
       } else {
@@ -289,7 +360,12 @@ export default function WorkerDashboard() {
   };
 
   const handleSendMessage = async () => {
-    if (!chatInput.trim() || !job) return;
+    if (!job) return;
+    if (!isJobCommunicationAllowed(job)) {
+      showToast(JOB_COMMUNICATION_TODAY_ONLY_MESSAGE);
+      return;
+    }
+    if (!chatInput.trim()) return;
     const res = await api.post<{ message: ApiJobMessage }>(`/api/jobs/${job.id}/messages`, { content: chatInput });
     if (res.status === 201 && res.data) {
       setMessages((prev) => [...prev, res.data!.message]);
@@ -299,6 +375,10 @@ export default function WorkerDashboard() {
 
   const handleStartRecord = async () => {
     if (!job || recordingLockRef.current || isRecording) return;
+    if (!isJobCommunicationAllowed(job)) {
+      showToast(JOB_COMMUNICATION_TODAY_ONLY_MESSAGE);
+      return;
+    }
     recordingLockRef.current = true;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -370,6 +450,7 @@ export default function WorkerDashboard() {
   const done = checklist.filter((c) => c.is_completed).length;
   const total = checklist.length;
   const selectedWorkerCard = job ? jobToWorkerCard(job, checklist, undefined, t) : null;
+  const canCommunicate = job ? isJobCommunicationAllowed(job) : false;
 
   const completedChecklist = checklist.filter((c) => c.is_completed);
   const pendingChecklist = checklist.filter((c) => !c.is_completed);
@@ -401,7 +482,8 @@ export default function WorkerDashboard() {
         }
       : null;
 
-  if (authLoading || dataLoading) {
+  // Don't paint worker UI for office roles while redirecting to command center.
+  if (authLoading || dataLoading || (user && user.role !== "worker")) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f3f5f8] text-slate-400 text-sm">
         {t("workerLoading")}
@@ -626,9 +708,25 @@ export default function WorkerDashboard() {
                           {task.label}
                         </button>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          {task.has_attachment && (
-                            <svg width="13" height="15" viewBox="0 0 14 16" fill="none" className="text-slate-400">
-                              <path d="M0.5 7.54918L6.15229 1.78552C7.83319 0.0714946 10.5585 0.0714946 12.2394 1.78552C13.9203 3.49954 13.9201 6.27867 12.2392 7.99269L5.71734 14.6431C4.59674 15.7858 2.7802 15.7856 1.6596 14.6429C0.538995 13.5002 0.53872 11.6478 1.65932 10.5051L8.1812 3.85471C8.7415 3.28337 9.65041 3.28337 10.2107 3.85471C10.771 4.42605 10.7706 5.35216 10.2103 5.9235L4.55802 11.6872" stroke="currentColor" strokeOpacity="0.15" strokeLinecap="round" strokeLinejoin="round"/>
+                          {/* Completed: only if file exists. Upcoming: if required or file exists. */}
+                          {((task.is_completed && task.has_attachment) ||
+                            (!task.is_completed &&
+                              (task.requires_attachment || task.has_attachment))) && (
+                            <svg
+                              width={task.is_completed ? 13 : 14}
+                              height={task.is_completed ? 15 : 16}
+                              viewBox="0 0 14 16"
+                              fill="none"
+                              className="text-slate-400"
+                            >
+                              <path
+                                d="M0.5 7.54918L6.15229 1.78552C7.83319 0.0714946 10.5585 0.0714946 12.2394 1.78552C13.9203 3.49954 13.9201 6.27867 12.2392 7.99269L5.71734 14.6431C4.59674 15.7858 2.7802 15.7856 1.6596 14.6429C0.538995 13.5002 0.53872 11.6478 1.65932 10.5051L8.1812 3.85471C8.7415 3.28337 9.65041 3.28337 10.2107 3.85471C10.771 4.42605 10.7706 5.35216 10.2103 5.9235L4.55802 11.6872"
+                                stroke="#151E23"
+                                strokeOpacity={task.is_completed ? 0.15 : 0.3}
+                                strokeWidth={task.is_completed ? undefined : 2}
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
                             </svg>
                           )}
 {task.is_completed && task.completed_at && (
@@ -818,7 +916,16 @@ export default function WorkerDashboard() {
                 <button
                   onClick={handleStartRecord}
                   disabled={!job || isRecording}
-                  className="flex-1 flex flex-col items-center gap-2 group cursor-pointer bg-transparent border-none p-0 outline-none disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={
+                    job && !canCommunicate
+                      ? JOB_COMMUNICATION_TODAY_ONLY_MESSAGE
+                      : undefined
+                  }
+                  className={`flex-1 flex flex-col items-center gap-2 group bg-transparent border-none p-0 outline-none disabled:opacity-40 disabled:cursor-not-allowed ${
+                    job && !canCommunicate
+                      ? "opacity-45 cursor-not-allowed"
+                      : "cursor-pointer"
+                  }`}
                 >
                   <div
                     style={{
@@ -946,17 +1053,34 @@ export default function WorkerDashboard() {
           <div className="p-3 border-t border-slate-100 bg-white flex items-center gap-2 shrink-0">
             <input
               type="text"
-              placeholder={t("workChatPlaceholder")}
+              placeholder={
+                canCommunicate
+                  ? t("workChatPlaceholder")
+                  : JOB_COMMUNICATION_TODAY_ONLY_MESSAGE
+              }
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleSendMessage();
               }}
-              className="flex-1 h-10 text-xs px-3 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800"
+              readOnly={!canCommunicate}
+              onClick={() => {
+                if (!canCommunicate) showToast(JOB_COMMUNICATION_TODAY_ONLY_MESSAGE);
+              }}
+              className={`flex-1 h-10 text-xs px-3 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 ${
+                !canCommunicate ? "opacity-60 cursor-not-allowed" : ""
+              }`}
             />
             <button
               onClick={handleSendMessage}
-              className="w-10 h-10 rounded-xl bg-[#1B3A6B] hover:bg-[#142c52] text-white flex items-center justify-center transition-colors shrink-0 cursor-pointer"
+              title={
+                canCommunicate
+                  ? undefined
+                  : JOB_COMMUNICATION_TODAY_ONLY_MESSAGE
+              }
+              className={`w-10 h-10 rounded-xl bg-[#1B3A6B] hover:bg-[#142c52] text-white flex items-center justify-center transition-colors shrink-0 ${
+                canCommunicate ? "cursor-pointer" : "opacity-45 cursor-not-allowed"
+              }`}
             >
               <Send className="w-4 h-4" />
             </button>

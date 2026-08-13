@@ -18,6 +18,12 @@ interface OfficeCardProps {
   message: Message;
   onDismiss: () => void;
   onReply?: () => void;
+  /**
+   * When true, reply stays visible but is not actionable (Mark a16 #4).
+   * Click still calls onReplyBlocked (toast) — never hide controls.
+   */
+  replyLocked?: boolean;
+  onReplyBlocked?: () => void;
   iconType?: "mic" | "document";
   showRedButton?: boolean;
   /** When set (and length > 0), render replies under the same box. */
@@ -143,6 +149,8 @@ export function OfficeCard({
   message,
   onDismiss,
   onReply,
+  replyLocked = false,
+  onReplyBlocked,
   iconType = "mic",
   showRedButton = false,
   thread,
@@ -306,6 +314,10 @@ export function OfficeCard({
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                if (replyLocked) {
+                  onReplyBlocked?.();
+                  return;
+                }
                 onReply();
               }}
               type="button"
@@ -323,9 +335,14 @@ export function OfficeCard({
                 borderRadius: "12px",
                 boxShadow:
                   "0px 8px 18px -12px rgba(15, 23, 42, 0.35), inset 0px 1px 0px 1px #FFFFFF",
-                cursor: "pointer",
+                cursor: replyLocked ? "pointer" : "pointer",
+                opacity: replyLocked ? 0.55 : 1,
               }}
-              title="Odgovori"
+              title={
+                replyLocked
+                  ? "Komunikacija je mogoča samo za današnji dan."
+                  : "Odgovori"
+              }
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
@@ -377,12 +394,20 @@ export function OfficeCard({
         onClick={(e) => {
           if (!onReply) return;
           e.preventDefault();
+          if (replyLocked) {
+            onReplyBlocked?.();
+            return;
+          }
           onReply();
         }}
         onKeyDown={(e) => {
           if (!onReply) return;
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
+            if (replyLocked) {
+              onReplyBlocked?.();
+              return;
+            }
             onReply();
           }
         }}
@@ -403,7 +428,7 @@ export function OfficeCard({
             "0px 12px 28px -18px rgba(15, 23, 42, 0.26), inset 0px 1px 0px 1px #FFFFFF",
           zIndex: 1,
           position: "relative",
-          cursor: onReply ? "pointer" : undefined,
+          cursor: onReply ? (replyLocked ? "not-allowed" : "pointer") : undefined,
         }}
       >
         <p

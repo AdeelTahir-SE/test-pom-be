@@ -5,6 +5,7 @@ import { loadJobWithAccess } from "@/lib/services/jobAccess";
 import { createTimelineEvent } from "@/lib/timeline/events";
 import { notifyMessageReceived } from "@/lib/services/notifications";
 import { requireOfficeContactUserId } from "@/lib/services/officeContact";
+import { assertJobCommunicationAllowed } from "@/lib/services/jobCommunication";
 import { sha256Hex, buildStoragePath, uploadToStorage } from "@/lib/storage/upload";
 import { transcribeAudio } from "@/lib/integrations/deepgram";
 import { structureVoiceTranscript } from "@/lib/integrations/openai";
@@ -22,6 +23,10 @@ const UNTRANSCRIBED_FALLBACK = "Voice message (untranscribed)";
 export const POST = withAuth<{ id: string }>(async (request, auth, { params }) => {
   const db = getAdminClient();
   const { job, workerId } = await loadJobWithAccess(db, auth, params.id);
+  assertJobCommunicationAllowed({
+    scheduled_at: (job.scheduled_at as string | null) ?? null,
+    created_at: job.created_at as string,
+  });
 
   const formData = await request.formData();
   const audio = formData.get("audio");

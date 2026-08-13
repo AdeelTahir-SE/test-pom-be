@@ -7,6 +7,7 @@ import { loadJobWithAccess } from "@/lib/services/jobAccess";
 import { createTimelineEvent } from "@/lib/timeline/events";
 import { notifyMessageReceived } from "@/lib/services/notifications";
 import { requireOfficeContactUserId } from "@/lib/services/officeContact";
+import { assertJobCommunicationAllowed } from "@/lib/services/jobCommunication";
 import { LIMITS } from "@/config/constants";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +46,10 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
   const input = await parseJsonBody(request, sendMessageSchema);
   const db = getAdminClient();
   const { job, workerId } = await loadJobWithAccess(db, auth, params.id);
+  assertJobCommunicationAllowed({
+    scheduled_at: (job.scheduled_at as string | null) ?? null,
+    created_at: job.created_at as string,
+  });
 
   let recipientId: string;
 

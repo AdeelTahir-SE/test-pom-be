@@ -76,15 +76,20 @@ import {
   formatSiDate,
   formatSiDateFromDayKey,
   isoToLocalDayKey,
+  isCommunicationDayAllowed,
   isJobCardMutable,
   jobBelongsToDay,
   localDayToScheduledAt,
   normalizeRemindTime,
   parseFlexibleDate,
+  remindTimeSortMinutes,
   reminderBelongsToDay,
   startOfLocalDay,
   toIsoDate,
 } from '@/lib/officeDate';
+import { JOB_COMMUNICATION_TODAY_ONLY_MESSAGE } from '@/lib/services/jobCommunication';
+import { playMessageBeep, unlockMessageBeep } from '@/lib/playMessageBeep';
+import { toTelHref } from '@/lib/phone';
 import { useOfficeBoard } from '@/hooks/useOfficeBoard';
 import { isOptimisticId, newOptimisticId } from '@/lib/optimisticId';
 
@@ -102,9 +107,11 @@ interface ColumnHeaderProps {
   title: string;
   onAddClick?: () => void;
   addTitle?: string;
+  /** Visible but not actionable — click still fires onAddClick (toast) (Mark a16 #4). */
+  addLocked?: boolean;
 }
 
-function ColumnHeader({ title, onAddClick, addTitle }: ColumnHeaderProps) {
+function ColumnHeader({ title, onAddClick, addTitle, addLocked = false }: ColumnHeaderProps) {
   return (
     <div className="flex items-center justify-between pl-0 pr-6 mb-2">
       <span
@@ -133,7 +140,10 @@ function ColumnHeader({ title, onAddClick, addTitle }: ColumnHeaderProps) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer',
+              cursor: addLocked ? 'pointer' : 'pointer',
+              opacity: addLocked ? 0.55 : 1,
+              position: 'relative',
+              zIndex: 2,
             }}
             className="hover:bg-slate-50/50 transition-colors"
           >
@@ -189,6 +199,32 @@ export default function OfficeDashboard() {
     refreshBoard,
   } = useOfficeBoard(selectedDayKey, !authLoading && !!user);
 
+  // Unlock Web Audio after first tap so inbound beeps can play (Mark).
+  useEffect(() => {
+    const unlock = () => unlockMessageBeep();
+    window.addEventListener('pointerdown', unlock, { once: true });
+    return () => window.removeEventListener('pointerdown', unlock);
+  }, []);
+
+  // Beep when a new inbound communication arrives (not messages we sent).
+  const seenCommIdsRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    seenCommIdsRef.current = null;
+  }, [selectedDayKey]);
+  useEffect(() => {
+    if (!user?.id) return;
+    const ids = new Set(communications.map((m) => m.id));
+    if (seenCommIdsRef.current === null) {
+      seenCommIdsRef.current = ids;
+      return;
+    }
+    const hasInbound = communications.some(
+      (m) => !seenCommIdsRef.current!.has(m.id) && m.sender_id !== user.id,
+    );
+    for (const id of ids) seenCommIdsRef.current.add(id);
+    if (hasInbound) playMessageBeep();
+  }, [communications, user?.id]);
+
   // Optimistic checklist rows for jobs not yet confirmed by the API (temp ids).
   const [checklistOverrides, setChecklistOverrides] = useState<
     Record<string, ApiChecklistItem[]>
@@ -205,6 +241,10 @@ export default function OfficeDashboard() {
   const [reminderEditTarget, setReminderEditTarget] = useState<string | null>(null);
   const [isAttachmentDialogOpen, setIsAttachmentDialogOpen] = useState(false);
   const [attachmentDialogReminderId, setAttachmentDialogReminderId] = useState<string | null>(null);
+  const [jobCardAttachTarget, setJobCardAttachTarget] = useState<{
+    jobId: string;
+    taskId: string;
+  } | null>(null);
   const [reminderPreview, setReminderPreview] =
     useState<AttachmentLightboxItem | null>(null);
   const [isAddWorkerOpen, setIsAddWorkerOpen] = useState(false);
@@ -381,6 +421,12 @@ export default function OfficeDashboard() {
   // here or a drag-reorder would visually snap back on the next render.
   // Day filter uses scheduled_at from the task form; undated jobs stay on today.
   const boardTodayKey = toIsoDate(startOfLocalDay());
+  const communicationAllowed = isCommunicationDayAllowed(
+    selectedDayKey,
+    boardTodayKey,
+  );
+  const showCommunicationBlockedToast = () =>
+    showToast(JOB_COMMUNICATION_TODAY_ONLY_MESSAGE);
   const activeJobs = jobs.filter(
     (j) =>
       j.worker_id &&
@@ -406,11 +452,18 @@ export default function OfficeDashboard() {
   })();
 
   // Same day-matching as column 1 / API — never show a reminder on the wrong day.
+  // Order by big remind time (earliest first); no-time cards last (Mark).
   const dayReminders = reminders
     .filter((r) =>
       reminderBelongsToDay(r, selectedDayKey, boardTodayKey),
     )
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    .slice()
+    .sort((a, b) => {
+      const byTime =
+        remindTimeSortMinutes(a.remind_time) - remindTimeSortMinutes(b.remind_time);
+      if (byTime !== 0) return byTime;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
   // Shared office channel (a6) — one conversation box per job for all office roles.
   const dayCommunications = communications;
   const communicationThreads = (() => {
@@ -479,31 +532,8 @@ export default function OfficeDashboard() {
     const next = siblings.find((i) => !i.is_completed);
     if (!next || next.id !== item.id) return;
 
-    let attachmentName: string | null = null;
-    let attachmentUrl: string | null = null;
-    let hasAttachment = !!item.has_attachment;
-
-    if (item.requires_attachment || item.has_attachment) {
-      const filesRes = await api.get<{
-        files: Array<{
-          file_name: string;
-          signed_url: string | null;
-          checklist_item_id?: string | null;
-        }>;
-      }>(`/api/jobs/${item.job_id}/files`);
-      if (filesRes.status === 200 && filesRes.data?.files?.length) {
-        // Only a file linked to this exact step counts (Mark: no orphans / guessing).
-        const linked = filesRes.data.files.find(
-          (f) => f.checklist_item_id === item.id,
-        );
-        if (linked) {
-          attachmentName = linked.file_name;
-          attachmentUrl = linked.signed_url;
-          hasAttachment = true;
-        }
-      }
-    }
-
+    // Open confirm UI immediately — don't block on /files (was 4–10s).
+    const hasAttachment = !!item.has_attachment;
     setPendingConfirmTask({
       workerId: _workerId,
       taskId: item.id,
@@ -511,9 +541,37 @@ export default function OfficeDashboard() {
       label: item.label,
       requiresAttachment: !!item.requires_attachment,
       hasAttachment,
-      attachmentName,
-      attachmentUrl,
+      attachmentName: null,
+      attachmentUrl: null,
     });
+
+    if (!(item.requires_attachment || item.has_attachment)) return;
+
+    // Enrich with linked filename/url in the background (optional).
+    void (async () => {
+      const filesRes = await api.get<{
+        files: Array<{
+          file_name: string;
+          signed_url: string | null;
+          checklist_item_id?: string | null;
+        }>;
+      }>(`/api/jobs/${item.job_id}/files`);
+      if (filesRes.status !== 200 || !filesRes.data?.files?.length) return;
+      const linked = filesRes.data.files.find(
+        (f) => f.checklist_item_id === item.id,
+      );
+      if (!linked) return;
+      setPendingConfirmTask((prev) =>
+        prev && prev.taskId === item.id
+          ? {
+              ...prev,
+              hasAttachment: true,
+              attachmentName: linked.file_name,
+              attachmentUrl: linked.signed_url,
+            }
+          : prev,
+      );
+    })();
   };
 
   const completeConfirmedTask = async () => {
@@ -527,6 +585,9 @@ export default function OfficeDashboard() {
     if (!item) return;
     // Attachment presence is enforced server-side (file linked to this step).
 
+    // Keep real attachment presence — do not invent a clip on complete.
+    const hadAttachment = !!pending.hasAttachment || !!item.has_attachment;
+
     const patchLocal = (list: ApiChecklistItem[]) =>
       list.map((i) =>
         i.id === pending.taskId
@@ -534,7 +595,7 @@ export default function OfficeDashboard() {
               ...i,
               is_completed: true,
               completed_at: new Date().toISOString(),
-              has_attachment: true,
+              has_attachment: hadAttachment,
             }
           : i,
       );
@@ -558,7 +619,7 @@ export default function OfficeDashboard() {
         ...prev,
         [item.job_id]: (prev[item.job_id] ?? []).map((i) =>
           i.id === pending.taskId
-            ? { ...res.data!.item, has_attachment: true }
+            ? { ...res.data!.item, has_attachment: hadAttachment }
             : i,
         ),
       }));
@@ -585,8 +646,9 @@ export default function OfficeDashboard() {
       .flat()
       .find((i) => i.id === taskId);
     if (!item || isOptimisticId(item.job_id)) return;
-    cardAttachTargetRef.current = { jobId: item.job_id, taskId: item.id };
-    cardAttachInputRef.current?.click();
+    // Incomplete steps: open Dodaj priponko (same popup as Details). Mark.
+    if (item.is_completed) return;
+    setJobCardAttachTarget({ jobId: item.job_id, taskId: item.id });
   };
 
   const handleReminderAttachmentClick = (reminderId: string) => {
@@ -1061,23 +1123,6 @@ export default function OfficeDashboard() {
       );
     }
   };
-  const handleReminderDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = dayReminders.findIndex((r) => r.id === active.id);
-    const newIndex = dayReminders.findIndex((r) => r.id === over.id);
-    const reordered = arrayMove(dayReminders, oldIndex, newIndex);
-    setReminders(reordered);
-    Promise.all(
-      reordered
-        .filter((r) => !isOptimisticId(r.id))
-        .map((r, index) =>
-          api
-            .patch(`/api/office-reminders/${r.id}`, { order_index: index })
-            .catch(() => {}),
-        ),
-    );
-  };
   const handleDismissConversation = async (messageIds: string[]) => {
     if (messageIds.length === 0) return;
     const idSet = new Set(messageIds);
@@ -1138,6 +1183,10 @@ export default function OfficeDashboard() {
   };
 
   const handleOpenReply = async (jobId: string) => {
+    if (!communicationAllowed) {
+      showCommunicationBlockedToast();
+      return;
+    }
     setReplyJobId(jobId);
     setReplyLoading(true);
     const res = await api.get<{ messages: ApiJobMessage[] }>(
@@ -1152,6 +1201,10 @@ export default function OfficeDashboard() {
     activeJobs.find((j) => j.worker_id === workerId) ?? null;
 
   const handleComposeMessage = (workerId: string) => {
+    if (!communicationAllowed) {
+      showCommunicationBlockedToast();
+      return;
+    }
     const job = findComposeJobForWorker(workerId);
     if (!job) {
       showToast(
@@ -1164,6 +1217,10 @@ export default function OfficeDashboard() {
   };
 
   const handleSendReply = async () => {
+    if (!communicationAllowed) {
+      showCommunicationBlockedToast();
+      return;
+    }
     if (!replyInput.trim() || !replyJobId) return;
     const res = await api.post<{ message: ApiJobMessage }>(
       `/api/jobs/${replyJobId}/messages`,
@@ -1177,6 +1234,10 @@ export default function OfficeDashboard() {
   };
 
   const handleStartRecordReply = async () => {
+    if (!communicationAllowed) {
+      showCommunicationBlockedToast();
+      return;
+    }
     if (!replyJobId) return;
     const jobIdForUpload = replyJobId;
     try {
@@ -1274,6 +1335,11 @@ export default function OfficeDashboard() {
 
   return (
     <div className="min-h-screen flex flex-col text-slate-800 dark:text-slate-100 overflow-x-hidden selection:bg-[#1B3A6B]/10 selection:text-[#1B3A6B] relative bg-[#f3f5f8] dark:bg-[#0b0f19]">
+      {toastMessage && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-slate-900/90 text-white text-[13px] font-semibold py-2.5 px-5 rounded-full shadow-lg z-[100] animate-in fade-in duration-200 pointer-events-none">
+          {toastMessage}
+        </div>
+      )}
       <style>{`
         @media (max-width: 1023px) {
           .office-grid {
@@ -1735,29 +1801,26 @@ export default function OfficeDashboard() {
                     onDismiss={() => dismissDummy('pisarna')}
                   />
                 ))}
-              <DndContext
-                collisionDetection={closestCenter}
-                onDragEnd={handleReminderDragEnd}
-              >
-                <SortableContext
-                  items={dayReminders.map((r) => r.id)}
-                  strategy={verticalListSortingStrategy}
-                >
                   {dayReminders.map((r) => (
-                    <SortableItem key={r.id} id={r.id}>
-                      <CommunicationCard
-                        order={reminderToCard(r, t)}
-                        buttonsConfig="dynamic"
-                        showRedButton={r.is_urgent}
-                        onResolve={() => handleConfirmReminder(r.id)}
-                        onDismiss={() => handleDismissReminder(r.id)}
-                        onArchive={() => handleDeclineReminder(r.id)}
-                        onAttachmentClick={() => handleOpenReminderAttachment(r.id)}
-                      />
-                    </SortableItem>
+                    <CommunicationCard
+                      key={r.id}
+                      order={reminderToCard(r, t)}
+                      buttonsConfig="dynamic"
+                      showRedButton={r.is_urgent}
+                      onResolve={() => handleConfirmReminder(r.id)}
+                      onDismiss={() => handleDismissReminder(r.id)}
+                      onArchive={() => handleDeclineReminder(r.id)}
+                      onAttachmentClick={() => handleOpenReminderAttachment(r.id)}
+                      onCall={(phone) => {
+                        const href = toTelHref(phone || r.phone || '');
+                        if (!href) {
+                          showToast('Telefonska številka ni na voljo.');
+                          return;
+                        }
+                        window.location.href = href;
+                      }}
+                    />
                   ))}
-                </SortableContext>
-              </DndContext>
             </div>
           </div>
 
@@ -1765,8 +1828,26 @@ export default function OfficeDashboard() {
           <div className="flex flex-col gap-3 office-column-cell">
             <ColumnHeader
               title={t('officeColComm')}
-              onAddClick={() => setIsComposeOpen(true)}
-              addTitle={t('officeAddMessage')}
+              onAddClick={() => {
+                // No TEREN card → nobody to message. No toast at all (Mark:
+                // the today-only toast must never appear in this state).
+                if (composeWorkerOptions.length === 0) return;
+                if (!communicationAllowed) {
+                  showCommunicationBlockedToast();
+                  return;
+                }
+                setIsComposeOpen(true);
+              }}
+              addTitle={
+                composeWorkerOptions.length === 0
+                  ? t('officeAddMessage')
+                  : !communicationAllowed
+                    ? JOB_COMMUNICATION_TODAY_ONLY_MESSAGE
+                    : t('officeAddMessage')
+              }
+              addLocked={
+                composeWorkerOptions.length === 0 || !communicationAllowed
+              }
             />
             <div
               style={{
@@ -1832,6 +1913,8 @@ export default function OfficeDashboard() {
                     onReply={() => {
                       void handleOpenReply(thread.jobId);
                     }}
+                    replyLocked={!communicationAllowed}
+                    onReplyBlocked={showCommunicationBlockedToast}
                   />
                 );
               })}
@@ -2087,11 +2170,10 @@ export default function OfficeDashboard() {
                       onClick={() => {
                         const p = pendingConfirmTask;
                         if (!p) return;
-                        cardAttachTargetRef.current = {
+                        setJobCardAttachTarget({
                           jobId: p.jobId,
                           taskId: p.taskId,
-                        };
-                        cardAttachInputRef.current?.click();
+                        });
                       }}
                       className="w-full h-11 rounded-[12px] bg-[#0A1128] text-white text-xs font-bold uppercase tracking-wider hover:bg-[#152042] transition-colors shadow-md shadow-[#0A1128]/10"
                     >
@@ -2099,8 +2181,10 @@ export default function OfficeDashboard() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => void completeConfirmedTask()}
-                      className="w-full h-11 rounded-[12px] border border-slate-300 text-xs font-bold text-slate-700 uppercase tracking-wider hover:bg-slate-50 transition-colors"
+                      disabled
+                      aria-disabled="true"
+                      className="w-full h-11 rounded-[12px] border border-slate-200 text-xs font-bold text-slate-300 uppercase tracking-wider cursor-not-allowed bg-slate-50"
+                      title="Najprej naložite priponko"
                     >
                       {t('modalConfirmStepSubmit')}
                     </button>
@@ -2176,6 +2260,28 @@ export default function OfficeDashboard() {
         targetType="reminder"
         targetId={attachmentDialogReminderId || ""}
         onUploadSuccess={() => void refreshBoard()}
+      />
+      <AttachmentDialog
+        isOpen={!!jobCardAttachTarget}
+        onOpenChange={(open) => {
+          if (!open) setJobCardAttachTarget(null);
+        }}
+        targetType="job"
+        targetId={jobCardAttachTarget?.jobId || ""}
+        checklistItemId={jobCardAttachTarget?.taskId ?? null}
+        onUploadSuccess={() => {
+          const target = jobCardAttachTarget;
+          if (target) {
+            markChecklistHasAttachment(target.jobId, target.taskId);
+            setPendingConfirmTask((prev) =>
+              prev && prev.taskId === target.taskId
+                ? { ...prev, hasAttachment: true }
+                : prev,
+            );
+            showToast(t('modalAttachSuccess'));
+          }
+          void refreshBoard();
+        }}
       />
       <AttachmentLightbox
         item={reminderPreview}
