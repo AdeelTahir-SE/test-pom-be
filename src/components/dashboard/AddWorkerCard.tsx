@@ -59,21 +59,20 @@ export function AddWorkerCard({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [prevCount, setPrevCount] = useState(existingUsers.length);
+  const prevCountRef = useRef(existingUsers.length);
 
-  useEffect(() => {
-    if (existingUsers.length > prevCount) {
-      if (scrollContainerRef.current) {
-        setTimeout(() => {
-          scrollContainerRef.current?.scrollTo({
-            top: scrollContainerRef.current.scrollHeight,
-            behavior: 'smooth',
-          });
-        }, 100);
-      }
-    }
-    setPrevCount(existingUsers.length);
-  }, [existingUsers.length, prevCount]);
+useEffect(() => {
+  if (existingUsers.length > prevCountRef.current) {
+    setTimeout(() => {
+      scrollContainerRef.current?.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
+    }, 100);
+  }
+
+  prevCountRef.current = existingUsers.length;
+}, [existingUsers.length]);
 
   // Soft-deleted staff stay in DB/history but must not appear in worker lists (Mark).
   const activeUsers = existingUsers.filter((u) => u.is_active !== false);
@@ -250,8 +249,9 @@ export function AddWorkerCard({
               <div className="text-[10px] font-bold text-slate-700 uppercase tracking-widest mb-4">Profil</div>
 
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-[14px] bg-[#2b5493] text-white flex items-center justify-center shadow-md shadow-blue-900/20 shrink-0">
-                  <Building2 className="w-7 h-7" />
+                <div className="relative inline-flex items-center justify-center w-14 h-14 rounded-[14px] bg-gradient-to-b from-white to-slate-100 border border-white shadow-[0_16px_34px_-20px_rgba(15,23,42,0.55),inset_0_1px_0_white] shrink-0">
+                  <div className="absolute inset-1 rounded-[12px] bg-gradient-to-b from-blue-400 to-blue-600 border border-blue-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_22px_rgba(59,130,246,0.28)]" />
+                  <Building2 className="relative w-7 h-7 text-white" />
                 </div>
                 <div className="flex flex-col overflow-hidden">
                   <div className="font-semibold text-[#0f172a] text-[14px] truncate">{company?.name || 'Asd'}</div>
@@ -280,7 +280,9 @@ export function AddWorkerCard({
                             <span className="truncate">{u.full_name}</span>
                           </div>
                           {u.role !== 'owner' && u.login_pin ? (
-                            <span className="shrink-0 font-mono text-[11px] text-slate-500">{u.login_pin}</span>
+                            <span className="shrink-0 font-inter text-[11px] text-slate-500">
+  {u.login_pin}
+</span>
                           ) : null}
                         </div>
                       ))
@@ -304,7 +306,9 @@ export function AddWorkerCard({
                             <span className="truncate">{u.full_name}</span>
                           </div>
                           {u.role !== 'owner' && u.login_pin ? (
-                            <span className="shrink-0 font-mono text-[11px] text-slate-500">{u.login_pin}</span>
+                            <span className="shrink-0 font-inter text-[11px] text-slate-500">
+  {u.login_pin}
+</span>
                           ) : null}
                         </div>
                       ))

@@ -41,6 +41,8 @@ interface AddCustomerNoteDialogProps {
   jobId?: string | null;
   /** Called after a note is saved successfully. */
   onSuccess?: () => void;
+  /** Render in the worker inline drawer mode: single column. */
+  inlineDrawer?: boolean;
 }
 
 /**
@@ -56,6 +58,7 @@ export function AddCustomerNoteDialog({
   location = null,
   jobId = null,
   onSuccess,
+  inlineDrawer = false,
 }: AddCustomerNoteDialogProps) {
   const { t } = useLanguage();
   const [name, setName] = useState(customerName);
@@ -193,21 +196,19 @@ export function AddCustomerNoteDialog({
     ));
   };
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        showCloseButton={false}
-        className="w-full max-w-[calc(100%-2rem)] min-[450px]:w-[450px] min-[820px]:w-[760px] sm:max-w-[calc(100%-2rem)] outline-none mx-auto p-3 bg-[#f1f5f9] rounded-[24px] min-[820px]:rounded-[32px] border-none shadow-2xl flex flex-col gap-0"
-      >
+  const dialogBody = (
         <div className="flex flex-col min-[820px]:flex-row items-stretch w-full" style={{ gap: "12px" }}>
-          <div className="hidden min-[820px]:flex flex-col w-[260px] shrink-0 min-[820px]:min-h-[581px]" style={{ gap: "12px" }}>
+          <div className={`flex-col w-[260px] shrink-0 min-[820px]:min-h-[581px] ${inlineDrawer ? 'hidden' : 'hidden min-[820px]:flex'}`} style={{ gap: "12px" }}>
             <div className="relative bg-white rounded-[20px] p-6 shadow-sm border border-slate-100 flex flex-col">
               <div className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-4">
                 PARTNER
               </div>
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-[14px] bg-[#2b5493] text-white flex items-center justify-center text-[18px] font-bold shadow-md shadow-blue-900/20 shrink-0">
-                  {name.trim() ? getInitials(name) : "JN"}
+                <div className="relative inline-flex items-center justify-center w-14 h-14 rounded-[14px] bg-gradient-to-b from-white to-slate-100 border border-white shadow-[0_16px_34px_-20px_rgba(15,23,42,0.55),inset_0_1px_0_white shrink-0">
+                  <div className="absolute inset-1 rounded-[12px] bg-gradient-to-b from-blue-400 to-blue-600 border border-blue-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_22px_rgba(59,130,246,0.28)]" />
+                  <span className="relative font-['Inter',sans-serif] text-[18px] font-semibold text-white">
+                    {name.trim() ? getInitials(name) : "JN"}
+                  </span>
                 </div>
                 <div className="flex flex-col overflow-hidden">
                   <div className="font-bold text-[#0f172a] text-[16px] truncate">
@@ -251,7 +252,7 @@ export function AddCustomerNoteDialog({
                 Dodajte opombo ali opomnik za tega partnerja.
               </p>
 
-              <div className="flex min-[820px]:hidden flex-col w-full mb-4 pb-4 border-b border-slate-100">
+              <div className={`${!inlineDrawer ? 'flex min-[820px]:hidden' : 'hidden'} flex-col w-full mb-4 pb-4 border-b border-slate-100`}>
                 <div className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-3">
                   OBSTOJEČI ZAZNAMKI
                 </div>
@@ -361,6 +362,15 @@ export function AddCustomerNoteDialog({
               </div>
             </div>
 
+            <div className={`${inlineDrawer ? 'flex' : 'hidden'} flex-col w-full mt-4 mb-4 pb-4 border-b border-slate-100`}>
+              <div className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-3">
+                OBSTOJEČI ZAZNAMKI
+              </div>
+              <div className="flex flex-col gap-3 overflow-y-auto max-h-[160px] pr-1">
+                {renderExistingList()}
+              </div>
+            </div>
+
             <div className="flex mt-8 sm:mt-4">
               <button
                 type="button"
@@ -377,6 +387,26 @@ export function AddCustomerNoteDialog({
             </div>
           </div>
         </div>
+  );
+
+  if (inlineDrawer) {
+    return open ? (
+      <div
+        className="absolute inset-x-0 bottom-0 top-[100px] rounded-t-[32px] border-t border-slate-200/50 shadow-2xl z-40 flex flex-col overflow-hidden overflow-y-auto custom-ios-scrollbar animate-in slide-in-from-bottom duration-300 p-3"
+        style={{ background: "rgba(241, 245, 249, 1)" }}
+      >
+        {dialogBody}
+      </div>
+    ) : null;
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        className="w-full max-w-[calc(100%-2rem)] min-[450px]:w-[450px] min-[820px]:w-[760px] sm:max-w-[calc(100%-2rem)] outline-none mx-auto p-3 bg-[#f1f5f9] rounded-[24px] min-[820px]:rounded-[32px] border-none shadow-2xl flex flex-col gap-0"
+      >
+        {dialogBody}
       </DialogContent>
     </Dialog>
   );

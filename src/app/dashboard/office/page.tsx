@@ -39,8 +39,8 @@ import {
   Users,
   Search as SearchIcon,
   Settings,
-  Database,
   Paperclip,
+  UserPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -63,7 +63,6 @@ import {
 } from '@/components/dashboard/AttachmentLightbox';
 import { AddWorkerCard } from '@/components/dashboard/AddWorkerCard';
 import { SearchModal } from '@/components/dashboard/SearchModal';
-import { CompanySettingsModal } from '@/components/dashboard/CompanySettingsModal';
 import { SortableItem } from '@/components/dashboard/SortableItem';
 import { OfficeDayHeader } from '@/components/dashboard/OfficeDayHeader';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
@@ -265,7 +264,6 @@ export default function OfficeDashboard() {
     };
   }, [isAddWorkerOpen]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isCompanySettingsOpen, setIsCompanySettingsOpen] = useState(false);
   const [companyNameOverride, setCompanyNameOverride] = useState<string | null>(
     null,
   );
@@ -367,10 +365,7 @@ export default function OfficeDashboard() {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const openParam = params.get('open');
-      if (openParam === 'settings') {
-        setIsCompanySettingsOpen(true);
-        window.history.replaceState({}, '', window.location.pathname);
-      } else if (openParam === 'team') {
+      if (openParam === 'team') {
         // Mark: Ekipa popup not shown — open Dodaj sodelavca instead.
         setIsAddWorkerOpen(true);
         window.history.replaceState({}, '', window.location.pathname);
@@ -1419,30 +1414,30 @@ export default function OfficeDashboard() {
                     pomocnik.net
                   </span>
                 </Link>
-              <span className="h-4 w-px bg-slate-200 hidden sm:inline" />
-              <div
-                className="hidden sm:inline-flex items-center px-4 py-2 rounded-full hover:-translate-y-0.5 transition-all duration-300"
-                style={{
-                  background: 'rgba(255, 255, 255, 0.002)',
-                  border: '1px solid #E2E8F0',
-                  boxShadow: '0px 1px 2px rgba(15, 23, 42, 0.04), inset 0px 1px 0px 1px #FFFFFF',
-                }}
-              >
-                <span className="text-xs font-normal text-slate-600">
-                  {companyNameOverride ?? company?.name}
-                </span>
+                <span className="h-4 w-px bg-slate-200 hidden sm:inline" />
+                <div
+                  className="hidden sm:inline-flex items-center px-4 py-2 rounded-full hover:-translate-y-0.5 transition-all duration-300"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.002)',
+                    border: '1px solid #E2E8F0',
+                    boxShadow: '0px 1px 2px rgba(15, 23, 42, 0.04), inset 0px 1px 0px 1px #FFFFFF',
+                  }}
+                >
+                  <span className="text-xs font-normal text-slate-600">
+                    {companyNameOverride ?? company?.name}
+                  </span>
+                </div>
               </div>
-            </div>
 
-            <div className="flex items-center gap-2">
-              <div className="hidden sm:flex items-center gap-2 mr-2 pr-2 border-r border-slate-200">
-                <div className="flex flex-col text-right">
-                  <span className="text-xs font-bold text-slate-700">
-                    {user?.full_name?.split(' ')[0] || 'Uporabnik'}
-                  </span>
-                  <span className="text-xs font-normal text-slate-500 capitalize">
-                    {user?.role === 'owner' ? 'Vodja' : user?.role === 'manager' ? 'Pisarna' : user?.role === 'worker' ? 'Teren' : ''}
-                  </span>
+              <div className="flex items-center gap-2">
+                <div className="hidden sm:flex items-center gap-2 mr-2 pr-2 border-r border-slate-200">
+                  <div className="flex flex-col text-right">
+                    <span className="text-xs font-bold text-slate-700">
+                      {user?.full_name?.split(' ')[0] || 'Uporabnik'}
+                    </span>
+                    <span className="text-xs font-normal text-slate-500 capitalize">
+                      {user?.role === 'owner' ? 'Vodja' : user?.role === 'manager' ? 'Pisarna' : user?.role === 'worker' ? 'Teren' : ''}
+                    </span>
                   </div>
                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-semibold">
                     {user?.full_name
@@ -2006,6 +2001,7 @@ export default function OfficeDashboard() {
         jobId={selectedWorkerJobId}
         cardNumber={selectedJob ? jobNumber(selectedJob) : null}
         customerName={selectedJob?.customer ?? null}
+        jobTitle={selectedJob?.title ?? null}
         scheduledAt={selectedJob?.scheduled_at ?? null}
         cardMutable={
           selectedJob
@@ -2303,16 +2299,6 @@ export default function OfficeDashboard() {
           setIsWorkerDetailOpen(true);
           setDetailKey((k) => k + 1);
         }}
-      />
-
-      <CompanySettingsModal
-        isOpen={isCompanySettingsOpen}
-        onOpenChange={setIsCompanySettingsOpen}
-        companyName={companyNameOverride ?? company?.name ?? ''}
-        canManageBilling={user?.role === 'owner'}
-        subscriptionActive={company?.subscription_active ?? true}
-        hasStripeCustomer={!!company?.stripe_customer_id}
-        onSaved={setCompanyNameOverride}
       />
 
       <Dialog
