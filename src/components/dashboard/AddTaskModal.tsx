@@ -26,7 +26,7 @@ function newStep(): TaskStepInput {
 
 interface CustomerNote {
   id: string;
-  text: string;
+  note: string;
   createdAt?: string;
 }
 
