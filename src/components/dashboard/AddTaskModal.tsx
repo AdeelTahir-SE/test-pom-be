@@ -1,4 +1,4 @@
-code = '''"use client";
+"use client";
 
 import React, { useState } from "react";
 import { X, ChevronDown, ArrowLeft, Paperclip, Check } from "lucide-react";
@@ -612,9 +612,3 @@ export function AddTaskModal({
     </Dialog>
   );
 }
-'''
-
-with open('/mnt/agents/output/AddTaskModal.tsx', 'w', encoding='utf-8') as f:
-    f.write(code)
-
-print("Shranjeno.")
