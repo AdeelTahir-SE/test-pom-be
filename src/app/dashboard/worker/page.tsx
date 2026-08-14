@@ -17,7 +17,7 @@ import type { ApiNotification } from "@/lib/dashboardMappers";
 import type { Message } from "@/lib/types/messages";
 import type { OfficeCardThreadItem } from "@/components/dashboard/OfficeCard";
 import { LIMITS } from "@/config/constants";
-import { addDays, formatSiDateTimeCompact, isJobCardMutable, startOfLocalDay, isJobCommunicationAllowed, jobBelongsToDay, toIsoDate } from "@/lib/officeDate";
+import { addDays, formatSiDate, formatSiDateTimeCompact, isJobCardMutable, startOfLocalDay, isJobCommunicationAllowed, jobBelongsToDay, toIsoDate } from "@/lib/officeDate";
 import { JOB_COMMUNICATION_TODAY_ONLY_MESSAGE } from "@/lib/services/jobCommunication";
 import { toTelHref } from "@/lib/phone";
 import { playMessageBeep, unlockMessageBeep } from "@/lib/playMessageBeep";
@@ -460,6 +460,18 @@ export default function WorkerDashboard() {
     }
   };
 
+  const openJobDetails = () => {
+    if (!job) return;
+    setIsDetailModalOpen(true);
+    setDetailKey((k) => k + 1);
+  };
+
+  const handleJobCardKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    openJobDetails();
+  };
+
   const done = checklist.filter((c) => c.is_completed).length;
   const total = checklist.length;
   const selectedWorkerCard = job ? jobToWorkerCard(job, checklist, undefined, t) : null;
@@ -579,6 +591,12 @@ export default function WorkerDashboard() {
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
+              <time
+                dateTime={toIsoDate(selectedDate)}
+                className="min-w-[74px] text-center text-xs font-semibold tabular-nums text-slate-600"
+              >
+                {formatSiDate(selectedDate)}
+              </time>
               <button
                 type="button"
                 onClick={() => setSelectedDate((prev) => addDays(prev, 1))}
@@ -609,7 +627,11 @@ export default function WorkerDashboard() {
             <>
               {/* Main task card */}
               <div
-                className="shrink-0"
+                role="button"
+                tabIndex={0}
+                onClick={openJobDetails}
+                onKeyDown={handleJobCardKeyDown}
+                className="shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2"
                 style={{
                   border: "1px solid #1D4ED8",
                   boxShadow: "0px 24px 60px -30px rgba(59, 130, 246, 0.55), inset 0px 1px 0px 1px rgba(255, 255, 255, 0.35)",
@@ -687,7 +709,10 @@ export default function WorkerDashboard() {
                       <div className="flex items-center gap-2 w-full">
                         <button
                           type="button"
-                          onClick={() => handleToggleTask(task.id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleToggleTask(task.id);
+                          }}
                           className="shrink-0 flex items-center justify-center transition-all"
                           style={{
                             width: "16px",
@@ -705,7 +730,10 @@ export default function WorkerDashboard() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleToggleTask(task.id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleToggleTask(task.id);
+                          }}
                           className="flex-1 text-left truncate transition-all bg-transparent border-none p-0 outline-none"
                           style={{
                             fontFamily: "'PT Sans', sans-serif",
@@ -725,7 +753,8 @@ export default function WorkerDashboard() {
                               (task.requires_attachment || task.has_attachment))) && (
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={(event) => {
+                                event.stopPropagation();
                                 if (task.is_completed || task.has_attachment) return;
                                 openAttachDialog(task.id);
                               }}
