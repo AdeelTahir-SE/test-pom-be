@@ -208,7 +208,7 @@ describe("Phase 7 — Files & Storage", () => {
       }
 
       const sixteenth = await makeJpeg(150, 150);
-      const res = await api.post(`/api/jobs/${jobId}/files`, {
+      const res = await api.post<{ error?: { message?: string } }>(`/api/jobs/${jobId}/files`, {
         token: owner.accessToken,
         body: uploadForm([{ buffer: sixteenth, name: "sixteenth.jpg", type: "image/jpeg" }]),
       });
