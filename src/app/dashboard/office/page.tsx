@@ -32,6 +32,7 @@ import {
   logClientError,
   userFacingCatchMessage,
 } from "@/lib/clientError";
+import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import {
   LogOut,
   Send,
@@ -272,8 +273,6 @@ export default function OfficeDashboard() {
   const [replyMessages, setReplyMessages] = useState<ApiJobMessage[]>([]);
   const [replyInput, setReplyInput] = useState('');
   const [replyLoading, setReplyLoading] = useState(false);
-  const [isRecordingReply, setIsRecordingReply] = useState(false);
-  const [isSavingVoiceReply, setIsSavingVoiceReply] = useState(false);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeWorkerId, setComposeWorkerId] = useState('');
   const [pendingDeleteJobId, setPendingDeleteJobId] = useState<string | null>(
@@ -302,37 +301,6 @@ export default function OfficeDashboard() {
   const cardAttachTargetRef = useRef<{ jobId: string; taskId: string } | null>(
     null,
   );
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const autoStopTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-
-  // Stop mic/timer if the page unmounts mid-recording (navigate away / logout).
-  useEffect(() => {
-    return () => {
-      if (autoStopTimerRef.current) {
-        clearTimeout(autoStopTimerRef.current);
-        autoStopTimerRef.current = null;
-      }
-      const recorder = mediaRecorderRef.current;
-      if (recorder) {
-        // Prevent onstop from uploading after unmount.
-        recorder.ondataavailable = null;
-        recorder.onstop = null;
-        if (recorder.state === 'recording') {
-          try {
-            recorder.stop();
-          } catch {
-            // ignore — recorder may already be stopping
-          }
-        }
-        mediaRecorderRef.current = null;
-      }
-      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
-      mediaStreamRef.current = null;
-    };
-  }, []);
-
   // Template/example cards shown in an otherwise-empty column so first-time
   // users see what a real card looks like, instead of a blank "no items" box.
   // Dummy cards only show on the company creation date.
@@ -1228,96 +1196,75 @@ export default function OfficeDashboard() {
     }
   };
 
+  const handleVoiceReplyComplete = useCallback(
+    async (blob: Blob, mimeType: string) => {
+      if (!replyJobId) return;
+      const jobIdForUpload = replyJobId;
+      const formData = new FormData();
+      formData.append('audio', blob, 'voice-message.webm');
+      try {
+        const res = await api.post<{ message: ApiJobMessage }>(
+          `/api/jobs/${jobIdForUpload}/voice-message`,
+          formData,
+        );
+        if ((res.status === 200 || res.status === 201) && res.data) {
+          setReplyMessages((prev) => [...prev, res.data!.message]);
+          void refreshBoard();
+        } else {
+          logClientError("office.voiceUpload", res.error, {
+            status: res.status,
+            jobId: jobIdForUpload,
+            mimeType,
+          });
+          showToast(
+            apiFailureMessage(res.error, res.status, t("workerVoiceSendFailed"))
+          );
+        }
+      } catch (err) {
+        logClientError("office.voiceUpload", err, { jobId: jobIdForUpload, mimeType });
+        showToast(
+          userFacingCatchMessage(
+            err,
+            t("workerVoiceSendFailed"),
+            t("workerNetworkError")
+          )
+        );
+      }
+    },
+    [refreshBoard, replyJobId, showToast, t]
+  );
+
+  const handleVoiceReplyError = useCallback(
+    (error: unknown) => {
+      logClientError("office.voiceRecorder", error);
+      const message =
+        error instanceof Error && error.message === "empty-audio"
+          ? t("workerVoiceSendFailed")
+          : userFacingCatchMessage(
+              error,
+              t("workerMicUnavailable"),
+              t("workerNetworkError"),
+              t("workerMicUnavailable")
+            );
+      showToast(message);
+    },
+    [showToast, t]
+  );
+
+  const replyVoiceRecorder = useVoiceRecorder({
+    maxSeconds: LIMITS.VOICE_MAX_SECONDS,
+    onComplete: handleVoiceReplyComplete,
+    onError: handleVoiceReplyError,
+  });
+
   const handleStartRecordReply = async () => {
     if (!communicationAllowed) {
       showCommunicationBlockedToast();
       return;
     }
     if (!replyJobId) return;
-    const jobIdForUpload = replyJobId;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaStreamRef.current = stream;
-      const recorder = new MediaRecorder(stream);
-      audioChunksRef.current = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-      // Close recording UI only after the blob is finalized and upload finishes
-      // (Mark a11: stop() is async; don't setIsRecordingReply(false) in the click handler).
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        if (mediaStreamRef.current === stream) mediaStreamRef.current = null;
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        try {
-          if (blob.size === 0) {
-            showToast(t("workerVoiceSendFailed"));
-            return;
-          }
-          const formData = new FormData();
-          formData.append('audio', blob, 'voice-message.webm');
-          const res = await api.post<{ message: ApiJobMessage }>(
-            `/api/jobs/${jobIdForUpload}/voice-message`,
-            formData,
-          );
-          if ((res.status === 200 || res.status === 201) && res.data) {
-            setReplyMessages((prev) => [...prev, res.data!.message]);
-            void refreshBoard();
-          } else {
-            logClientError("office.voiceUpload", res.error, {
-              status: res.status,
-              jobId: jobIdForUpload,
-            });
-            showToast(
-              apiFailureMessage(res.error, res.status, t("workerVoiceSendFailed"))
-            );
-          }
-        } catch (err) {
-          logClientError("office.voiceUpload", err, { jobId: jobIdForUpload });
-          showToast(
-            userFacingCatchMessage(
-              err,
-              t("workerVoiceSendFailed"),
-              t("workerNetworkError")
-            )
-          );
-        } finally {
-          setIsSavingVoiceReply(false);
-          setIsRecordingReply(false);
-          mediaRecorderRef.current = null;
-        }
-      };
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setIsSavingVoiceReply(false);
-      setIsRecordingReply(true);
-      autoStopTimerRef.current = setTimeout(() => {
-        if (mediaRecorderRef.current?.state === 'recording') {
-          setIsSavingVoiceReply(true);
-          mediaRecorderRef.current.stop();
-        }
-      }, LIMITS.VOICE_MAX_SECONDS * 1000);
-    } catch (err) {
-      logClientError("office.startReplyRecording", err);
-      showToast(
-        userFacingCatchMessage(
-          err,
-          t("workerMicUnavailable"),
-          t("workerNetworkError"),
-          t("workerMicUnavailable")
-        )
-      );
-    }
-  };
-
-  const handleStopRecordReply = () => {
-    if (autoStopTimerRef.current) clearTimeout(autoStopTimerRef.current);
-    if (isSavingVoiceReply) return;
-    // Only stop capture here — UI stays open until onstop finishes upload.
-    if (mediaRecorderRef.current?.state === 'recording') {
-      setIsSavingVoiceReply(true);
-      mediaRecorderRef.current.stop();
-    }
+    if (replyVoiceRecorder.isRecording) return;
+    await replyVoiceRecorder.start();
   };
 
   if (authLoading || dataLoading) {
@@ -2528,7 +2475,7 @@ export default function OfficeDashboard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isRecordingReply} onOpenChange={() => {}}>
+      <Dialog open={replyVoiceRecorder.isRecording} onOpenChange={() => {}}>
         <DialogContent
           showCloseButton={false}
           className="max-w-sm w-[90vw] bg-[#0F172A] text-white border-none"
@@ -2536,21 +2483,44 @@ export default function OfficeDashboard() {
           <div className="flex flex-col items-center text-center py-4">
             <div
               className={`w-16 h-16 rounded-full flex items-center justify-center mb-6 shadow-lg ${
-                isSavingVoiceReply ? "bg-slate-600" : "bg-red-600 animate-pulse"
+                replyVoiceRecorder.isSaving || replyVoiceRecorder.isPaused
+                  ? "bg-slate-600"
+                  : "bg-red-600 animate-pulse"
               }`}
             >
               <Mic className="w-8 h-8 text-white" />
             </div>
             <h3 className="font-bold text-base tracking-wide">
-              {isSavingVoiceReply ? t("workerVoiceSaving") : t("workerRecording")}
+              {replyVoiceRecorder.isSaving ? t("workerVoiceSaving") : t("workerRecording")}
             </h3>
-            {!isSavingVoiceReply && (
-              <Button
-                onClick={handleStopRecordReply}
-                className="mt-8 rounded-full h-11 px-6 bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs cursor-pointer"
-              >
-                {t("workerStopRecord")}
-              </Button>
+            <span className="mt-1 text-sm font-semibold text-slate-400">
+              00:{replyVoiceRecorder.seconds.toString().padStart(2, "0")}
+            </span>
+            {!replyVoiceRecorder.isSaving && (
+              <div className="mt-8 flex w-full justify-center gap-3">
+                {replyVoiceRecorder.isPaused ? (
+                  <Button
+                    onClick={replyVoiceRecorder.resume}
+                    className="h-11 rounded-full bg-white px-5 text-xs font-bold text-slate-800 hover:bg-slate-100"
+                  >
+                    {t("workerResumeRecord")}
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={replyVoiceRecorder.pause}
+                    disabled={!replyVoiceRecorder.canPause}
+                    className="h-11 rounded-full bg-white/10 px-5 text-xs font-bold text-white ring-1 ring-white/20 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {t("workerPauseRecord")}
+                  </Button>
+                )}
+                <Button
+                  onClick={replyVoiceRecorder.finish}
+                  className="h-11 rounded-full bg-white px-5 text-xs font-bold text-slate-800 hover:bg-slate-100"
+                >
+                  {t("workerStopRecord")}
+                </Button>
+              </div>
             )}
           </div>
         </DialogContent>

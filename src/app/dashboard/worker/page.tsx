@@ -22,6 +22,7 @@ import { JOB_COMMUNICATION_TODAY_ONLY_MESSAGE } from "@/lib/services/jobCommunic
 import { toTelHref } from "@/lib/phone";
 import { playMessageBeep, unlockMessageBeep } from "@/lib/playMessageBeep";
 import { AuraFileInput } from "@/components/dashboard/AuraForm";
+import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import {
   apiFailureMessage,
   logClientError,
@@ -76,29 +77,7 @@ export default function WorkerDashboard() {
   const seenJobAssignedIdsRef = useRef<Set<string> | null>(null);
   const seenJobIdsRef = useRef<Set<string> | null>(null);
 
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const recordingTimer = useRef<NodeJS.Timeout | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const autoStopTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  /** Prevents double-tap starting two recordings before React state updates. */
-  const recordingLockRef = useRef(false);
-
   const chatBottomRef = useRef<HTMLDivElement>(null);
-
-  const clearRecordingTimers = () => {
-    if (autoStopTimerRef.current) {
-      clearTimeout(autoStopTimerRef.current);
-      autoStopTimerRef.current = null;
-    }
-  };
-
-  const releaseRecordingLock = () => {
-    clearRecordingTimers();
-    recordingLockRef.current = false;
-    setIsRecording(false);
-  };
 
   const loadAll = useCallback(async () => {
     try {
@@ -241,20 +220,6 @@ export default function WorkerDashboard() {
     }
   }, [messages, chatOpen]);
 
-  useEffect(() => {
-    if (isRecording) {
-      recordingTimer.current = setInterval(() => {
-        setRecordingSeconds((prev) => prev + 1);
-      }, 1000);
-    } else {
-      if (recordingTimer.current) clearInterval(recordingTimer.current);
-      setRecordingSeconds(0);
-    }
-    return () => {
-      if (recordingTimer.current) clearInterval(recordingTimer.current);
-    };
-  }, [isRecording]);
-
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 2000);
@@ -386,78 +351,73 @@ export default function WorkerDashboard() {
     }
   };
 
+  const handleVoiceComplete = useCallback(
+    async (blob: Blob, mimeType: string) => {
+      if (!job) return;
+      const formData = new FormData();
+      formData.append("audio", blob, "voice-message.webm");
+      try {
+        const res = await api.post<{ message: ApiJobMessage }>(
+          `/api/jobs/${job.id}/voice-message`,
+          formData
+        );
+        if ((res.status === 200 || res.status === 201) && res.data) {
+          setMessages((prev) => [...prev, res.data!.message]);
+          showToast(t("workerVoiceSent"));
+        } else {
+          logClientError("worker.voiceUpload", res.error, {
+            status: res.status,
+            jobId: job.id,
+            mimeType,
+          });
+          showToast(
+            apiFailureMessage(res.error, res.status, t("workerVoiceSendFailed"))
+          );
+        }
+      } catch (uploadErr) {
+        logClientError("worker.voiceUpload", uploadErr, { jobId: job.id, mimeType });
+        showToast(
+          userFacingCatchMessage(
+            uploadErr,
+            t("workerVoiceSendFailed"),
+            t("workerNetworkError")
+          )
+        );
+      }
+    },
+    [job, t]
+  );
+
+  const handleVoiceError = useCallback(
+    (error: unknown) => {
+      logClientError("worker.voiceRecorder", error);
+      const message =
+        error instanceof Error && error.message === "empty-audio"
+          ? t("workerVoiceSendFailed")
+          : userFacingCatchMessage(
+              error,
+              t("workerMicUnavailable"),
+              t("workerNetworkError"),
+              t("workerMicUnavailable")
+            );
+      showToast(message);
+    },
+    [t]
+  );
+
+  const voiceRecorder = useVoiceRecorder({
+    maxSeconds: LIMITS.VOICE_MAX_SECONDS,
+    onComplete: handleVoiceComplete,
+    onError: handleVoiceError,
+  });
+
   const handleStartRecord = async () => {
-    if (!job || recordingLockRef.current || isRecording) return;
+    if (!job || voiceRecorder.isRecording) return;
     if (!isJobCommunicationAllowed(job)) {
       showToast(JOB_COMMUNICATION_TODAY_ONLY_MESSAGE);
       return;
     }
-    recordingLockRef.current = true;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      audioChunksRef.current = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((track) => track.stop());
-        releaseRecordingLock();
-        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        if (blob.size === 0) {
-          showToast(t("workerVoiceSendFailed"));
-          return;
-        }
-        const formData = new FormData();
-        formData.append("audio", blob, "voice-message.webm");
-        try {
-          const res = await api.post<{ message: ApiJobMessage }>(
-            `/api/jobs/${job.id}/voice-message`,
-            formData
-          );
-          if ((res.status === 200 || res.status === 201) && res.data) {
-            setMessages((prev) => [...prev, res.data!.message]);
-            showToast(t("workerVoiceSent"));
-          } else {
-            logClientError("worker.voiceUpload", res.error, {
-              status: res.status,
-              jobId: job.id,
-            });
-            showToast(
-              apiFailureMessage(res.error, res.status, t("workerVoiceSendFailed"))
-            );
-          }
-        } catch (uploadErr) {
-          logClientError("worker.voiceUpload", uploadErr, { jobId: job.id });
-          showToast(
-            userFacingCatchMessage(
-              uploadErr,
-              t("workerVoiceSendFailed"),
-              t("workerNetworkError")
-            )
-          );
-        }
-      };
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setIsRecording(true);
-      autoStopTimerRef.current = setTimeout(() => {
-        if (mediaRecorderRef.current?.state === "recording") {
-          mediaRecorderRef.current.stop();
-        }
-      }, LIMITS.VOICE_MAX_SECONDS * 1000);
-    } catch (err) {
-      logClientError("worker.startRecord", err);
-      releaseRecordingLock();
-      showToast(
-        userFacingCatchMessage(
-          err,
-          t("workerMicUnavailable"),
-          t("workerNetworkError"),
-          t("workerMicUnavailable")
-        )
-      );
-    }
+    await voiceRecorder.start();
   };
 
   const openJobDetails = () => {
@@ -928,7 +888,7 @@ export default function WorkerDashboard() {
                 >
                   <button
                     onClick={handleStartRecord}
-                    disabled={!job || isRecording}
+                    disabled={!job || voiceRecorder.isRecording}
                     title={
                       job && !canCommunicate
                         ? JOB_COMMUNICATION_TODAY_ONLY_MESSAGE
@@ -1139,19 +1099,56 @@ export default function WorkerDashboard() {
       </Dialog>
 
       {/* Recording dialog */}
-      <Dialog open={isRecording} onOpenChange={() => {}}>
+      <Dialog open={voiceRecorder.isRecording} onOpenChange={() => {}}>
         <DialogContent showCloseButton={false} className="max-w-sm w-[90vw] bg-[#0F172A] text-white border-none">
           <div className="flex flex-col items-center text-center py-4">
-            <div className="w-16 h-16 rounded-full bg-red-600 flex items-center justify-center mb-6 animate-pulse shadow-lg">
+            <div
+              className={`w-16 h-16 rounded-full flex items-center justify-center mb-6 shadow-lg ${
+                voiceRecorder.isSaving || voiceRecorder.isPaused
+                  ? "bg-slate-600"
+                  : "bg-red-600 animate-pulse"
+              }`}
+            >
               <Mic className="w-8 h-8 text-white" />
             </div>
-            <h3 className="font-bold text-base tracking-wide">{t("workerRecording")}</h3>
+            <h3 className="font-bold text-base tracking-wide">
+              {voiceRecorder.isSaving ? t("workerVoiceSaving") : t("workerRecording")}
+            </h3>
             <span className="text-sm font-semibold text-slate-400 mt-1">
-              00:{recordingSeconds.toString().padStart(2, "0")}
+              00:{voiceRecorder.seconds.toString().padStart(2, "0")}
             </span>
             <p className="text-xs text-slate-500 max-w-[220px] mt-3 leading-normal">
               {t("workerRecordingDesc")}
             </p>
+            {!voiceRecorder.isSaving && (
+              <div className="mt-8 flex w-full justify-center gap-3">
+                {voiceRecorder.isPaused ? (
+                  <button
+                    type="button"
+                    onClick={voiceRecorder.resume}
+                    className="h-11 rounded-full bg-white px-5 text-xs font-bold text-slate-800 hover:bg-slate-100"
+                  >
+                    {t("workerResumeRecord")}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={voiceRecorder.pause}
+                    disabled={!voiceRecorder.canPause}
+                    className="h-11 rounded-full bg-white/10 px-5 text-xs font-bold text-white ring-1 ring-white/20 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {t("workerPauseRecord")}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={voiceRecorder.finish}
+                  className="h-11 rounded-full bg-white px-5 text-xs font-bold text-slate-800 hover:bg-slate-100"
+                >
+                  {t("workerStopRecord")}
+                </button>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
