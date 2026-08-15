@@ -62,7 +62,10 @@ interface DbAttachmentRow {
   aiDetails: string;
   uploadedByName: string;
   category: DbAttachmentCategory;
+  attachmentType: string;
+  documentType: string | null;
   signedUrl: string | null;
+  thumbnailSignedUrl: string | null;
 }
 
 interface DbZaznamekRow {
@@ -90,6 +93,7 @@ interface ApiFileRow {
   document_preview: string | null;
   created_at: string;
   signed_url: string | null;
+  thumbnail_signed_url?: string | null;
   uploaded_by?: string | null;
   uploaded_by_name?: string | null;
 }
@@ -373,10 +377,13 @@ export default function DatabaseDashboard() {
           name: f.file_name,
           aiDetails:
             f.document_preview?.trim() ||
-            `Dokument - ${f.file_name.trim() || 'datoteka'}`,
+            `Dokument · ${f.file_name.trim() || 'datoteka'}`,
           uploadedByName: f.uploaded_by_name?.trim() || '—',
           category,
+          attachmentType: f.attachment_type,
+          documentType: f.document_type,
           signedUrl: f.signed_url,
+          thumbnailSignedUrl: f.thumbnail_signed_url ?? null,
         });
       }
       setAttachmentsList(mapped);
@@ -1540,41 +1547,62 @@ export default function DatabaseDashboard() {
                               </td>
                             </tr>
                           ) : (
-                            paginatedDataset.map((item: DbAttachmentRow) => (
-                              <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                                <td className="px-6 py-2 align-top text-slate-800" style={tdStyle12}>
-                                  {formatDate(item.date)}
-                                </td>
-                                <td className="px-6 py-2 align-top text-slate-800" style={tdStyle12}>
-                                  <button
-                                    type="button"
-                                    onClick={() => void openJobDetail(item.jobId)}
-                                    className="text-left hover:underline cursor-pointer bg-transparent border-none p-0 outline-none text-[#2b5493]"
-                                  >
-                                    {item.project}
-                                  </button>
-                                </td>
-                                <td className="px-6 py-2 align-top text-slate-800" style={tdStyle12}>
-                                  {item.uploadedByName}
-                                </td>
-                                <td className="px-6 py-2 align-top text-blue-600 font-medium" style={tdStyle12}>
-                                  {item.signedUrl || item.id ? (
+                            paginatedDataset.map((item: DbAttachmentRow) => {
+                              const showImageThumbnail =
+                                item.attachmentType === 'image' &&
+                                (!item.documentType || item.documentType === 'other') &&
+                                item.thumbnailSignedUrl;
+                              return (
+                                <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                                  <td className="px-6 py-2 align-top text-slate-800" style={tdStyle12}>
+                                    {formatDate(item.date)}
+                                  </td>
+                                  <td className="px-6 py-2 align-top text-slate-800" style={tdStyle12}>
                                     <button
                                       type="button"
-                                      onClick={() => void openAttachmentPreview(item)}
-                                      className="text-left hover:underline cursor-pointer bg-transparent border-none p-0 outline-none text-blue-600"
+                                      onClick={() => void openJobDetail(item.jobId)}
+                                      className="text-left hover:underline cursor-pointer bg-transparent border-none p-0 outline-none text-[#2b5493]"
                                     >
-                                      {item.name}
+                                      {item.project}
                                     </button>
-                                  ) : (
-                                    item.name
-                                  )}
-                                </td>
-                                <td className="px-6 py-2 align-top text-slate-800 whitespace-pre-line break-words leading-relaxed" style={tdStyle12}>
-                                  {item.aiDetails}
-                                </td>
-                              </tr>
-                            ))
+                                  </td>
+                                  <td className="px-6 py-2 align-top text-slate-800" style={tdStyle12}>
+                                    {item.uploadedByName}
+                                  </td>
+                                  <td className="px-6 py-2 align-top text-blue-600 font-medium" style={tdStyle12}>
+                                    {item.signedUrl || item.id ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => void openAttachmentPreview(item)}
+                                        className="text-left hover:underline cursor-pointer bg-transparent border-none p-0 outline-none text-blue-600"
+                                      >
+                                        {item.name}
+                                      </button>
+                                    ) : (
+                                      item.name
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-2 align-top text-slate-800 whitespace-pre-line break-words leading-relaxed" style={tdStyle12}>
+                                    {showImageThumbnail ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => void openAttachmentPreview(item)}
+                                        className="block bg-transparent border-none p-0 outline-none cursor-pointer"
+                                        aria-label={`Odpri ${item.name}`}
+                                      >
+                                        <img
+                                          src={item.thumbnailSignedUrl!}
+                                          alt={item.name}
+                                          className="h-20 w-20 rounded object-cover border border-slate-200"
+                                        />
+                                      </button>
+                                    ) : (
+                                      item.aiDetails
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })
                           )}
                         </tbody>
                       </table>

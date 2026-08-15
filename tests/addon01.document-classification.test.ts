@@ -7,6 +7,7 @@ import {
   setFileOcrText,
   type RegisteredCompany,
 } from "./helpers/factories";
+import { getAdminClient } from "@/lib/supabase/admin";
 
 const createdCompanies: RegisteredCompany[] = [];
 
@@ -31,10 +32,18 @@ interface FileDto {
 async function setupCompanyWithJob() {
   const owner = await registerCompany();
   createdCompanies.push(owner);
+  if (!owner.companyId) throw new Error("Registration did not return a company id.");
+  const db = getAdminClient();
+  const { error } = await db
+    .from("companies")
+    .update({ subscription_active: true, subscription_status: "active" })
+    .eq("id", owner.companyId);
+  if (error) throw new Error(`Failed to activate test company: ${error.message}`);
   const jobRes = await api.post<{ data?: { job: JobDto } }>("/api/jobs", {
     token: owner.accessToken,
     body: { title: "Doc classify job" },
   });
+  expect(jobRes.status).toBe(201);
   return { owner, jobId: jobRes.body.data!.job.id };
 }
 
@@ -69,6 +78,7 @@ describe("Add-on 1 — document classification storage (API)", () => {
         [
           "INVOICE",
           "Supplier: ABC d.o.o.",
+          "Customer: ABC d.o.o.",
           "Invoice No: 2025-018",
           "Date: 12.06.2025",
           "Amount: 684,20 €",
@@ -82,7 +92,7 @@ describe("Add-on 1 — document classification storage (API)", () => {
       expect(list.status).toBe(200);
       const file = list.body.data!.files[0]!;
       expect(file.document_type).toBe("invoice");
-      expect(file.document_preview).toContain("Invoice");
+      expect(file.document_preview).toContain("Račun 2025-018");
       expect(file.document_preview).toContain("ABC d.o.o.");
       expect(file.document_preview!.length).toBeLessThanOrEqual(500);
       expect(file.ocr_text).toContain("Invoice No: 2025-018");

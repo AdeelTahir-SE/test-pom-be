@@ -212,18 +212,20 @@ export async function setFileOcrText(fileId: string, text: string): Promise<void
   const db = getAdminClient();
   const { data: file, error: readError } = await db
     .from("job_files")
-    .select("file_name")
+    .select("file_name, attachment_type")
     .eq("id", fileId)
     .maybeSingle();
   if (readError) throw new Error(`Failed to read file for OCR: ${readError.message}`);
 
   const { enrichDocumentFromOcr } = await import("@/lib/documents/preview");
-  const enrichment = enrichDocumentFromOcr(text, file?.file_name ?? "");
+  const enrichment = enrichDocumentFromOcr(text, file?.file_name ?? "", {
+    attachmentType: file?.attachment_type ?? null,
+  });
 
   const { error } = await db
     .from("job_files")
     .update({
-      ocr_text: text,
+      ocr_text: enrichment.should_store_ocr_text ? text : null,
       document_type: enrichment.document_type,
       document_preview: enrichment.document_preview,
     })

@@ -87,6 +87,7 @@ interface AttachmentItem {
   time: string;
   date: string;
   url: string | null;
+  thumbnailUrl: string | null;
   ocrText: string | null;
   documentType: string | null;
   documentPreview: string | null;
@@ -418,6 +419,7 @@ export function WorkerDetailModal({
         time: formatSiTimeFromIso(f.created_at),
         date: formatSiDateFromIso(f.created_at),
         url: f.signed_url,
+        thumbnailUrl: f.thumbnail_signed_url ?? null,
         ocrText: f.ocr_text,
         documentType: f.document_type,
         documentPreview: f.document_preview,
@@ -1208,6 +1210,10 @@ export function WorkerDetailModal({
                     </span>
                   )}
                   {attachments.map((att) => {
+                    const showImageThumbnail =
+                      att.attachmentType === "image" &&
+                      (!att.documentType || att.documentType === "other") &&
+                      att.thumbnailUrl;
                     return (
                       <button
                         key={att.id}
@@ -1227,6 +1233,17 @@ export function WorkerDetailModal({
                           >
                             {att.name}
                           </span>
+                          {showImageThumbnail ? (
+                            <img
+                              src={att.thumbnailUrl!}
+                              alt={att.name}
+                              className="mt-1 h-16 w-16 rounded object-cover border border-slate-200"
+                            />
+                          ) : att.documentPreview ? (
+                            <span className="text-[11px] text-slate-500 whitespace-pre-line break-words">
+                              {att.documentPreview}
+                            </span>
+                          ) : null}
                         </div>
                       </button>
                     );
@@ -1412,6 +1429,10 @@ export function WorkerDetailModal({
                     </span>
                   )}
                   {attachments.map((att) => {
+                    const showImageThumbnail =
+                      att.attachmentType === "image" &&
+                      (!att.documentType || att.documentType === "other") &&
+                      att.thumbnailUrl;
                     return (
                       <button
                         key={att.id}
@@ -1431,6 +1452,17 @@ export function WorkerDetailModal({
                           >
                             {att.name}
                           </span>
+                          {showImageThumbnail ? (
+                            <img
+                              src={att.thumbnailUrl!}
+                              alt={att.name}
+                              className="mt-1 h-16 w-16 rounded object-cover border border-slate-200"
+                            />
+                          ) : att.documentPreview ? (
+                            <span className="text-[11px] text-slate-500 whitespace-pre-line break-words">
+                              {att.documentPreview}
+                            </span>
+                          ) : null}
                         </div>
                       </button>
                     );
@@ -1703,6 +1735,10 @@ export function WorkerDetailModal({
                   </span>
                 )}
                 {attachments.map((att) => {
+                  const showImageThumbnail =
+                    att.attachmentType === "image" &&
+                    (!att.documentType || att.documentType === "other") &&
+                    att.thumbnailUrl;
                   return (
                     <button
                       key={att.id}
@@ -1722,6 +1758,17 @@ export function WorkerDetailModal({
                         >
                           {att.name}
                         </span>
+                        {showImageThumbnail ? (
+                          <img
+                            src={att.thumbnailUrl!}
+                            alt={att.name}
+                            className="mt-1 h-16 w-16 rounded object-cover border border-slate-200"
+                          />
+                        ) : att.documentPreview ? (
+                          <span className="text-[11px] text-slate-500 whitespace-pre-line break-words">
+                            {att.documentPreview}
+                          </span>
+                        ) : null}
                       </div>
                     </button>
                   );
