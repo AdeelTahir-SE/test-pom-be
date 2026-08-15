@@ -54,6 +54,7 @@ import { DailySummaryPanel } from '@/components/dashboard/DailySummaryPanel';
 import { WorkerCard } from '@/components/dashboard/WorkerCard';
 import { OfficeCard } from '@/components/dashboard/OfficeCard';
 import { VoiceMessagePlayer } from '@/components/dashboard/VoiceMessagePlayer';
+import { BillingRequired } from '@/components/dashboard/BillingRequired';
 import { CommunicationCard } from '@/components/dashboard/CommunicationCard';
 import { WorkerDetailModal } from '@/components/dashboard/WorkerDetailModal';
 import { AddTaskModal } from '@/components/dashboard/AddTaskModal';
@@ -199,7 +200,10 @@ export default function OfficeDashboard() {
     setChecklistsByJob,
     setWorkers,
     refreshBoard,
-  } = useOfficeBoard(selectedDayKey, !authLoading && !!user);
+  } = useOfficeBoard(
+    selectedDayKey,
+    !authLoading && !!user && company?.subscription_active !== false
+  );
 
   // Unlock Web Audio after first tap so inbound beeps can play (Mark).
   useEffect(() => {
@@ -1274,6 +1278,17 @@ export default function OfficeDashboard() {
       <div className="min-h-screen flex items-center justify-center bg-[#f3f5f8] text-slate-400 text-sm">
         {t('officeLoading')}
       </div>
+    );
+  }
+
+  if (user && company?.subscription_active === false) {
+    return (
+      <BillingRequired
+        user={user}
+        company={company}
+        onLogout={logout}
+        onActivated={refreshBoard}
+      />
     );
   }
 

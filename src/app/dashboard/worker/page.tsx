@@ -12,6 +12,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { WorkerDetailModal } from "@/components/dashboard/WorkerDetailModal";
 import { OfficeCard } from "@/components/dashboard/OfficeCard";
 import { VoiceMessagePlayer } from "@/components/dashboard/VoiceMessagePlayer";
+import { BillingRequired } from "@/components/dashboard/BillingRequired";
 import { ApiJob, ApiChecklistItem, jobToWorkerCard, jobNumber, formatTime } from "@/lib/dashboardMappers";
 import { isOptimisticId } from "@/lib/optimisticId";
 import type { ApiNotification } from "@/lib/dashboardMappers";
@@ -44,7 +45,7 @@ interface ApiJobMessage {
 export default function WorkerDashboard() {
   const { t } = useLanguage();
   const router = useRouter();
-  const { user, officeContact, loading: authLoading, logout } = useCurrentUser();
+  const { user, company, officeContact, loading: authLoading, logout } = useCurrentUser();
 
   // Only workers use this screen. Pisarna (manager) + company (owner) → command center (Mark).
   useEffect(() => {
@@ -82,6 +83,10 @@ export default function WorkerDashboard() {
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   const loadAll = useCallback(async () => {
+    if (company?.subscription_active === false) {
+      setDataLoading(false);
+      return;
+    }
     try {
       const jobsRes = await api.get<{ jobs: ApiJob[] }>("/api/jobs");
       const openJobs = (jobsRes.data?.jobs ?? []).filter(
@@ -130,11 +135,12 @@ export default function WorkerDashboard() {
     } finally {
       setDataLoading(false);
     }
-  }, [t, selectedDate]);
+  }, [company?.subscription_active, t, selectedDate]);
 
   useEffect(() => {
-    if (!authLoading && user) loadAll();
-  }, [authLoading, user, loadAll]);
+    if (!authLoading && user && company?.subscription_active !== false) loadAll();
+    if (!authLoading && user && company?.subscription_active === false) setDataLoading(false);
+  }, [authLoading, user, company?.subscription_active, loadAll]);
 
   // Unlock Web Audio after first tap (browsers block beeps otherwise).
   useEffect(() => {
@@ -145,6 +151,7 @@ export default function WorkerDashboard() {
 
   // Mark: beep when a new card is assigned or a communication arrives.
   useEffect(() => {
+    if (!user || company?.subscription_active === false) return;
     let cancelled = false;
     const interval = setInterval(async () => {
       const [unreadRes, notifsRes, jobsRes] = await Promise.all([
@@ -214,7 +221,7 @@ export default function WorkerDashboard() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [loadAll]);
+  }, [company?.subscription_active, loadAll, user]);
 
   useEffect(() => {
     if (chatBottomRef.current) {
@@ -477,6 +484,17 @@ export default function WorkerDashboard() {
       <div className="min-h-screen flex items-center justify-center bg-[#f3f5f8] text-slate-400 text-sm">
         {t("workerLoading")}
       </div>
+    );
+  }
+
+  if (user && company?.subscription_active === false) {
+    return (
+      <BillingRequired
+        user={user}
+        company={company}
+        officeContact={officeContact}
+        onLogout={logout}
+      />
     );
   }
 

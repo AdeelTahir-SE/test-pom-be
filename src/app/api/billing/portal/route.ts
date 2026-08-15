@@ -1,7 +1,9 @@
 import { withAuth } from "@/lib/http/handler";
 import { ok, ApiError } from "@/lib/http/responses";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { appBaseUrl, getStripe } from "@/lib/stripe/client";
 import { loadCompanyBilling } from "@/lib/stripe/billing";
+import Stripe from "stripe";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +37,29 @@ export const POST = withAuth(
       });
       return ok({ url: portal.url });
     } catch (err) {
+      if (
+        err instanceof Stripe.errors.StripeInvalidRequestError &&
+        err.code === "resource_missing"
+      ) {
+        const db = getAdminClient();
+        await db
+          .from("companies")
+          .update({
+            stripe_customer_id: null,
+            stripe_subscription_id: null,
+            subscription_status: null,
+            subscription_active: false,
+            subscription_current_period_end: null,
+            subscription_cancel_at_period_end: false,
+            subscription_cancel_at: null,
+            subscription_canceled_at: null,
+          })
+          .eq("id", company.id);
+        throw new ApiError(
+          "bad_request",
+          "Stored Stripe customer was not found. Start a new subscription first."
+        );
+      }
       console.error("[billing.portal]", err);
       const message =
         err instanceof Error && err.message

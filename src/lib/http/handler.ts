@@ -3,6 +3,7 @@ import { getAuthContext } from "@/lib/auth/context";
 import { ApiError, toErrorResponse } from "@/lib/http/responses";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { env } from "@/lib/env";
+import { billingAccessFromStoredState } from "@/lib/stripe/subscription";
 import type { CompanyUserContext, PlatformAdminContext } from "@/types/domain";
 import type { UserRole } from "@/config/constants";
 
@@ -33,11 +34,29 @@ async function assertSubscriptionActive(request: Request, companyId: string) {
   const db = getAdminClient();
   const { data: company } = await db
     .from("companies")
-    .select("subscription_active")
+    .select(
+      "subscription_active, subscription_status, subscription_current_period_end, subscription_cancel_at_period_end, subscription_cancel_at"
+    )
     .eq("id", companyId)
     .maybeSingle();
 
-  if (company && company.subscription_active === false) {
+  const active =
+    company &&
+    company.subscription_active &&
+    billingAccessFromStoredState({
+      status: company.subscription_status,
+      cancelAtPeriodEnd: company.subscription_cancel_at_period_end,
+      currentPeriodEnd: company.subscription_current_period_end,
+      cancelAt: company.subscription_cancel_at,
+    });
+
+  if (company && !active) {
+    if (company.subscription_active) {
+      await db
+        .from("companies")
+        .update({ subscription_active: false })
+        .eq("id", companyId);
+    }
     throw new ApiError(
       "payment_required",
       "Company subscription is inactive. Please renew billing to continue."

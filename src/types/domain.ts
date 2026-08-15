@@ -46,6 +46,10 @@ export interface CompanyRow {
   stripe_subscription_id: string | null;
   paypal_subscription_id: string | null;
   subscription_status: string | null;
+  subscription_current_period_end: string | null;
+  subscription_cancel_at_period_end: boolean;
+  subscription_cancel_at: string | null;
+  subscription_canceled_at: string | null;
   created_at: string;
 }
 

@@ -31,6 +31,7 @@ import { WorkerDetailModal } from '@/components/dashboard/WorkerDetailModal';
 import { AuraFileInput } from '@/components/dashboard/AuraForm';
 import { parseNoteText } from '@/components/dashboard/CustomerNotesBanner';
 import { AddCustomerNoteDialog } from '@/components/dashboard/AddCustomerNoteDialog';
+import { BillingRequired } from '@/components/dashboard/BillingRequired';
 
 interface TeamUser {
   id: string;
@@ -96,7 +97,7 @@ interface ApiFileRow {
 export default function DatabaseDashboard() {
   const router = useRouter();
   const { t } = useLanguage();
-  const { user, company, officeContact, loading: authLoading } = useCurrentUser();
+  const { user, company, officeContact, loading: authLoading, logout } = useCurrentUser();
   useEffect(() => {
     if (!authLoading && user && user.role === 'worker') {
       router.replace('/dashboard/worker');
@@ -480,13 +481,16 @@ export default function DatabaseDashboard() {
   }, [staffList]);
 
   useEffect(() => {
-    if (!authLoading && user) {
+    if (!authLoading && user && company?.subscription_active !== false) {
       void loadStaff();
     }
-  }, [authLoading, user, loadStaff]);
+    if (!authLoading && user && company?.subscription_active === false) {
+      setStaffLoading(false);
+    }
+  }, [authLoading, user, company?.subscription_active, loadStaff]);
 
   useEffect(() => {
-    if (authLoading || !user) return;
+    if (authLoading || !user || company?.subscription_active === false) return;
     if (activeTab === 1) void loadJobs();
     if (activeTab === 3) {
       void loadAttachments();
@@ -498,6 +502,7 @@ export default function DatabaseDashboard() {
     attachmentSubTab,
     authLoading,
     user,
+    company?.subscription_active,
     loadJobs,
     loadZaznamki,
     loadAttachments,
@@ -852,6 +857,18 @@ export default function DatabaseDashboard() {
       <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] text-slate-400 text-sm">
         {t('officeLoading')}
       </div>
+    );
+  }
+
+  if (user && company?.subscription_active === false) {
+    return (
+      <BillingRequired
+        user={user}
+        company={company}
+        officeContact={officeContact}
+        onLogout={logout}
+        onActivated={loadStaff}
+      />
     );
   }
 
