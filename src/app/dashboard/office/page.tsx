@@ -53,6 +53,7 @@ import {
 import { DailySummaryPanel } from '@/components/dashboard/DailySummaryPanel';
 import { WorkerCard } from '@/components/dashboard/WorkerCard';
 import { OfficeCard } from '@/components/dashboard/OfficeCard';
+import { VoiceMessagePlayer } from '@/components/dashboard/VoiceMessagePlayer';
 import { CommunicationCard } from '@/components/dashboard/CommunicationCard';
 import { WorkerDetailModal } from '@/components/dashboard/WorkerDetailModal';
 import { AddTaskModal } from '@/components/dashboard/AddTaskModal';
@@ -98,6 +99,7 @@ interface ApiJobMessage {
   sender_id: string;
   message_type: 'text' | 'voice';
   content: string;
+  attachment_id: string | null;
   is_urgent: boolean;
   read_at: string | null;
   created_at: string;
@@ -2432,6 +2434,16 @@ export default function OfficeDashboard() {
                           : 'bg-white border border-slate-200/60 rounded-tl-none text-slate-800'
                       }`}
                     >
+                      {m.message_type === 'voice' && m.attachment_id && (
+                        <VoiceMessagePlayer
+                          attachmentId={m.attachment_id}
+                          className="mb-2"
+                          audioClassName="h-9 w-full min-w-[180px]"
+                          errorClassName={`mt-1 text-[11px] font-medium ${
+                            isMine ? 'text-red-100' : 'text-red-600'
+                          }`}
+                        />
+                      )}
                       <p className={m.message_type === 'voice' ? 'italic' : ''}>
                         {m.content}
                       </p>
@@ -2459,14 +2471,22 @@ export default function OfficeDashboard() {
               className="flex-1 h-10 text-xs px-3 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800"
             />
             <button
+              type="button"
               onClick={handleStartRecordReply}
+              disabled={!communicationAllowed || replyVoiceRecorder.isRecording}
               title={t('workerVoice')}
-              className="w-10 h-10 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 flex items-center justify-center transition-colors shrink-0 cursor-pointer"
+              className={`w-10 h-10 rounded-xl border border-slate-200 text-slate-500 flex items-center justify-center transition-colors shrink-0 ${
+                communicationAllowed && !replyVoiceRecorder.isRecording
+                  ? 'hover:bg-slate-50 cursor-pointer'
+                  : 'opacity-45 cursor-not-allowed'
+              }`}
             >
               <Mic className="w-4 h-4" />
             </button>
             <button
+              type="button"
               onClick={handleSendReply}
+              disabled={!communicationAllowed}
               className="w-10 h-10 rounded-xl bg-[#0A1128] hover:bg-[#152042] text-white flex items-center justify-center transition-colors shrink-0 cursor-pointer"
             >
               <Send className="w-4 h-4" />

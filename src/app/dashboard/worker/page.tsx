@@ -11,6 +11,7 @@ import { SearchModal } from "@/components/dashboard/SearchModal";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { WorkerDetailModal } from "@/components/dashboard/WorkerDetailModal";
 import { OfficeCard } from "@/components/dashboard/OfficeCard";
+import { VoiceMessagePlayer } from "@/components/dashboard/VoiceMessagePlayer";
 import { ApiJob, ApiChecklistItem, jobToWorkerCard, jobNumber, formatTime } from "@/lib/dashboardMappers";
 import { isOptimisticId } from "@/lib/optimisticId";
 import type { ApiNotification } from "@/lib/dashboardMappers";
@@ -34,6 +35,7 @@ interface ApiJobMessage {
   sender_id: string;
   message_type: "text" | "voice";
   content: string;
+  attachment_id: string | null;
   is_urgent: boolean;
   read_at: string | null;
   created_at: string;
@@ -451,6 +453,7 @@ export default function WorkerDashboard() {
       text: m.content,
       time: formatTime(m.created_at),
       type: m.message_type === "voice" ? "glasovno" : "tekst",
+      attachmentId: m.attachment_id ?? null,
     };
   });
   const latestInbound = [...messages].reverse().find((m) => m.sender_id !== user?.id) ?? messages[messages.length - 1];
@@ -464,6 +467,7 @@ export default function WorkerDashboard() {
           time: formatTime(latestInbound.created_at),
           type: latestInbound.message_type === "voice" ? "glasovno" : "tekst",
           targetTask: job.title,
+          attachmentId: latestInbound.attachment_id ?? null,
         }
       : null;
 
@@ -1019,11 +1023,21 @@ export default function WorkerDashboard() {
               return (
                 <div key={m.id} className={`flex flex-col max-w-[85%] ${isMine ? "ml-auto items-end" : "mr-auto items-start"}`}>
                   <div className={`p-3 rounded-2xl text-xs leading-normal shadow-sm ${isMine ? "bg-[#1B3A6B] text-white rounded-tr-none" : "bg-white border border-slate-200/60 rounded-tl-none text-slate-800"}`}>
-                    {m.message_type === "voice" && (
+                    {/* {m.message_type === "voice" && (
                       <div className="flex items-center gap-1.5 mb-1.5 pb-1 border-b border-white/10">
                         <Mic className="w-2.5 h-2.5 text-emerald-400 animate-pulse" />
                         <span className="text-[8px] font-bold tracking-wider text-emerald-300 uppercase">{t("workerAiTranscriptTag")}</span>
                       </div>
+                    )} */}
+                    {m.message_type === "voice" && m.attachment_id && (
+                      <VoiceMessagePlayer
+                        attachmentId={m.attachment_id}
+                        className="mb-2"
+                        audioClassName="h-9 w-full min-w-[180px]"
+                        errorClassName={`mt-1 text-[11px] font-medium ${
+                          isMine ? "text-red-100" : "text-red-600"
+                        }`}
+                      />
                     )}
                     <p className={m.message_type === "voice" ? "italic" : ""}>{m.content}</p>
                   </div>
@@ -1058,7 +1072,26 @@ export default function WorkerDashboard() {
               }`}
             />
             <button
+              type="button"
+              onClick={handleStartRecord}
+              disabled={!canCommunicate || voiceRecorder.isRecording}
+              title={
+                canCommunicate
+                  ? t("workerVoice")
+                  : JOB_COMMUNICATION_TODAY_ONLY_MESSAGE
+              }
+              className={`w-10 h-10 rounded-xl border border-slate-200 text-slate-500 flex items-center justify-center transition-colors shrink-0 ${
+                canCommunicate && !voiceRecorder.isRecording
+                  ? "hover:bg-slate-50 cursor-pointer"
+                  : "opacity-45 cursor-not-allowed"
+              }`}
+            >
+              <Mic className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
               onClick={handleSendMessage}
+              disabled={!canCommunicate}
               title={
                 canCommunicate
                   ? undefined
