@@ -424,6 +424,7 @@ export default function OfficeDashboard() {
     const seen = new Set<string>();
     const options: { id: string; name: string }[] = [];
     for (const j of activeJobs) {
+      if (isOptimisticId(j.id)) continue;
       if (!j.worker_id || seen.has(j.worker_id)) continue;
       seen.add(j.worker_id);
       options.push({
@@ -1189,6 +1190,10 @@ export default function OfficeDashboard() {
   };
 
   const handleOpenReply = async (jobId: string) => {
+    if (isOptimisticId(jobId)) {
+      showToast('Kartica se še shranjuje. Poskusite znova čez trenutek.');
+      return;
+    }
     if (!communicationAllowed) {
       showCommunicationBlockedToast();
       return;
@@ -1204,7 +1209,7 @@ export default function OfficeDashboard() {
 
   /** Compose only for workers with a TEREN card on the selected day (Mark). */
   const findComposeJobForWorker = (workerId: string) =>
-    activeJobs.find((j) => j.worker_id === workerId) ?? null;
+    activeJobs.find((j) => j.worker_id === workerId && !isOptimisticId(j.id)) ?? null;
 
   const handleComposeMessage = (workerId: string) => {
     if (!requireBillingUnlocked()) return;
@@ -1230,6 +1235,11 @@ export default function OfficeDashboard() {
       return;
     }
     if (!replyInput.trim() || !replyJobId) return;
+    if (isOptimisticId(replyJobId)) {
+      setReplyJobId(null);
+      showToast('Kartica se še shranjuje. Poskusite znova čez trenutek.');
+      return;
+    }
     const res = await api.post<{ message: ApiJobMessage }>(
       `/api/jobs/${replyJobId}/messages`,
       { content: replyInput },
@@ -1246,6 +1256,11 @@ export default function OfficeDashboard() {
       if (!requireBillingUnlocked()) return;
       if (!replyJobId) return;
       const jobIdForUpload = replyJobId;
+      if (isOptimisticId(jobIdForUpload)) {
+        setReplyJobId(null);
+        showToast('Kartica se še shranjuje. Poskusite znova čez trenutek.');
+        return;
+      }
       const formData = new FormData();
       formData.append('audio', blob, 'voice-message.webm');
       try {

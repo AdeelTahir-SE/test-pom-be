@@ -73,6 +73,7 @@ export default function WorkerDashboard() {
   const [attachUploading, setAttachUploading] = useState(false);
 
   const [messages, setMessages] = useState<ApiJobMessage[]>([]);
+  const messagesRef = useRef<ApiJobMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [inboundNotifs, setInboundNotifs] = useState<ApiNotification[]>([]);
   const prevUnreadRef = useRef(0);
@@ -81,6 +82,10 @@ export default function WorkerDashboard() {
   const seenJobIdsRef = useRef<Set<string> | null>(null);
 
   const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const loadAll = useCallback(async () => {
     if (company?.subscription_active === false) {
@@ -214,6 +219,27 @@ export default function WorkerDashboard() {
         }
       }
 
+      if (job) {
+        const messagesRes = await api.get<{ messages: ApiJobMessage[] }>(
+          `/api/jobs/${job.id}/messages`
+        );
+        if (cancelled) return;
+        if (messagesRes.status === 200 && messagesRes.data) {
+          const nextMessages = messagesRes.data.messages ?? [];
+          const prevMessages = messagesRef.current;
+          const prevIds = new Set(prevMessages.map((m) => m.id));
+          const changed =
+            nextMessages.length !== prevMessages.length ||
+            nextMessages.some((m, index) => prevMessages[index]?.id !== m.id);
+          if (changed) {
+            if (nextMessages.some((m) => m.sender_id !== user.id && !prevIds.has(m.id))) {
+              shouldBeep = true;
+            }
+            setMessages(nextMessages);
+          }
+        }
+      }
+
       if (shouldBeep) playMessageBeep();
       if (shouldReload) void loadAll();
     }, 15000);
@@ -221,7 +247,7 @@ export default function WorkerDashboard() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [company?.subscription_active, loadAll, user]);
+  }, [company?.subscription_active, job, loadAll, user]);
 
   useEffect(() => {
     if (chatBottomRef.current) {
