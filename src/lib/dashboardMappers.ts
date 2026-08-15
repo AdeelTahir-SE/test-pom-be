@@ -234,6 +234,7 @@ export function communicationToMessage(
     worker_name: string | null;
     sender_name?: string | null;
     recipient_name?: string | null;
+    attachment_id?: string | null;
   },
   t: Translate
 ): Message {
@@ -249,5 +250,6 @@ export function communicationToMessage(
     type: m.message_type === "voice" ? "glasovno" : "tekst",
     // Inner bold title = job name on the TEREN card (Mark).
     targetTask: m.job_title?.trim() || undefined,
+    attachmentId: m.attachment_id ?? null,
   };
 }

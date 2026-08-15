@@ -58,6 +58,21 @@ function voiceForm(bytes: Buffer, name = "clip.webm", type = "audio/webm"): Form
   return form;
 }
 
+async function waitForVoiceTimelineEvent(jobId: string) {
+  const started = Date.now();
+  while (Date.now() - started < 5000) {
+    const events = await getTimelineEvents(jobId);
+    const voiceEvents = events.filter((e) => e.event_type === "voice_message_transcribed");
+    if (voiceEvents.length > 0) return { events, voiceEvents };
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  const events = await getTimelineEvents(jobId);
+  return {
+    events,
+    voiceEvents: events.filter((e) => e.event_type === "voice_message_transcribed"),
+  };
+}
+
 describe("Phase 9 — Voice-to-Text", () => {
   it(
     "creates exactly one voice message with fallback content when transcription is unavailable",
@@ -76,8 +91,8 @@ describe("Phase 9 — Voice-to-Text", () => {
       expect(message.recipient_id).toBe(owner.userId);
       expect(message.attachment_id).toBeTruthy();
 
-      const events = await getTimelineEvents(jobId);
-      expect(events.filter((e) => e.event_type === "voice_message_transcribed").length).toBe(1);
+      const { events, voiceEvents } = await waitForVoiceTimelineEvent(jobId);
+      expect(voiceEvents.length).toBe(1);
       // Voice messages never trigger message_sent (Appendix B §5).
       expect(events.some((e) => e.event_type === "message_sent")).toBe(false);
     },
@@ -103,8 +118,8 @@ describe("Phase 9 — Voice-to-Text", () => {
       expect(second.status).toBe(200);
       expect(second.body.data?.message.id).toBe(first.body.data?.message.id);
 
-      const events = await getTimelineEvents(jobId);
-      expect(events.filter((e) => e.event_type === "voice_message_transcribed").length).toBe(1);
+      const { voiceEvents } = await waitForVoiceTimelineEvent(jobId);
+      expect(voiceEvents.length).toBe(1);
     },
     30_000
   );

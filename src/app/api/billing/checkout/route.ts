@@ -3,6 +3,7 @@ import { ok, ApiError } from "@/lib/http/responses";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { appBaseUrl, getStripe } from "@/lib/stripe/client";
 import { loadCompanyBilling } from "@/lib/stripe/billing";
+import { getCheckoutDiscountConfig } from "@/lib/stripe/discount";
 import { env } from "@/lib/env";
 import Stripe from "stripe";
 
@@ -16,6 +17,13 @@ function stripeFailMessage(err: unknown): string {
     return err.message;
   }
   return "Failed to create Stripe checkout session.";
+}
+
+function isMissingStripeResource(err: unknown): boolean {
+  return (
+    err instanceof Stripe.errors.StripeInvalidRequestError &&
+    err.code === "resource_missing"
+  );
 }
 
 /**
@@ -57,6 +65,21 @@ export const POST = withAuth(
 
     let customerId = company.stripe_customer_id;
     try {
+      if (customerId) {
+        try {
+          const customer = await stripe.customers.retrieve(customerId);
+          if ("deleted" in customer && customer.deleted) {
+            customerId = null;
+          }
+        } catch (err) {
+          if (isMissingStripeResource(err)) {
+            customerId = null;
+          } else {
+            throw err;
+          }
+        }
+      }
+
       if (!customerId) {
         const customer = await stripe.customers.create({
           email: owner.email,
@@ -69,7 +92,16 @@ export const POST = withAuth(
         customerId = customer.id;
         const { error: updateError } = await db
           .from("companies")
-          .update({ stripe_customer_id: customerId })
+          .update({
+            stripe_customer_id: customerId,
+            stripe_subscription_id: null,
+            subscription_status: null,
+            subscription_active: false,
+            subscription_current_period_end: null,
+            subscription_cancel_at_period_end: false,
+            subscription_cancel_at: null,
+            subscription_canceled_at: null,
+          })
           .eq("id", company.id);
         if (updateError) {
           throw new ApiError(
@@ -80,6 +112,16 @@ export const POST = withAuth(
         }
       }
 
+      let discountConfig: ReturnType<typeof getCheckoutDiscountConfig>;
+      try {
+        discountConfig = getCheckoutDiscountConfig();
+      } catch {
+        throw new ApiError(
+          "internal",
+          "Missing STRIPE_AUGUST_2026_COUPON_ID on this server."
+        );
+      }
+
       const base = appBaseUrl();
       const session = await stripe.checkout.sessions.create({
         mode: "subscription",
@@ -87,9 +129,9 @@ export const POST = withAuth(
         client_reference_id: company.id,
         locale: "sl",
         line_items: [{ price: priceId, quantity: 1 }],
-        success_url: `${base}/dashboard/office?billing=success`,
+        success_url: `${base}/dashboard/office?billing=success&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${base}/dashboard/office?billing=cancel`,
-        allow_promotion_codes: true,
+        ...discountConfig,
         metadata: {
           company_id: company.id,
         },

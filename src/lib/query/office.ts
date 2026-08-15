@@ -251,6 +251,7 @@ export async function fetchJobFiles(jobId: string) {
         file_name: string;
         created_at: string;
         signed_url: string | null;
+        thumbnail_signed_url?: string | null;
         ocr_text: string | null;
         document_type: string | null;
         document_preview: string | null;

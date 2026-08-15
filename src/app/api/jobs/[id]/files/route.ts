@@ -305,18 +305,18 @@ try {
             : await extractText(textExtract.buffer, textExtract.contentType);
         if (!text) return;
 
-        const enrichment = enrichDocumentFromOcr(text, record.file_name);
         const isImage = record.attachment_type === "image";
-        // Photos often OCR into noise → "Dokument". Only publish typed docs
-        // (invoice/contract/…) or any PDF enrichment on the timeline (Mark a9).
-        // Always store document_preview so Priponke AI Extract is never blank
-        // "—" — other → "Dokument - filename" (Mark).
+        const enrichment = enrichDocumentFromOcr(text, record.file_name, {
+          attachmentType: record.attachment_type,
+        });
+        // Photos often OCR into noise. For untyped images, keep only document
+        // metadata/thumbnail and discard OCR text so search and previews stay clean.
         const publishTyped = !isImage || enrichment.document_type !== "other";
 
         const { data: updated, error: updateError } = await db
           .from("job_files")
           .update({
-            ocr_text: text,
+            ocr_text: enrichment.should_store_ocr_text ? text : null,
             document_preview: enrichment.document_preview,
             ...(publishTyped
               ? { document_type: enrichment.document_type }

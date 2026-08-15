@@ -268,6 +268,8 @@ export const translations = {
     workerLabelDescription: "OPIS IN NAVODILA",
     workerRecording: "Snemam glasovno...",
     workerRecordingDesc: "Prepis se samodejno sinhronizira z delovnim nalogom v pisarni.",
+    workerPauseRecord: "Premor",
+    workerResumeRecord: "Nadaljuj",
     workerStopRecord: "Ustavi in pošlji transkript",
     workerVoiceSaving: "Shranjujem…",
     workerMicUnavailable: "Dostop do mikrofona ni na voljo.",
@@ -763,7 +765,7 @@ export const translations = {
 
     // Worker Dashboard (live)
     workerHeading: "Field Screen",
-    workerNoActiveJob: "You currently have no active job ased.",
+    workerNoActiveJob: "You currently have no active job assigned.",
     workerDetail: "DETAILS",
     workerInfo: "INFO",
     workerCall: "CALL",
@@ -784,6 +786,8 @@ export const translations = {
     workerLabelDescription: "DESCRIPTION & INSTRUCTIONS",
     workerRecording: "Recording voice...",
     workerRecordingDesc: "Transcript automatically syncs with the office job order.",
+    workerPauseRecord: "Pause",
+    workerResumeRecord: "Resume",
     workerStopRecord: "Stop and send transcript",
     workerVoiceSaving: "Saving…",
     workerMicUnavailable: "Microphone access is unavailable.",
@@ -924,7 +928,7 @@ export const translations = {
     modalDeleteStepSubmit: "Delete",
 
     // Card fallbacks & tooltips (live)
-    cardUnased: "Unased",
+    cardUnassigned: "Unassigned",
     cardSenderOffice: "Office",
     cardUnknownSender: "Unknown",
     cardNoTask: "No task",
@@ -947,7 +951,7 @@ export const translations = {
     // Timeline event labels (live)
     timelineJobCreated: "Job order created",
     timelineCard: "Card",
-    timelineWorkerAsed: "Worker ased",
+    timelineWorkerAssigned: "Worker assigned",
     timelineJobUpdated: "Job order updated",
     timelineJobHidden: "Card hidden from board",
     timelineChecklistCompleted: "Completed step",

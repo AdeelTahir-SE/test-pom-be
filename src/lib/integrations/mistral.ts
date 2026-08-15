@@ -1,6 +1,7 @@
 import { env } from "@/lib/env";
 
 const MISTRAL_OCR_URL = "https://api.mistral.ai/v1/ocr";
+const MISTRAL_OCR_TIMEOUT_MS = 30_000;
 
 interface MistralOcrPage {
   markdown?: string;
@@ -29,13 +30,19 @@ export async function extractText(
   deps: OcrDeps = {}
 ): Promise<string | null> {
   const apiKey = env.mistralApiKey;
-  if (!apiKey) return null;
+  if (!apiKey) {
+    console.warn("[mistral_ocr_skipped]", { reason: "missing_api_key" });
+    return null;
+  }
 
   const fetchImpl = deps.fetchImpl ?? fetch;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), MISTRAL_OCR_TIMEOUT_MS);
   try {
     const base64 = buffer.toString("base64");
     const res = await fetchImpl(MISTRAL_OCR_URL, {
       method: "POST",
+      signal: controller.signal,
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
@@ -48,7 +55,14 @@ export async function extractText(
         },
       }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn("[mistral_ocr_failed]", {
+        status: res.status,
+        statusText: res.statusText,
+        mimeType,
+      });
+      return null;
+    }
 
     const json = (await res.json()) as MistralOcrResponse;
     const fromPages = json.pages
@@ -56,9 +70,19 @@ export async function extractText(
       .join("\n")
       .trim();
     const text = fromPages || json.text?.trim() || "";
+    if (!text) {
+      console.warn("[mistral_ocr_empty]", { mimeType });
+    }
     return text.length > 0 ? text : null;
-  } catch {
+  } catch (error) {
+    console.warn("[mistral_ocr_error]", {
+      reason: error instanceof Error ? error.name : "unknown",
+      message: error instanceof Error ? error.message : String(error),
+      mimeType,
+    });
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

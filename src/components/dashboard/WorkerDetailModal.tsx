@@ -87,6 +87,7 @@ interface AttachmentItem {
   time: string;
   date: string;
   url: string | null;
+  thumbnailUrl: string | null;
   ocrText: string | null;
   documentType: string | null;
   documentPreview: string | null;
@@ -418,6 +419,7 @@ export function WorkerDetailModal({
         time: formatSiTimeFromIso(f.created_at),
         date: formatSiDateFromIso(f.created_at),
         url: f.signed_url,
+        thumbnailUrl: f.thumbnail_signed_url ?? null,
         ocrText: f.ocr_text,
         documentType: f.document_type,
         documentPreview: f.document_preview,
@@ -1208,6 +1210,10 @@ export function WorkerDetailModal({
                     </span>
                   )}
                   {attachments.map((att) => {
+                    const showImageThumbnail =
+                      att.attachmentType === "image" &&
+                      (!att.documentType || att.documentType === "other") &&
+                      att.thumbnailUrl;
                     return (
                       <button
                         key={att.id}
@@ -1227,6 +1233,17 @@ export function WorkerDetailModal({
                           >
                             {att.name}
                           </span>
+                          {showImageThumbnail ? (
+                            <img
+                              src={att.thumbnailUrl!}
+                              alt={att.name}
+                              className="mt-1 h-16 w-16 rounded object-cover border border-slate-200"
+                            />
+                          ) : att.documentPreview ? (
+                            <span className="text-[11px] text-slate-500 whitespace-pre-line break-words">
+                              {att.documentPreview}
+                            </span>
+                          ) : null}
                         </div>
                       </button>
                     );
@@ -1335,7 +1352,7 @@ export function WorkerDetailModal({
 
             <div className="flex flex-col gap-6">
               {/* PREDVIDENA DELA (Tasks) */}
-              <div className="flex flex-col gap-3">
+              <div className="order-2 flex flex-col gap-3">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
                     {t("modalSectionTasks")}
@@ -1389,7 +1406,7 @@ export function WorkerDetailModal({
               </div>
 
               {/* PRIPONKE (Attachments) */}
-              <div className="flex flex-col gap-3">
+              <div className="order-3 flex flex-col gap-3">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
                     {t("modalSectionAttachments")}
@@ -1412,6 +1429,10 @@ export function WorkerDetailModal({
                     </span>
                   )}
                   {attachments.map((att) => {
+                    const showImageThumbnail =
+                      att.attachmentType === "image" &&
+                      (!att.documentType || att.documentType === "other") &&
+                      att.thumbnailUrl;
                     return (
                       <button
                         key={att.id}
@@ -1431,6 +1452,17 @@ export function WorkerDetailModal({
                           >
                             {att.name}
                           </span>
+                          {showImageThumbnail ? (
+                            <img
+                              src={att.thumbnailUrl!}
+                              alt={att.name}
+                              className="mt-1 h-16 w-16 rounded object-cover border border-slate-200"
+                            />
+                          ) : att.documentPreview ? (
+                            <span className="text-[11px] text-slate-500 whitespace-pre-line break-words">
+                              {att.documentPreview}
+                            </span>
+                          ) : null}
                         </div>
                       </button>
                     );
@@ -1439,7 +1471,7 @@ export function WorkerDetailModal({
               </div>
 
               {/* ČASOVNICA (Timeline) */}
-              <div className="flex flex-col gap-3">
+              <div className="order-4 flex flex-col gap-3">
                 <span className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
                   {t("modalSectionTimeline")}
                 </span>
@@ -1486,7 +1518,7 @@ export function WorkerDetailModal({
               </div>
 
               {/* OPOMNIKI section */}
-              <div className="flex flex-col gap-3">
+              <div className="order-1 flex flex-col gap-3">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
                     OPOMNIKI
@@ -1622,6 +1654,68 @@ export function WorkerDetailModal({
           {/* Divider */}
           <div className="border-t border-slate-100" />
 
+          {inlineDrawer && (
+            <>
+              {/* OPOMNIKI section */}
+              <div className="flex flex-col">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
+                    OPOMNIKI
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!guardMutable()) return;
+                      setIsAddNoteOpen(true);
+                    }}
+                    className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
+                  >
+                    <svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M17.9705 9.48535H9.48528M9.48528 9.48535H1M9.48528 9.48535V1.00007M9.48528 9.48535V17.9706" stroke="#6D778E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-2 max-h-[180px] overflow-y-auto custom-ios-scrollbar pr-1">
+                  {displayedNotes.length === 0 ? (
+                    <span className="text-xs text-slate-400 font-light">
+                      Ni opomnikov za tega naročnika.
+                    </span>
+                  ) : (
+                    displayedNotes.map((n, idx) => (
+                      <div key={n.id} className="flex items-start gap-2.5 group">
+                        <div className="bg-slate-200 text-slate-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 font-mono">
+                          {idx + 1}
+                        </div>
+                        <span className="text-xs text-[#0F172A] flex-1 min-w-0 font-normal leading-relaxed">
+                          {n.noteText}
+                        </span>
+                        {canManageCustomerNotes && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCustomerNote(n.id)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500 bg-transparent border-none cursor-pointer p-0.5 shrink-0"
+                            title={t("customerNotesDelete") || "Izbriši"}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6"></polyline>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                              <line x1="10" y1="11" x2="10" y2="17"></line>
+                              <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100" />
+            </>
+          )}
+
           {/* PREDVIDENA DELA (Tasks) */}
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
@@ -1703,6 +1797,10 @@ export function WorkerDetailModal({
                   </span>
                 )}
                 {attachments.map((att) => {
+                  const showImageThumbnail =
+                    att.attachmentType === "image" &&
+                    (!att.documentType || att.documentType === "other") &&
+                    att.thumbnailUrl;
                   return (
                     <button
                       key={att.id}
@@ -1722,6 +1820,17 @@ export function WorkerDetailModal({
                         >
                           {att.name}
                         </span>
+                        {showImageThumbnail ? (
+                          <img
+                            src={att.thumbnailUrl!}
+                            alt={att.name}
+                            className="mt-1 h-16 w-16 rounded object-cover border border-slate-200"
+                          />
+                        ) : att.documentPreview ? (
+                          <span className="text-[11px] text-slate-500 whitespace-pre-line break-words">
+                            {att.documentPreview}
+                          </span>
+                        ) : null}
                       </div>
                     </button>
                   );
@@ -1777,6 +1886,8 @@ export function WorkerDetailModal({
             </div>
           </div>
 
+          {!inlineDrawer && (
+          <>
           {/* Divider */}
           <div className="border-t border-slate-100" />
 
@@ -1835,6 +1946,8 @@ export function WorkerDetailModal({
               )}
             </div>
           </div>
+          </>
+          )}
         </div>
       </div>
     );

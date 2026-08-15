@@ -11,17 +11,20 @@ import { SearchModal } from "@/components/dashboard/SearchModal";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { WorkerDetailModal } from "@/components/dashboard/WorkerDetailModal";
 import { OfficeCard } from "@/components/dashboard/OfficeCard";
+import { VoiceMessagePlayer } from "@/components/dashboard/VoiceMessagePlayer";
+import { BillingRequired } from "@/components/dashboard/BillingRequired";
 import { ApiJob, ApiChecklistItem, jobToWorkerCard, jobNumber, formatTime } from "@/lib/dashboardMappers";
 import { isOptimisticId } from "@/lib/optimisticId";
 import type { ApiNotification } from "@/lib/dashboardMappers";
 import type { Message } from "@/lib/types/messages";
 import type { OfficeCardThreadItem } from "@/components/dashboard/OfficeCard";
 import { LIMITS } from "@/config/constants";
-import { addDays, formatSiDateTimeCompact, isJobCardMutable, startOfLocalDay, isJobCommunicationAllowed, jobBelongsToDay, toIsoDate } from "@/lib/officeDate";
+import { addDays, formatSiDate, formatSiDateTimeCompact, isJobCardMutable, startOfLocalDay, isJobCommunicationAllowed, jobBelongsToDay, toIsoDate } from "@/lib/officeDate";
 import { JOB_COMMUNICATION_TODAY_ONLY_MESSAGE } from "@/lib/services/jobCommunication";
 import { toTelHref } from "@/lib/phone";
 import { playMessageBeep, unlockMessageBeep } from "@/lib/playMessageBeep";
 import { AuraFileInput } from "@/components/dashboard/AuraForm";
+import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import {
   apiFailureMessage,
   logClientError,
@@ -33,6 +36,7 @@ interface ApiJobMessage {
   sender_id: string;
   message_type: "text" | "voice";
   content: string;
+  attachment_id: string | null;
   is_urgent: boolean;
   read_at: string | null;
   created_at: string;
@@ -41,7 +45,7 @@ interface ApiJobMessage {
 export default function WorkerDashboard() {
   const { t } = useLanguage();
   const router = useRouter();
-  const { user, officeContact, loading: authLoading, logout } = useCurrentUser();
+  const { user, company, officeContact, loading: authLoading, logout } = useCurrentUser();
 
   // Only workers use this screen. Pisarna (manager) + company (owner) → command center (Mark).
   useEffect(() => {
@@ -69,6 +73,7 @@ export default function WorkerDashboard() {
   const [attachUploading, setAttachUploading] = useState(false);
 
   const [messages, setMessages] = useState<ApiJobMessage[]>([]);
+  const messagesRef = useRef<ApiJobMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [inboundNotifs, setInboundNotifs] = useState<ApiNotification[]>([]);
   const prevUnreadRef = useRef(0);
@@ -76,31 +81,17 @@ export default function WorkerDashboard() {
   const seenJobAssignedIdsRef = useRef<Set<string> | null>(null);
   const seenJobIdsRef = useRef<Set<string> | null>(null);
 
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const recordingTimer = useRef<NodeJS.Timeout | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const autoStopTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  /** Prevents double-tap starting two recordings before React state updates. */
-  const recordingLockRef = useRef(false);
-
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
-  const clearRecordingTimers = () => {
-    if (autoStopTimerRef.current) {
-      clearTimeout(autoStopTimerRef.current);
-      autoStopTimerRef.current = null;
-    }
-  };
-
-  const releaseRecordingLock = () => {
-    clearRecordingTimers();
-    recordingLockRef.current = false;
-    setIsRecording(false);
-  };
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const loadAll = useCallback(async () => {
+    if (company?.subscription_active === false) {
+      setDataLoading(false);
+      return;
+    }
     try {
       const jobsRes = await api.get<{ jobs: ApiJob[] }>("/api/jobs");
       const openJobs = (jobsRes.data?.jobs ?? []).filter(
@@ -149,11 +140,12 @@ export default function WorkerDashboard() {
     } finally {
       setDataLoading(false);
     }
-  }, [t, selectedDate]);
+  }, [company?.subscription_active, t, selectedDate]);
 
   useEffect(() => {
-    if (!authLoading && user) loadAll();
-  }, [authLoading, user, loadAll]);
+    if (!authLoading && user && company?.subscription_active !== false) loadAll();
+    if (!authLoading && user && company?.subscription_active === false) setDataLoading(false);
+  }, [authLoading, user, company?.subscription_active, loadAll]);
 
   // Unlock Web Audio after first tap (browsers block beeps otherwise).
   useEffect(() => {
@@ -164,6 +156,7 @@ export default function WorkerDashboard() {
 
   // Mark: beep when a new card is assigned or a communication arrives.
   useEffect(() => {
+    if (!user || company?.subscription_active === false) return;
     let cancelled = false;
     const interval = setInterval(async () => {
       const [unreadRes, notifsRes, jobsRes] = await Promise.all([
@@ -226,6 +219,27 @@ export default function WorkerDashboard() {
         }
       }
 
+      if (job) {
+        const messagesRes = await api.get<{ messages: ApiJobMessage[] }>(
+          `/api/jobs/${job.id}/messages`
+        );
+        if (cancelled) return;
+        if (messagesRes.status === 200 && messagesRes.data) {
+          const nextMessages = messagesRes.data.messages ?? [];
+          const prevMessages = messagesRef.current;
+          const prevIds = new Set(prevMessages.map((m) => m.id));
+          const changed =
+            nextMessages.length !== prevMessages.length ||
+            nextMessages.some((m, index) => prevMessages[index]?.id !== m.id);
+          if (changed) {
+            if (nextMessages.some((m) => m.sender_id !== user.id && !prevIds.has(m.id))) {
+              shouldBeep = true;
+            }
+            setMessages(nextMessages);
+          }
+        }
+      }
+
       if (shouldBeep) playMessageBeep();
       if (shouldReload) void loadAll();
     }, 15000);
@@ -233,27 +247,13 @@ export default function WorkerDashboard() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [loadAll]);
+  }, [company?.subscription_active, job, loadAll, user]);
 
   useEffect(() => {
     if (chatBottomRef.current) {
       chatBottomRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, chatOpen]);
-
-  useEffect(() => {
-    if (isRecording) {
-      recordingTimer.current = setInterval(() => {
-        setRecordingSeconds((prev) => prev + 1);
-      }, 1000);
-    } else {
-      if (recordingTimer.current) clearInterval(recordingTimer.current);
-      setRecordingSeconds(0);
-    }
-    return () => {
-      if (recordingTimer.current) clearInterval(recordingTimer.current);
-    };
-  }, [isRecording]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -386,78 +386,85 @@ export default function WorkerDashboard() {
     }
   };
 
+  const handleVoiceComplete = useCallback(
+    async (blob: Blob, mimeType: string) => {
+      if (!job) return;
+      const formData = new FormData();
+      formData.append("audio", blob, "voice-message.webm");
+      try {
+        const res = await api.post<{ message: ApiJobMessage }>(
+          `/api/jobs/${job.id}/voice-message`,
+          formData
+        );
+        if ((res.status === 200 || res.status === 201) && res.data) {
+          setMessages((prev) => [...prev, res.data!.message]);
+          showToast(t("workerVoiceSent"));
+        } else {
+          logClientError("worker.voiceUpload", res.error, {
+            status: res.status,
+            jobId: job.id,
+            mimeType,
+          });
+          showToast(
+            apiFailureMessage(res.error, res.status, t("workerVoiceSendFailed"))
+          );
+        }
+      } catch (uploadErr) {
+        logClientError("worker.voiceUpload", uploadErr, { jobId: job.id, mimeType });
+        showToast(
+          userFacingCatchMessage(
+            uploadErr,
+            t("workerVoiceSendFailed"),
+            t("workerNetworkError")
+          )
+        );
+      }
+    },
+    [job, t]
+  );
+
+  const handleVoiceError = useCallback(
+    (error: unknown) => {
+      logClientError("worker.voiceRecorder", error);
+      const message =
+        error instanceof Error && error.message === "empty-audio"
+          ? t("workerVoiceSendFailed")
+          : userFacingCatchMessage(
+              error,
+              t("workerMicUnavailable"),
+              t("workerNetworkError"),
+              t("workerMicUnavailable")
+            );
+      showToast(message);
+    },
+    [t]
+  );
+
+  const voiceRecorder = useVoiceRecorder({
+    maxSeconds: LIMITS.VOICE_MAX_SECONDS,
+    onComplete: handleVoiceComplete,
+    onError: handleVoiceError,
+  });
+
   const handleStartRecord = async () => {
-    if (!job || recordingLockRef.current || isRecording) return;
+    if (!job || voiceRecorder.isRecording) return;
     if (!isJobCommunicationAllowed(job)) {
       showToast(JOB_COMMUNICATION_TODAY_ONLY_MESSAGE);
       return;
     }
-    recordingLockRef.current = true;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      audioChunksRef.current = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((track) => track.stop());
-        releaseRecordingLock();
-        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        if (blob.size === 0) {
-          showToast(t("workerVoiceSendFailed"));
-          return;
-        }
-        const formData = new FormData();
-        formData.append("audio", blob, "voice-message.webm");
-        try {
-          const res = await api.post<{ message: ApiJobMessage }>(
-            `/api/jobs/${job.id}/voice-message`,
-            formData
-          );
-          if ((res.status === 200 || res.status === 201) && res.data) {
-            setMessages((prev) => [...prev, res.data!.message]);
-            showToast(t("workerVoiceSent"));
-          } else {
-            logClientError("worker.voiceUpload", res.error, {
-              status: res.status,
-              jobId: job.id,
-            });
-            showToast(
-              apiFailureMessage(res.error, res.status, t("workerVoiceSendFailed"))
-            );
-          }
-        } catch (uploadErr) {
-          logClientError("worker.voiceUpload", uploadErr, { jobId: job.id });
-          showToast(
-            userFacingCatchMessage(
-              uploadErr,
-              t("workerVoiceSendFailed"),
-              t("workerNetworkError")
-            )
-          );
-        }
-      };
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setIsRecording(true);
-      autoStopTimerRef.current = setTimeout(() => {
-        if (mediaRecorderRef.current?.state === "recording") {
-          mediaRecorderRef.current.stop();
-        }
-      }, LIMITS.VOICE_MAX_SECONDS * 1000);
-    } catch (err) {
-      logClientError("worker.startRecord", err);
-      releaseRecordingLock();
-      showToast(
-        userFacingCatchMessage(
-          err,
-          t("workerMicUnavailable"),
-          t("workerNetworkError"),
-          t("workerMicUnavailable")
-        )
-      );
-    }
+    await voiceRecorder.start();
+  };
+
+  const openJobDetails = () => {
+    if (!job) return;
+    setIsDetailModalOpen(true);
+    setDetailKey((k) => k + 1);
+  };
+
+  const handleJobCardKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    openJobDetails();
   };
 
   const done = checklist.filter((c) => c.is_completed).length;
@@ -479,6 +486,7 @@ export default function WorkerDashboard() {
       text: m.content,
       time: formatTime(m.created_at),
       type: m.message_type === "voice" ? "glasovno" : "tekst",
+      attachmentId: m.attachment_id ?? null,
     };
   });
   const latestInbound = [...messages].reverse().find((m) => m.sender_id !== user?.id) ?? messages[messages.length - 1];
@@ -492,6 +500,7 @@ export default function WorkerDashboard() {
           time: formatTime(latestInbound.created_at),
           type: latestInbound.message_type === "voice" ? "glasovno" : "tekst",
           targetTask: job.title,
+          attachmentId: latestInbound.attachment_id ?? null,
         }
       : null;
 
@@ -501,6 +510,17 @@ export default function WorkerDashboard() {
       <div className="min-h-screen flex items-center justify-center bg-[#f3f5f8] text-slate-400 text-sm">
         {t("workerLoading")}
       </div>
+    );
+  }
+
+  if (user && company?.subscription_active === false) {
+    return (
+      <BillingRequired
+        user={user}
+        company={company}
+        officeContact={officeContact}
+        onLogout={logout}
+      />
     );
   }
 
@@ -579,6 +599,12 @@ export default function WorkerDashboard() {
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
+              <time
+                dateTime={toIsoDate(selectedDate)}
+                className="min-w-[74px] text-center text-xs font-semibold tabular-nums text-slate-600"
+              >
+                {formatSiDate(selectedDate)}
+              </time>
               <button
                 type="button"
                 onClick={() => setSelectedDate((prev) => addDays(prev, 1))}
@@ -609,7 +635,11 @@ export default function WorkerDashboard() {
             <>
               {/* Main task card */}
               <div
-                className="shrink-0"
+                role="button"
+                tabIndex={0}
+                onClick={openJobDetails}
+                onKeyDown={handleJobCardKeyDown}
+                className="shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2"
                 style={{
                   border: "1px solid #1D4ED8",
                   boxShadow: "0px 24px 60px -30px rgba(59, 130, 246, 0.55), inset 0px 1px 0px 1px rgba(255, 255, 255, 0.35)",
@@ -687,7 +717,10 @@ export default function WorkerDashboard() {
                       <div className="flex items-center gap-2 w-full">
                         <button
                           type="button"
-                          onClick={() => handleToggleTask(task.id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleToggleTask(task.id);
+                          }}
                           className="shrink-0 flex items-center justify-center transition-all"
                           style={{
                             width: "16px",
@@ -705,7 +738,10 @@ export default function WorkerDashboard() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleToggleTask(task.id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleToggleTask(task.id);
+                          }}
                           className="flex-1 text-left truncate transition-all bg-transparent border-none p-0 outline-none"
                           style={{
                             fontFamily: "'PT Sans', sans-serif",
@@ -725,7 +761,8 @@ export default function WorkerDashboard() {
                               (task.requires_attachment || task.has_attachment))) && (
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={(event) => {
+                                event.stopPropagation();
                                 if (task.is_completed || task.has_attachment) return;
                                 openAttachDialog(task.id);
                               }}
@@ -899,7 +936,7 @@ export default function WorkerDashboard() {
                 >
                   <button
                     onClick={handleStartRecord}
-                    disabled={!job || isRecording}
+                    disabled={!job || voiceRecorder.isRecording}
                     title={
                       job && !canCommunicate
                         ? JOB_COMMUNICATION_TODAY_ONLY_MESSAGE
@@ -1030,11 +1067,21 @@ export default function WorkerDashboard() {
               return (
                 <div key={m.id} className={`flex flex-col max-w-[85%] ${isMine ? "ml-auto items-end" : "mr-auto items-start"}`}>
                   <div className={`p-3 rounded-2xl text-xs leading-normal shadow-sm ${isMine ? "bg-[#1B3A6B] text-white rounded-tr-none" : "bg-white border border-slate-200/60 rounded-tl-none text-slate-800"}`}>
-                    {m.message_type === "voice" && (
+                    {/* {m.message_type === "voice" && (
                       <div className="flex items-center gap-1.5 mb-1.5 pb-1 border-b border-white/10">
                         <Mic className="w-2.5 h-2.5 text-emerald-400 animate-pulse" />
                         <span className="text-[8px] font-bold tracking-wider text-emerald-300 uppercase">{t("workerAiTranscriptTag")}</span>
                       </div>
+                    )} */}
+                    {m.message_type === "voice" && m.attachment_id && (
+                      <VoiceMessagePlayer
+                        attachmentId={m.attachment_id}
+                        className="mb-2"
+                        audioClassName="h-9 w-full min-w-[180px]"
+                        errorClassName={`mt-1 text-[11px] font-medium ${
+                          isMine ? "text-red-100" : "text-red-600"
+                        }`}
+                      />
                     )}
                     <p className={m.message_type === "voice" ? "italic" : ""}>{m.content}</p>
                   </div>
@@ -1069,7 +1116,26 @@ export default function WorkerDashboard() {
               }`}
             />
             <button
+              type="button"
+              onClick={handleStartRecord}
+              disabled={!canCommunicate || voiceRecorder.isRecording}
+              title={
+                canCommunicate
+                  ? t("workerVoice")
+                  : JOB_COMMUNICATION_TODAY_ONLY_MESSAGE
+              }
+              className={`w-10 h-10 rounded-xl border border-slate-200 text-slate-500 flex items-center justify-center transition-colors shrink-0 ${
+                canCommunicate && !voiceRecorder.isRecording
+                  ? "hover:bg-slate-50 cursor-pointer"
+                  : "opacity-45 cursor-not-allowed"
+              }`}
+            >
+              <Mic className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
               onClick={handleSendMessage}
+              disabled={!canCommunicate}
               title={
                 canCommunicate
                   ? undefined
@@ -1110,19 +1176,56 @@ export default function WorkerDashboard() {
       </Dialog>
 
       {/* Recording dialog */}
-      <Dialog open={isRecording} onOpenChange={() => {}}>
+      <Dialog open={voiceRecorder.isRecording} onOpenChange={() => {}}>
         <DialogContent showCloseButton={false} className="max-w-sm w-[90vw] bg-[#0F172A] text-white border-none">
           <div className="flex flex-col items-center text-center py-4">
-            <div className="w-16 h-16 rounded-full bg-red-600 flex items-center justify-center mb-6 animate-pulse shadow-lg">
+            <div
+              className={`w-16 h-16 rounded-full flex items-center justify-center mb-6 shadow-lg ${
+                voiceRecorder.isSaving || voiceRecorder.isPaused
+                  ? "bg-slate-600"
+                  : "bg-red-600 animate-pulse"
+              }`}
+            >
               <Mic className="w-8 h-8 text-white" />
             </div>
-            <h3 className="font-bold text-base tracking-wide">{t("workerRecording")}</h3>
+            <h3 className="font-bold text-base tracking-wide">
+              {voiceRecorder.isSaving ? t("workerVoiceSaving") : t("workerRecording")}
+            </h3>
             <span className="text-sm font-semibold text-slate-400 mt-1">
-              00:{recordingSeconds.toString().padStart(2, "0")}
+              00:{voiceRecorder.seconds.toString().padStart(2, "0")}
             </span>
             <p className="text-xs text-slate-500 max-w-[220px] mt-3 leading-normal">
               {t("workerRecordingDesc")}
             </p>
+            {!voiceRecorder.isSaving && (
+              <div className="mt-8 flex w-full justify-center gap-3">
+                {voiceRecorder.isPaused ? (
+                  <button
+                    type="button"
+                    onClick={voiceRecorder.resume}
+                    className="h-11 rounded-full bg-white px-5 text-xs font-bold text-slate-800 hover:bg-slate-100"
+                  >
+                    {t("workerResumeRecord")}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={voiceRecorder.pause}
+                    disabled={!voiceRecorder.canPause}
+                    className="h-11 rounded-full bg-white/10 px-5 text-xs font-bold text-white ring-1 ring-white/20 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {t("workerPauseRecord")}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={voiceRecorder.finish}
+                  className="h-11 rounded-full bg-white px-5 text-xs font-bold text-slate-800 hover:bg-slate-100"
+                >
+                  {t("workerStopRecord")}
+                </button>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

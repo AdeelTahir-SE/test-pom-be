@@ -36,7 +36,11 @@ export async function POST(request: Request) {
 
     const { data: company, error: companyError } = await db
       .from("companies")
-      .insert({ name: input.company_name, business_module: input.business_module })
+      .insert({
+        name: input.company_name,
+        business_module: input.business_module,
+        subscription_active: false,
+      })
       .select()
       .single();
 

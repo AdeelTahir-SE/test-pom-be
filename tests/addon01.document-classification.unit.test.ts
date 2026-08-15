@@ -16,19 +16,19 @@ describe("Add-on 1 — document classification", () => {
     expect(classifyDocument("Račun št. 88\nZnesek: 50 €\nDDV vključeno")).toBe("invoice");
   });
 
-  it("classifies delivery notes, contracts, service reports, offers, receipts", () => {
+  it("classifies launch document types across supported languages", () => {
     expect(classifyDocument("Delivery Note\nItems delivered: 18")).toBe("delivery_note");
-    expect(classifyDocument("Dobavnica\nDostavljeno 12.06.2025")).toBe("delivery_note");
+    expect(classifyDocument("Lieferschein\nTransportauftrag 77")).toBe("delivery_note");
     expect(classifyDocument("Contract agreement between parties\nDuration: 24 months")).toBe(
       "contract"
     );
-    expect(classifyDocument("Service Report\nPerformed work: Boiler maintenance\nTechnician: Marko")).toBe(
-      "service_report"
-    );
+    expect(classifyDocument("Vertrag\nAppendice\nStranka: ACME")).toBe("contract");
+    expect(classifyDocument("Service Report\nPerformed work: Boiler maintenance")).toBe("service_report");
+    expect(classifyDocument("Radni nalog\nIzvještaj pregleda")).toBe("service_report");
     expect(classifyDocument("Quotation / ponudba\nValid until 01.08.2026")).toBe("offer");
-    expect(classifyDocument("Cash receipt\nThank you for your purchase\nPaid: 9.90")).toBe(
-      "receipt"
-    );
+    expect(classifyDocument("Preventivo\nOfferte\nTotale 120 EUR")).toBe("offer");
+    expect(classifyDocument("Cash receipt\nThank you for your purchase\nPaid: 9.90")).toBe("invoice");
+    expect(classifyDocument("Ricevuta\nFattura 12\nTotale 9,90 €")).toBe("invoice");
   });
 
   it("falls back to other when confidence is low", () => {
@@ -98,10 +98,20 @@ describe("Add-on 1 — document preview (Mark pack 2)", () => {
     ).toBe("offer");
   });
 
-  it("other docs use Dokument - filename (not OCR dump)", () => {
+  it("other docs use Dokument · filename and never generic OCR lines", () => {
     const preview = buildDocumentPreview("other", "line one\nline two\nline three", "scan.pdf");
-    expect(preview).toBe("Dokument - scan.pdf");
+    expect(preview).toBe("Dokument · scan.pdf");
     expect(preview).not.toContain("line one");
+  });
+
+  it("other docs may include only a markdown title and date", () => {
+    const preview = buildDocumentPreview(
+      "other",
+      ["# RAČUN", "generic OCR line", "Datum: 12.06.2025"].join("\n"),
+      "sken_12.pdf"
+    );
+    expect(preview).toBe(["Dokument · sken_12.pdf", "RAČUN", "12.06.2025"].join("\n"));
+    expect(preview).not.toContain("generic OCR line");
   });
 
   it("never exceeds the stored preview budget", () => {
@@ -117,24 +127,34 @@ describe("Add-on 1 — document preview (Mark pack 2)", () => {
     expect(preview.endsWith("…")).toBe(true);
   });
 
-  it("contract shows duration; service shows work", () => {
+  it("all typed docs use the same type, customer, date, amount preview shape", () => {
     const contract = buildDocumentPreview(
       "contract",
-      "Contract\nDuration: 24 months\nNaročnik: Hiša d.o.o.",
+      "Contract No: C-24\nDuration: 24 months\nNaročnik: Hiša d.o.o.\nDate: 12.06.2025\nAmount: 500,00 €",
       "c.pdf"
     );
-    expect(contract.startsWith("Pogodba")).toBe(true);
-    expect(contract).toContain("24 months");
-    expect(contract).toContain("Hiša d.o.o.");
+    expect(contract).toBe(["Pogodba C-24", "Hiša d.o.o.", "12.06.2025", "500,00 €"].join("\n"));
+    expect(contract).not.toContain("24 months");
 
     const service = buildDocumentPreview(
       "service_report",
-      "Service Report\nPerformed work: Boiler maintenance\nStranka: Marko",
+      "Service Report\nPerformed work: Boiler maintenance\nStranka: Marko\nDate: 13.06.2025",
       "s.pdf"
     );
-    expect(service.startsWith("Servis")).toBe(true);
-    expect(service).toContain("Boiler maintenance");
-    expect(service).toContain("Marko");
+    expect(service).toBe(["Servis", "Marko", "13.06.2025"].join("\n"));
+    expect(service).not.toContain("Boiler maintenance");
+  });
+
+  it("type-only previews fall back to Slovenian type and filename", () => {
+    expect(buildDocumentPreview("invoice", "Invoice", "invoice.pdf")).toBe("Račun · invoice.pdf");
+    expect(buildDocumentPreview("offer", "Ponudba", "offer.pdf")).toBe("Ponudba · offer.pdf");
+  });
+
+  it("other image enrichment discards OCR text", () => {
+    const result = enrichDocumentFromOcr("roof photo noise", "roof.jpg", { attachmentType: "image" });
+    expect(result.document_type).toBe("other");
+    expect(result.document_preview).toBe("Dokument · roof.jpg");
+    expect(result.should_store_ocr_text).toBe(false);
   });
 
   it("enrichDocumentFromOcr classifies and previews in one pass", () => {

@@ -5,7 +5,7 @@
 // only way to exercise the "successful extraction" branch deterministically.
 // API-level coverage of the endpoint's business logic (OCR never blocks
 // upload, ocr_completed only on success) lives in phase10.ocr.test.ts.
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import { extractText } from "@/lib/integrations/mistral";
 
 const ORIGINAL_KEY = process.env.MISTRAL_API_KEY;
@@ -16,6 +16,10 @@ beforeAll(() => {
 
 afterAll(() => {
   process.env.MISTRAL_API_KEY = ORIGINAL_KEY;
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 function jsonResponse(body: unknown, ok = true): Response {
@@ -60,6 +64,20 @@ describe("extractText (unit, mocked fetch)", () => {
     }) as unknown as typeof fetch;
     const result = await extractText(Buffer.from("fake-pdf"), "application/pdf", { fetchImpl });
     expect(result).toBeNull();
+  });
+
+  it("returns null when the OCR request times out", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = (async (_url: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(new DOMException("aborted", "AbortError"));
+        });
+      })) as unknown as typeof fetch;
+
+    const result = extractText(Buffer.from("fake-pdf"), "application/pdf", { fetchImpl });
+    await vi.advanceTimersByTimeAsync(30_000);
+    await expect(result).resolves.toBeNull();
   });
 
   it("returns null immediately when no API key is configured, without calling fetch", async () => {

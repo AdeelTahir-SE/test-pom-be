@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { withAuth } from "@/lib/http/handler";
 import { created, ok, ApiError } from "@/lib/http/responses";
 import { getAdminClient } from "@/lib/supabase/admin";
@@ -8,18 +9,94 @@ import { requireOfficeContactUserId } from "@/lib/services/officeContact";
 import { assertJobCommunicationAllowed } from "@/lib/services/jobCommunication";
 import { sha256Hex, buildStoragePath, uploadToStorage } from "@/lib/storage/upload";
 import { transcribeAudio } from "@/lib/integrations/deepgram";
-import { structureVoiceTranscript } from "@/lib/integrations/openai";
 import { LIMITS } from "@/config/constants";
 
 export const dynamic = "force-dynamic";
 
 const UNTRANSCRIBED_FALLBACK = "Voice message (untranscribed)";
 
-// POST /api/jobs/[id]/voice-message — Voice-to-Text add-on: synchronous
-// UPLOAD -> TRANSCRIBE -> STORE -> RETURN RESPONSE. Exactly one message is
-// created per request; creation succeeds even if transcription fails
-// (§7 Failure Rule). Idempotency key = attachment_id (§14): retrying with
-// identical audio bytes returns the SAME message rather than a duplicate.
+interface FinalizeVoiceTranscriptionInput {
+  buffer: Buffer;
+  contentType: string;
+  fileId: string;
+  messageId: string;
+  companyId: string;
+  jobId: string;
+  jobSeq: number | null;
+  userId: string;
+}
+
+function logVoiceFinalize(message: string, extra?: Record<string, unknown>) {
+  console.error(
+    JSON.stringify({
+      scope: "voice.finalizeTranscription",
+      message,
+      ...extra,
+    })
+  );
+}
+
+async function finalizeVoiceTranscription({
+  buffer,
+  contentType,
+  fileId,
+  messageId,
+  companyId,
+  jobId,
+  jobSeq,
+  userId,
+}: FinalizeVoiceTranscriptionInput) {
+  const db = getAdminClient();
+  const transcript = await transcribeAudio(buffer, contentType, {
+    requestId: fileId,
+  });
+  const content = transcript ?? UNTRANSCRIBED_FALLBACK;
+
+  if (transcript) {
+    const { error } = await db
+      .from("job_messages")
+      .update({ content: transcript })
+      .eq("id", messageId)
+      .eq("company_id", companyId);
+    if (error) {
+      logVoiceFinalize("Failed to update voice message transcript", {
+        messageId,
+        error: error.message,
+      });
+    }
+  }
+
+  const { data: sender } = await db
+    .from("users")
+    .select("full_name")
+    .eq("id", userId)
+    .maybeSingle();
+
+  try {
+    await createTimelineEvent(db, {
+      companyId,
+      jobId,
+      eventType: "voice_message_transcribed",
+      userId,
+      metadata: {
+        transcribed: transcript !== null,
+        content,
+        job_seq: jobSeq,
+        sender_name: sender?.full_name ?? null,
+      },
+    });
+  } catch (error) {
+    logVoiceFinalize("Failed to create voice transcription timeline event", {
+      messageId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+// POST /api/jobs/[id]/voice-message — creates the voice message immediately
+// and finalizes Deepgram transcription after the response. Idempotency key =
+// attachment_id (§14): retrying with identical audio bytes returns the SAME
+// message rather than a duplicate.
 export const POST = withAuth<{ id: string }>(async (request, auth, { params }) => {
   const db = getAdminClient();
   const { job, workerId } = await loadJobWithAccess(db, auth, params.id);
@@ -101,16 +178,6 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     throw new ApiError("internal", "Audio uploaded but could not be recorded.", fileError?.message);
   }
 
-  // Pipeline (Mark): record → Deepgram STT → GPT structure → send.
-  // GPT failure must not block the message — keep raw transcript.
-  const transcript = await transcribeAudio(buffer, contentType, {
-    requestId: fileRecord.id,
-  });
-  const structured = transcript
-    ? await structureVoiceTranscript(transcript, { requestId: fileRecord.id })
-    : null;
-  const content = structured ?? transcript ?? UNTRANSCRIBED_FALLBACK;
-
   const { data: message, error: messageError } = await db
     .from("job_messages")
     .insert({
@@ -119,7 +186,7 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
       sender_id: auth.userId,
       recipient_id: recipientId,
       message_type: "voice",
-      content,
+      content: UNTRANSCRIBED_FALLBACK,
       attachment_id: fileRecord.id,
     })
     .select()
@@ -128,33 +195,24 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     throw new ApiError("internal", "Failed to create voice message.", messageError?.message);
   }
 
-  const { data: sender } = await db
-    .from("users")
-    .select("full_name")
-    .eq("id", auth.userId)
-    .maybeSingle();
-
-  // voice_message_transcribed, NOT message_sent — system-generated voice
-  // transcription never triggers message_sent (Appendix B §5).
-  await createTimelineEvent(db, {
-    companyId: auth.companyId,
-    jobId: params.id,
-    eventType: "voice_message_transcribed",
-    userId: auth.userId,
-    metadata: {
-      transcribed: transcript !== null,
-      structured: structured !== null,
-      content,
-      job_seq: job.company_seq,
-      sender_name: sender?.full_name ?? null,
-    },
+  after(() => {
+    return finalizeVoiceTranscription({
+      buffer,
+      contentType,
+      fileId: fileRecord.id,
+      messageId: message.id,
+      companyId: auth.companyId,
+      jobId: params.id,
+      jobSeq: typeof job.company_seq === "number" ? job.company_seq : null,
+      userId: auth.userId,
+    });
   });
 
   await notifyMessageReceived(db, {
     companyId: auth.companyId,
     recipientId,
     title: "New voice message",
-    body: content.slice(0, 100),
+    body: "Voice message received",
     jobId: params.id,
   });
 

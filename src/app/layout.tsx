@@ -4,6 +4,11 @@ import "./globals.css";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import Script from "next/script";
 
+// TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
+// See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
+// ! We are not migrating to cache components yet, so we are opting out of the new behavior for now. This is a temporary measure until we can fully adopt the new caching behavior in our application.
+// export const instant = false;
+
 const inter = Inter({
   variable: "--font-sans",
   subsets: ["latin"],

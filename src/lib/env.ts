@@ -60,6 +60,9 @@ export const env = {
   get stripePriceIdMonthly() {
     return required("STRIPE_PRICE_ID_MONTHLY");
   },
+  get stripeAugust2026CouponId() {
+    return required("STRIPE_AUGUST_2026_COUPON_ID");
+  },
   /** Public site origin for Checkout success/cancel + Portal return URLs. */
   get appUrl() {
     return (

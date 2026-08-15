@@ -1,11 +1,9 @@
 import { randomUUID } from "crypto";
 import { env } from "@/lib/env";
 
-// Deepgram Nova-3 — configuration is fixed and must never be changed
-// dynamically (Voice-to-Text: model, language, punctuate, smart_format,
-// diarize). Slovenian only: language=sl. No detect_language, no streaming.
+// Deepgram Nova-3 with language detection restored for mixed field speech.
 const QUERY =
-  "model=nova-3&language=sl&punctuate=true&smart_format=true&diarize=false";
+  "model=nova-3&detect_language=true&punctuate=true&smart_format=true&diarize=false";
 
 // Maximum time to wait for a Deepgram transcription request.
 const TRANSCRIPTION_TIMEOUT_MS = 30_000;
