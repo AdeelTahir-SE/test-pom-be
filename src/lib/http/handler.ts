@@ -57,6 +57,7 @@ async function assertSubscriptionActive(request: Request, companyId: string) {
         .update({ subscription_active: false })
         .eq("id", companyId);
     }
+    if (request.method === "GET") return;
     throw new ApiError(
       "payment_required",
       "Company subscription is inactive. Please renew billing to continue."

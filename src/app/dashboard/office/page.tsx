@@ -54,7 +54,7 @@ import { DailySummaryPanel } from '@/components/dashboard/DailySummaryPanel';
 import { WorkerCard } from '@/components/dashboard/WorkerCard';
 import { OfficeCard } from '@/components/dashboard/OfficeCard';
 import { VoiceMessagePlayer } from '@/components/dashboard/VoiceMessagePlayer';
-import { BillingRequired } from '@/components/dashboard/BillingRequired';
+import { BillingLockBanner } from '@/components/dashboard/BillingRequired';
 import { CommunicationCard } from '@/components/dashboard/CommunicationCard';
 import { WorkerDetailModal } from '@/components/dashboard/WorkerDetailModal';
 import { AddTaskModal } from '@/components/dashboard/AddTaskModal';
@@ -174,8 +174,10 @@ function ColumnHeader({ title, onAddClick, addTitle, addLocked = false }: Column
 
 export default function OfficeDashboard() {
   const { t } = useLanguage();
-  const { user, company, loading: authLoading, logout } = useCurrentUser();
+  const { user, company, officeContact, loading: authLoading, logout } = useCurrentUser();
   const router = useRouter();
+  const billingLocked = company?.subscription_active === false;
+  const billingLockedMessage = 'Aktivirajte naročnino za uporabo.';
 
   useEffect(() => {
     if (!authLoading && user && user.role === 'worker') {
@@ -202,7 +204,7 @@ export default function OfficeDashboard() {
     refreshBoard,
   } = useOfficeBoard(
     selectedDayKey,
-    !authLoading && !!user && company?.subscription_active !== false
+    !authLoading && !!user
   );
 
   // Unlock Web Audio after first tap so inbound beeps can play (Mark).
@@ -302,6 +304,14 @@ export default function OfficeDashboard() {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => setToastMessage(null), 2500);
   }, []);
+  const showBillingLockedToast = useCallback(() => {
+    showToast(billingLockedMessage);
+  }, [showToast]);
+  const requireBillingUnlocked = useCallback(() => {
+    if (!billingLocked) return true;
+    showBillingLockedToast();
+    return false;
+  }, [billingLocked, showBillingLockedToast]);
 
   const cardAttachInputRef = useRef<HTMLInputElement | null>(null);
   const cardAttachTargetRef = useRef<{ jobId: string; taskId: string } | null>(
@@ -341,11 +351,15 @@ export default function OfficeDashboard() {
       const openParam = params.get('open');
       if (openParam === 'team') {
         // Mark: Ekipa popup not shown — open Dodaj sodelavca instead.
-        setIsAddWorkerOpen(true);
+        if (billingLocked) {
+          showBillingLockedToast();
+        } else {
+          setIsAddWorkerOpen(true);
+        }
         window.history.replaceState({}, '', window.location.pathname);
       }
     }
-  }, [companyCreationDate]);
+  }, [billingLocked, companyCreationDate, showBillingLockedToast]);
 
   // Mobile/tablet: horizontal snap between the three columns
   const containerRef = useRef<HTMLDivElement>(null);
@@ -488,6 +502,7 @@ export default function OfficeDashboard() {
     : null;
 
   const handleToggleTask = async (_workerId: string, taskId: string) => {
+    if (!requireBillingUnlocked()) return;
     const item = Object.values(mergedChecklistsByJob)
       .flat()
       .find((i) => i.id === taskId);
@@ -544,6 +559,10 @@ export default function OfficeDashboard() {
   };
 
   const completeConfirmedTask = async () => {
+    if (!requireBillingUnlocked()) {
+      setPendingConfirmTask(null);
+      return;
+    }
     const pending = pendingConfirmTask;
     if (!pending) return;
     setPendingConfirmTask(null);
@@ -611,6 +630,7 @@ export default function OfficeDashboard() {
   };
 
   const handleCardAttachmentClick = (_workerId: string, taskId: string) => {
+    if (!requireBillingUnlocked()) return;
     const item = Object.values(mergedChecklistsByJob)
       .flat()
       .find((i) => i.id === taskId);
@@ -621,11 +641,13 @@ export default function OfficeDashboard() {
   };
 
   const handleReminderAttachmentClick = (reminderId: string) => {
+    if (!requireBillingUnlocked()) return;
     setReminderEditTarget(reminderId);
     setIsAddReminderOpen(true);
   };
 
   const handleReminderAttachmentDialog = (reminderId: string) => {
+    if (!requireBillingUnlocked()) return;
     setAttachmentDialogReminderId(reminderId);
     setIsAttachmentDialogOpen(true);
   };
@@ -660,6 +682,7 @@ export default function OfficeDashboard() {
   };
 
   const handleCardAttachmentFile = async (file: File | null) => {
+    if (!requireBillingUnlocked()) return;
     const target = cardAttachTargetRef.current;
     cardAttachTargetRef.current = null;
     if (!file || !target) return;
@@ -692,6 +715,7 @@ export default function OfficeDashboard() {
   };
 
   const handleChangeJobStatus = async (jobId: string, status: string) => {
+    if (!requireBillingUnlocked()) return;
     if (isOptimisticId(jobId)) return;
     setJobs((prev) =>
       prev.map((j) =>
@@ -718,6 +742,7 @@ export default function OfficeDashboard() {
     datum: string;
     steps: { text: string; requiresAttachment: boolean }[];
   }) => {
+    if (!requireBillingUnlocked()) return;
     const parsed = parseFlexibleDate(taskData.datum) ?? selectedDate;
     if (parsed.getTime() < startOfLocalDay().getTime()) {
       showToast('Datum ne sme biti v preteklosti.');
@@ -836,6 +861,7 @@ export default function OfficeDashboard() {
     hasConfirm: boolean;
     hasDecline: boolean;
   }) => {
+    if (!requireBillingUnlocked()) return;
     // If editing an existing reminder, call update instead
     if (reminderEditTarget) {
       handleUpdateReminder(reminderEditTarget, reminderData);
@@ -942,6 +968,7 @@ export default function OfficeDashboard() {
     hasConfirm: boolean;
     hasDecline: boolean;
   }) => {
+    if (!requireBillingUnlocked()) return;
     const actions: string[] = [];
     if (reminderData.hasAttachment) actions.push('attachment');
     if (reminderData.hasEmail) actions.push('email');
@@ -1001,6 +1028,9 @@ export default function OfficeDashboard() {
     role: 'worker' | 'manager';
     password: string;
   }) => {
+    if (!requireBillingUnlocked()) {
+      throw new Error(billingLockedMessage);
+    }
     const res = await api.post<{ user: ApiUser; temporary_password?: string }>(
       '/api/users',
       {
@@ -1034,6 +1064,7 @@ export default function OfficeDashboard() {
   };
 
   const handleConfirmReminder = async (id: string) => {
+    if (!requireBillingUnlocked()) return;
     if (isOptimisticId(id)) return;
     setReminders((prev) =>
       prev.map((r) =>
@@ -1055,6 +1086,7 @@ export default function OfficeDashboard() {
     }
   };
   const handleDeclineReminder = async (id: string) => {
+    if (!requireBillingUnlocked()) return;
     if (isOptimisticId(id)) return;
     setReminders((prev) =>
       prev.map((r) =>
@@ -1076,6 +1108,7 @@ export default function OfficeDashboard() {
     }
   };
   const handleDismissReminder = async (id: string) => {
+    if (!requireBillingUnlocked()) return;
     if (isOptimisticId(id)) {
       setReminders((prev) => prev.filter((r) => r.id !== id));
       return;
@@ -1093,6 +1126,7 @@ export default function OfficeDashboard() {
     }
   };
   const handleDismissConversation = async (messageIds: string[]) => {
+    if (!requireBillingUnlocked()) return;
     if (messageIds.length === 0) return;
     const idSet = new Set(messageIds);
     const snapshot = communications;
@@ -1105,6 +1139,7 @@ export default function OfficeDashboard() {
     if (results.some((r) => r.status !== 200)) setCommunications(snapshot);
   };
   const handleDismissJob = async (id: string) => {
+    if (!requireBillingUnlocked()) return;
     if (isOptimisticId(id)) {
       setJobs((prev) => prev.filter((j) => j.id !== id));
       if (selectedWorkerJobId === id) {
@@ -1127,9 +1162,11 @@ export default function OfficeDashboard() {
   };
 
   const requestDismissJob = (id: string) => {
+    if (!requireBillingUnlocked()) return;
     setPendingDeleteJobId(id);
   };
   const handleJobDragEnd = (event: DragEndEvent) => {
+    if (!requireBillingUnlocked()) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIndex = activeJobs.findIndex((j) => j.id === active.id);
@@ -1170,6 +1207,7 @@ export default function OfficeDashboard() {
     activeJobs.find((j) => j.worker_id === workerId) ?? null;
 
   const handleComposeMessage = (workerId: string) => {
+    if (!requireBillingUnlocked()) return;
     if (!communicationAllowed) {
       showCommunicationBlockedToast();
       return;
@@ -1186,6 +1224,7 @@ export default function OfficeDashboard() {
   };
 
   const handleSendReply = async () => {
+    if (!requireBillingUnlocked()) return;
     if (!communicationAllowed) {
       showCommunicationBlockedToast();
       return;
@@ -1204,6 +1243,7 @@ export default function OfficeDashboard() {
 
   const handleVoiceReplyComplete = useCallback(
     async (blob: Blob, mimeType: string) => {
+      if (!requireBillingUnlocked()) return;
       if (!replyJobId) return;
       const jobIdForUpload = replyJobId;
       const formData = new FormData();
@@ -1237,7 +1277,7 @@ export default function OfficeDashboard() {
         );
       }
     },
-    [refreshBoard, replyJobId, showToast, t]
+    [refreshBoard, replyJobId, requireBillingUnlocked, showToast, t]
   );
 
   const handleVoiceReplyError = useCallback(
@@ -1264,6 +1304,7 @@ export default function OfficeDashboard() {
   });
 
   const handleStartRecordReply = async () => {
+    if (!requireBillingUnlocked()) return;
     if (!communicationAllowed) {
       showCommunicationBlockedToast();
       return;
@@ -1278,17 +1319,6 @@ export default function OfficeDashboard() {
       <div className="min-h-screen flex items-center justify-center bg-[#f3f5f8] text-slate-400 text-sm">
         {t('officeLoading')}
       </div>
-    );
-  }
-
-  if (user && company?.subscription_active === false) {
-    return (
-      <BillingRequired
-        user={user}
-        company={company}
-        onLogout={logout}
-        onActivated={refreshBoard}
-      />
     );
   }
 
@@ -1419,9 +1449,13 @@ export default function OfficeDashboard() {
                   <SearchIcon className="h-5 w-5" />
                 </button>
                 <button
-                  onClick={() => setIsAddWorkerOpen(true)}
-                  title="Dodaj sodelavca"
-                  className="hidden sm:block p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  onClick={() => {
+                    if (!requireBillingUnlocked()) return;
+                    setIsAddWorkerOpen(true);
+                  }}
+                  title={billingLocked ? billingLockedMessage : "Dodaj sodelavca"}
+                  disabled={billingLocked}
+                  className="hidden sm:block p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   <img
                     src="/adduser.png"
@@ -1449,6 +1483,16 @@ export default function OfficeDashboard() {
       </header>
 
       <div className="w-full max-w-[1232px] mx-auto px-6 flex-1" style={{ paddingTop: '32px' }}>
+        {billingLocked && user && company && (
+          <div className="mb-5">
+            <BillingLockBanner
+              user={user}
+              company={company}
+              officeContact={officeContact}
+              onActivated={refreshBoard}
+            />
+          </div>
+        )}
         <OfficeDayHeader
           title={t('officeHeading')}
           selectedDate={selectedDate}
@@ -1626,8 +1670,12 @@ export default function OfficeDashboard() {
           <div className="flex flex-col gap-3 office-column-cell">
             <ColumnHeader
               title={t('officeColField')}
-              onAddClick={() => setIsAddTaskOpen(true)}
-              addTitle={t('officeAddTask')}
+              onAddClick={() => {
+                if (!requireBillingUnlocked()) return;
+                setIsAddTaskOpen(true);
+              }}
+              addTitle={billingLocked ? billingLockedMessage : t('officeAddTask')}
+              addLocked={billingLocked}
             />
             <div
               style={{
@@ -1719,8 +1767,12 @@ export default function OfficeDashboard() {
           <div className="flex flex-col gap-3 office-column-cell">
             <ColumnHeader
               title={t('officeColOffice')}
-              onAddClick={() => setIsAddReminderOpen(true)}
-              addTitle={t('officeAddReminder')}
+              onAddClick={() => {
+                if (!requireBillingUnlocked()) return;
+                setIsAddReminderOpen(true);
+              }}
+              addTitle={billingLocked ? billingLockedMessage : t('officeAddReminder')}
+              addLocked={billingLocked}
             />
             <div
               style={{
@@ -1788,6 +1840,7 @@ export default function OfficeDashboard() {
             <ColumnHeader
               title={t('officeColComm')}
               onAddClick={() => {
+                if (!requireBillingUnlocked()) return;
                 // No TEREN card → nobody to message. No toast at all (Mark:
                 // the today-only toast must never appear in this state).
                 if (composeWorkerOptions.length === 0) return;
@@ -1800,12 +1853,14 @@ export default function OfficeDashboard() {
               addTitle={
                 composeWorkerOptions.length === 0
                   ? t('officeAddMessage')
-                  : !communicationAllowed
+                  : billingLocked
+                    ? billingLockedMessage
+                    : !communicationAllowed
                     ? JOB_COMMUNICATION_TODAY_ONLY_MESSAGE
                     : t('officeAddMessage')
               }
               addLocked={
-                composeWorkerOptions.length === 0 || !communicationAllowed
+                composeWorkerOptions.length === 0 || !communicationAllowed || billingLocked
               }
             />
             <div
@@ -1968,7 +2023,9 @@ export default function OfficeDashboard() {
         jobTitle={selectedJob?.title ?? null}
         scheduledAt={selectedJob?.scheduled_at ?? null}
         cardMutable={
-          selectedJob
+          billingLocked
+            ? false
+            : selectedJob
             ? isJobCardMutable({
                 scheduled_at: selectedJob.scheduled_at,
                 created_at: selectedJob.created_at,
@@ -1977,6 +2034,7 @@ export default function OfficeDashboard() {
         }
         onRefresh={() => void refreshBoard()}
         onChecklistReorder={(orderedIds) => {
+          if (billingLocked) return;
           if (!selectedWorkerJobId || isOptimisticId(selectedWorkerJobId))
             return;
           const jobId = selectedWorkerJobId;
@@ -2002,14 +2060,14 @@ export default function OfficeDashboard() {
         }}
         jobStatus={selectedJob?.status}
         onChangeJobStatus={
-          selectedWorkerJobId
+          !billingLocked && selectedWorkerJobId
             ? (status) => handleChangeJobStatus(selectedWorkerJobId, status)
             : undefined
         }
-        canCancelJob
-        canManageCustomerNotes
+        canCancelJob={!billingLocked}
+        canManageCustomerNotes={!billingLocked}
         onDeleteCard={
-          selectedWorkerJobId
+          !billingLocked && selectedWorkerJobId
             ? () => void handleDismissJob(selectedWorkerJobId)
             : undefined
         }
@@ -2181,15 +2239,19 @@ export default function OfficeDashboard() {
       </Dialog>
 
       <AddTaskModal
-        isOpen={isAddTaskOpen}
-        onOpenChange={setIsAddTaskOpen}
+        isOpen={isAddTaskOpen && !billingLocked}
+        onOpenChange={(open) => {
+          if (open && !requireBillingUnlocked()) return;
+          setIsAddTaskOpen(open);
+        }}
         workers={workers.map((w) => ({ id: w.id, name: w.full_name, phone: w.phone }))}
         defaultDate={selectedSiDate}
         onAddTask={handleAddTask}
       />
       <AddReminderModal
-        isOpen={isAddReminderOpen}
+        isOpen={isAddReminderOpen && !billingLocked}
         onOpenChange={(open) => {
+          if (open && !requireBillingUnlocked()) return;
           setIsAddReminderOpen(open);
           if (!open) setReminderEditTarget(null);
         }}
@@ -2215,14 +2277,17 @@ export default function OfficeDashboard() {
         onAddReminder={handleAddReminder}
       />
       <AttachmentDialog
-        isOpen={isAttachmentDialogOpen}
-        onOpenChange={setIsAttachmentDialogOpen}
+        isOpen={isAttachmentDialogOpen && !billingLocked}
+        onOpenChange={(open) => {
+          if (open && !requireBillingUnlocked()) return;
+          setIsAttachmentDialogOpen(open);
+        }}
         targetType="reminder"
         targetId={attachmentDialogReminderId || ""}
         onUploadSuccess={() => void refreshBoard()}
       />
       <AttachmentDialog
-        isOpen={!!jobCardAttachTarget}
+        isOpen={!!jobCardAttachTarget && !billingLocked}
         onOpenChange={(open) => {
           if (!open) setJobCardAttachTarget(null);
         }}
@@ -2248,8 +2313,11 @@ export default function OfficeDashboard() {
         onClose={() => setReminderPreview(null)}
       />
       <AddWorkerCard
-        isOpen={isAddWorkerOpen}
-        onOpenChange={setIsAddWorkerOpen}
+        isOpen={isAddWorkerOpen && !billingLocked}
+        onOpenChange={(open) => {
+          if (open && !requireBillingUnlocked()) return;
+          setIsAddWorkerOpen(open);
+        }}
         onAddWorker={handleAddWorker}
         existingUsers={companyUsers.filter((u) => u.is_active)}
       />
@@ -2340,16 +2408,17 @@ export default function OfficeDashboard() {
               {/* GLASOVNO */}
               <button
                 type="button"
-                disabled={!composeWorkerId}
+                disabled={!composeWorkerId || billingLocked}
+                title={billingLocked ? billingLockedMessage : undefined}
                 onClick={() => {
-                  if (!composeWorkerId) return;
+                  if (!composeWorkerId || !requireBillingUnlocked()) return;
                   handleComposeMessage(composeWorkerId);
                 }}
                 className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 transition-all cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed group"
               >
                 <div
                   className={`w-16 h-16 rounded-[20px] flex items-center justify-center border transition-all ${
-                    composeWorkerId
+                    composeWorkerId && !billingLocked
                       ? "bg-[#0A1128] border-[#0A1128] text-white shadow-lg shadow-[#0A1128]/20"
                       : "bg-white border-slate-200 text-slate-400"
                   }`}
@@ -2369,7 +2438,7 @@ export default function OfficeDashboard() {
                   </svg>
                 </div>
                 <span className={`text-[12px] font-bold uppercase tracking-wider transition-colors ${
-                  composeWorkerId ? "text-slate-700" : "text-slate-400"
+                  composeWorkerId && !billingLocked ? "text-slate-700" : "text-slate-400"
                 }`}>
                   GLASOVNO
                 </span>
@@ -2378,16 +2447,17 @@ export default function OfficeDashboard() {
               {/* TEKSTOVNO */}
               <button
                 type="button"
-                disabled={!composeWorkerId}
+                disabled={!composeWorkerId || billingLocked}
+                title={billingLocked ? billingLockedMessage : undefined}
                 onClick={() => {
-                  if (!composeWorkerId) return;
+                  if (!composeWorkerId || !requireBillingUnlocked()) return;
                   handleComposeMessage(composeWorkerId);
                 }}
                 className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 transition-all cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed group"
               >
                 <div
                   className={`w-16 h-16 rounded-[20px] flex items-center justify-center border transition-all ${
-                    composeWorkerId
+                    composeWorkerId && !billingLocked
                       ? "bg-[#0A1128] border-[#0A1128] text-white shadow-lg shadow-[#0A1128]/20"
                       : "bg-white border-slate-200 text-slate-400"
                   }`}
@@ -2407,7 +2477,7 @@ export default function OfficeDashboard() {
                   </svg>
                 </div>
                 <span className={`text-[12px] font-bold uppercase tracking-wider transition-colors ${
-                  composeWorkerId ? "text-slate-700" : "text-slate-400"
+                  composeWorkerId && !billingLocked ? "text-slate-700" : "text-slate-400"
                 }`}>
                   TEKSTOVNO
                 </span>
@@ -2483,15 +2553,17 @@ export default function OfficeDashboard() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleSendReply();
               }}
-              className="flex-1 h-10 text-xs px-3 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800"
+              disabled={billingLocked}
+              title={billingLocked ? billingLockedMessage : undefined}
+              className="flex-1 h-10 text-xs px-3 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             />
             <button
               type="button"
               onClick={handleStartRecordReply}
-              disabled={!communicationAllowed || replyVoiceRecorder.isRecording}
-              title={t('workerVoice')}
+              disabled={billingLocked || !communicationAllowed || replyVoiceRecorder.isRecording}
+              title={billingLocked ? billingLockedMessage : t('workerVoice')}
               className={`w-10 h-10 rounded-xl border border-slate-200 text-slate-500 flex items-center justify-center transition-colors shrink-0 ${
-                communicationAllowed && !replyVoiceRecorder.isRecording
+                !billingLocked && communicationAllowed && !replyVoiceRecorder.isRecording
                   ? 'hover:bg-slate-50 cursor-pointer'
                   : 'opacity-45 cursor-not-allowed'
               }`}
@@ -2501,8 +2573,9 @@ export default function OfficeDashboard() {
             <button
               type="button"
               onClick={handleSendReply}
-              disabled={!communicationAllowed}
-              className="w-10 h-10 rounded-xl bg-[#0A1128] hover:bg-[#152042] text-white flex items-center justify-center transition-colors shrink-0 cursor-pointer"
+              disabled={billingLocked || !communicationAllowed}
+              title={billingLocked ? billingLockedMessage : undefined}
+              className="w-10 h-10 rounded-xl bg-[#0A1128] hover:bg-[#152042] text-white flex items-center justify-center transition-colors shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-45"
             >
               <Send className="w-4 h-4" />
             </button>

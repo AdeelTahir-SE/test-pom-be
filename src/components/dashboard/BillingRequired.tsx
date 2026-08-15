@@ -15,6 +15,13 @@ interface BillingRequiredProps {
   onActivated?: () => void;
 }
 
+interface BillingLockBannerProps {
+  user: CurrentUser;
+  company: CurrentCompany;
+  officeContact?: OfficeContact | null;
+  onActivated?: () => void;
+}
+
 export function BillingRequired({
   user,
   company,
@@ -173,5 +180,133 @@ export function BillingRequired({
         </section>
       </div>
     </main>
+  );
+}
+
+export function BillingLockBanner({
+  user,
+  company,
+  officeContact,
+  onActivated,
+}: BillingLockBannerProps) {
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [polling, setPolling] = useState(false);
+  const isOwner = user.role === "owner";
+  const launchDiscount = isAugust2026LaunchDiscountActive();
+  const phoneHref = toTelHref(officeContact?.phone ?? "") ?? undefined;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("billing") !== "success") return;
+    const sessionId = params.get("session_id");
+
+    let cancelled = false;
+    setPolling(true);
+    setStatus("Plačilo je prejeto. Aktiviramo naročnino ...");
+
+    const activate = () => {
+      setStatus("Naročnina je aktivna.");
+      onActivated?.();
+      window.setTimeout(() => window.location.reload(), 500);
+    };
+
+    let attempts = 0;
+    const poll = async () => {
+      attempts += 1;
+      if (sessionId && attempts === 1) {
+        const syncRes = await api.post<{
+          subscription_active: boolean;
+          subscription_status: string | null;
+        }>("/api/billing/sync", { session_id: sessionId });
+        if (cancelled) return;
+        if (syncRes.status === 200 && syncRes.data?.subscription_active) {
+          activate();
+          return;
+        }
+      }
+
+      const res = await api.get<{
+        subscription_active: boolean;
+        subscription_status: string | null;
+      }>("/api/billing/status");
+      if (cancelled) return;
+      if (res.status === 200 && res.data?.subscription_active) {
+        activate();
+        return;
+      }
+      if (attempts < 10) {
+        window.setTimeout(poll, 1500);
+        return;
+      }
+      setPolling(false);
+      setStatus("Plačilo je v obdelavi. Osvežite stran čez nekaj trenutkov.");
+    };
+    void poll();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [onActivated]);
+
+  const startCheckout = async () => {
+    if (!isOwner || busy) return;
+    setBusy(true);
+    setStatus(null);
+    const res = await api.post<{ url: string }>("/api/billing/checkout", {});
+    setBusy(false);
+    if (res.status === 200 && res.data?.url) {
+      window.location.href = res.data.url;
+      return;
+    }
+    setStatus(res.error?.message ?? "Plačilnega sistema ni bilo mogoče odpreti.");
+  };
+
+  return (
+    <section className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-slate-900 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex min-w-0 gap-3">
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-amber-700 ring-1 ring-amber-200">
+            <LockKeyhole className="h-4 w-4" aria-hidden />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">
+              {isOwner
+                ? "Dashboard je v načinu samo za ogled."
+                : "Naročnina podjetja ni aktivna."}
+            </p>
+            <p className="mt-0.5 text-xs leading-5 text-slate-600">
+              {isOwner
+                ? `Za dodajanje, urejanje, pošiljanje in nalaganje aktivirajte naročnino za ${company.name}.`
+                : "Podatke lahko pregledujete, spremembe pa so zaklenjene, dokler lastnik ne aktivira plačila."}
+              {launchDiscount && isOwner
+                ? " Avgustovska ponudba: prvi mesec je 29 EUR."
+                : ""}
+            </p>
+            {status && <p className="mt-1 text-xs font-medium text-amber-900">{status}</p>}
+          </div>
+        </div>
+        {isOwner ? (
+          <button
+            type="button"
+            onClick={startCheckout}
+            disabled={busy || polling}
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#0A1128] px-4 text-xs font-semibold text-white hover:bg-[#152042] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <CreditCard className="h-4 w-4" aria-hidden />
+            {busy ? "Preusmerjanje ..." : "Plačaj s Stripe"}
+          </button>
+        ) : phoneHref ? (
+          <a
+            href={phoneHref}
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-amber-200 bg-white px-4 text-xs font-semibold text-slate-700 hover:bg-amber-100/60"
+          >
+            <Phone className="h-4 w-4" aria-hidden />
+            Pokliči pisarno
+          </a>
+        ) : null}
+      </div>
+    </section>
   );
 }

@@ -31,7 +31,7 @@ import { WorkerDetailModal } from '@/components/dashboard/WorkerDetailModal';
 import { AuraFileInput } from '@/components/dashboard/AuraForm';
 import { parseNoteText } from '@/components/dashboard/CustomerNotesBanner';
 import { AddCustomerNoteDialog } from '@/components/dashboard/AddCustomerNoteDialog';
-import { BillingRequired } from '@/components/dashboard/BillingRequired';
+import { BillingLockBanner } from '@/components/dashboard/BillingRequired';
 
 interface TeamUser {
   id: string;
@@ -102,6 +102,13 @@ export default function DatabaseDashboard() {
   const router = useRouter();
   const { t } = useLanguage();
   const { user, company, officeContact, loading: authLoading, logout } = useCurrentUser();
+  const billingLocked = company?.subscription_active === false;
+  const billingLockedMessage = 'Aktivirajte naročnino za uporabo.';
+  const requireBillingUnlocked = useCallback(() => {
+    if (!billingLocked) return true;
+    alert(billingLockedMessage);
+    return false;
+  }, [billingLocked]);
   useEffect(() => {
     if (!authLoading && user && user.role === 'worker') {
       router.replace('/dashboard/worker');
@@ -333,6 +340,7 @@ export default function DatabaseDashboard() {
 
   const handleDetailJobStatus = useCallback(
     async (status: ApiJob['status']) => {
+      if (!requireBillingUnlocked()) return;
       if (!detailJobId) return;
       try {
         const res = await api.patch(`/api/jobs/${detailJobId}`, { status });
@@ -351,7 +359,7 @@ export default function DatabaseDashboard() {
         alert('Težava pri povezavi z strežnikom.');
       }
     },
-    [detailJobId, loadJobs]
+    [detailJobId, loadJobs, requireBillingUnlocked]
   );
 
   const loadAttachments = useCallback(async () => {
@@ -488,16 +496,13 @@ export default function DatabaseDashboard() {
   }, [staffList]);
 
   useEffect(() => {
-    if (!authLoading && user && company?.subscription_active !== false) {
+    if (!authLoading && user) {
       void loadStaff();
     }
-    if (!authLoading && user && company?.subscription_active === false) {
-      setStaffLoading(false);
-    }
-  }, [authLoading, user, company?.subscription_active, loadStaff]);
+  }, [authLoading, user, loadStaff]);
 
   useEffect(() => {
-    if (authLoading || !user || company?.subscription_active === false) return;
+    if (authLoading || !user) return;
     if (activeTab === 1) void loadJobs();
     if (activeTab === 3) {
       void loadAttachments();
@@ -509,7 +514,6 @@ export default function DatabaseDashboard() {
     attachmentSubTab,
     authLoading,
     user,
-    company?.subscription_active,
     loadJobs,
     loadZaznamki,
     loadAttachments,
@@ -716,6 +720,7 @@ export default function DatabaseDashboard() {
 
   // Soft delete Staff member (sets is_active to false, hides from list but keeps all data)
   const handleDeactivateStaff = async () => {
+    if (!requireBillingUnlocked()) return;
     if (!userToDelete) return;
     setDeletingUser(true);
     try {
@@ -737,6 +742,7 @@ export default function DatabaseDashboard() {
   };
 
   const handleSaveCompanyPhone = async () => {
+    if (!requireBillingUnlocked()) return;
     if (!user) return;
     const stored = toStoredSiPhone(companyPhone);
     if (companyPhone.trim() && !stored) {
@@ -763,6 +769,7 @@ export default function DatabaseDashboard() {
   };
 
   const handleChangePassword = async () => {
+    if (!requireBillingUnlocked()) return;
     if (!user?.email) return;
     setPasswordBusy(true);
     try {
@@ -804,6 +811,7 @@ export default function DatabaseDashboard() {
   const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
 
   const handleDeleteOfficeNote = async (noteId: string) => {
+    if (!requireBillingUnlocked()) return;
     if (deletingNoteId) return;
     setDeletingNoteId(noteId);
     try {
@@ -822,6 +830,7 @@ export default function DatabaseDashboard() {
   };
 
   const handleUploadAttachment = async () => {
+    if (!requireBillingUnlocked()) return;
     if (!attachJobId || !attachFile) {
       alert('Izberite opravilo in datoteko.');
       return;
@@ -864,18 +873,6 @@ export default function DatabaseDashboard() {
       <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] text-slate-400 text-sm">
         {t('officeLoading')}
       </div>
-    );
-  }
-
-  if (user && company?.subscription_active === false) {
-    return (
-      <BillingRequired
-        user={user}
-        company={company}
-        officeContact={officeContact}
-        onLogout={logout}
-        onActivated={loadStaff}
-      />
     );
   }
 
@@ -1039,16 +1036,26 @@ export default function DatabaseDashboard() {
             </button>
 
             <button
-              onClick={() => setIsAddWorkerOpen(true)}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-[8px] text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer text-left w-full"
+              onClick={() => {
+                if (!requireBillingUnlocked()) return;
+                setIsAddWorkerOpen(true);
+              }}
+              disabled={billingLocked}
+              title={billingLocked ? billingLockedMessage : undefined}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-[8px] text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer text-left w-full disabled:cursor-not-allowed disabled:opacity-45"
             >
               <Folder className="h-[18px] w-[18px] shrink-0 text-slate-500" />
               <span className='font-inter font-medium text-base leading-6 align-middle'>Dodaj sodelavca</span>
             </button>
 
             <button
-              onClick={() => setIsAddTaskOpen(true)}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-[8px] text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer text-left w-full"
+              onClick={() => {
+                if (!requireBillingUnlocked()) return;
+                setIsAddTaskOpen(true);
+              }}
+              disabled={billingLocked}
+              title={billingLocked ? billingLockedMessage : undefined}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-[8px] text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer text-left w-full disabled:cursor-not-allowed disabled:opacity-45"
             >
               <Folder className="h-[18px] w-[18px] shrink-0 text-slate-500" />
               <span className='font-inter font-medium text-base leading-6 align-middle'>Terenska kartica</span>
@@ -1076,6 +1083,16 @@ export default function DatabaseDashboard() {
         {/* CONTAINER */}
         {/* Room above headline — same as before top-right header was removed (Mark) */}
         <main className="flex-1 px-8 pb-8 pt-20 overflow-y-auto">
+          {billingLocked && user && company && (
+            <div className="mb-5">
+              <BillingLockBanner
+                user={user}
+                company={company}
+                officeContact={officeContact}
+                onActivated={loadStaff}
+              />
+            </div>
+          )}
           {/* Active Tab Title */}
           <h1
             className="mb-[26px] select-none"
@@ -1201,7 +1218,8 @@ export default function DatabaseDashboard() {
                   <button
                     type="button"
                     onClick={() => void handleSaveCompanyPhone()}
-                    disabled={phoneSaving}
+                    disabled={phoneSaving || billingLocked}
+                    title={billingLocked ? billingLockedMessage : undefined}
                     className="text-[#3B82F6] hover:underline text-xs font-medium cursor-pointer disabled:opacity-50"
                   >
                     {phoneSaving ? '…' : 'Shrani številko'}
@@ -1225,7 +1243,8 @@ export default function DatabaseDashboard() {
                   <button
                     type="button"
                     onClick={() => void handleChangePassword()}
-                    disabled={passwordBusy}
+                    disabled={passwordBusy || billingLocked}
+                    title={billingLocked ? billingLockedMessage : undefined}
                     className="text-[#3B82F6] hover:underline text-sm font-medium cursor-pointer disabled:opacity-50"
                   >
                     {passwordBusy ? '…' : 'Spremeni geslo'}
@@ -1295,8 +1314,13 @@ export default function DatabaseDashboard() {
                                 <td className="px-6 py-4 text-right" style={tdStyle10}>
                                   {member.role !== 'owner' ? (
                                     <button
-                                      onClick={() => setUserToDelete(member)}
-                                      className="hover:underline cursor-pointer"
+                                      onClick={() => {
+                                        if (!requireBillingUnlocked()) return;
+                                        setUserToDelete(member);
+                                      }}
+                                      disabled={billingLocked}
+                                      title={billingLocked ? billingLockedMessage : undefined}
+                                      className="hover:underline cursor-pointer disabled:cursor-not-allowed disabled:opacity-45"
                                       style={{ color: '#24273166' }}
                                     >
                                       Izbriši
@@ -1449,6 +1473,7 @@ export default function DatabaseDashboard() {
                       <button
                         type="button"
                         onClick={() => {
+                          if (!requireBillingUnlocked()) return;
                           if (attachmentSubTab === 5) {
                             setIsAddZaznamekOpen(true);
                             return;
@@ -1456,7 +1481,9 @@ export default function DatabaseDashboard() {
                           if (jobsList.length === 0) void loadJobs();
                           setIsAddAttachmentOpen(true);
                         }}
-                        className="text-sm text-slate-400 hover:text-[#242731] cursor-pointer font-medium hover:underline"
+                        disabled={billingLocked}
+                        title={billingLocked ? billingLockedMessage : undefined}
+                        className="text-sm text-slate-400 hover:text-[#242731] cursor-pointer font-medium hover:underline disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         Dodaj
                       </button>
@@ -1503,6 +1530,7 @@ export default function DatabaseDashboard() {
                                                 className="shrink-0 text-[11px] hover:underline cursor-pointer"
                                                 style={{ color: '#24273166' }}
                                                 onClick={async () => {
+                                                  if (!requireBillingUnlocked()) return;
                                                   const res = await api.delete(`/api/customer-notes/${n.id}`);
                                                   if (res.status === 200) void loadZaznamki();
                                                 }}
@@ -1656,7 +1684,8 @@ export default function DatabaseDashboard() {
                                 <td className="px-6 py-4 text-right" style={tdStyle10}>
                                   <button
                                     type="button"
-                                    disabled={deletingNoteId === note.id}
+                                    disabled={deletingNoteId === note.id || billingLocked}
+                                    title={billingLocked ? billingLockedMessage : undefined}
                                     onClick={() => void handleDeleteOfficeNote(note.id)}
                                     className="hover:text-red-600 cursor-pointer transition-colors disabled:opacity-40"
                                     style={{ color: '#24273166' }}
@@ -1772,9 +1801,15 @@ export default function DatabaseDashboard() {
 
       {/* EXISTING DIALOGS CONNECTED TO SIDEBAR CLICKS */}
       <AddWorkerCard
-        isOpen={isAddWorkerOpen}
-        onOpenChange={setIsAddWorkerOpen}
+        isOpen={isAddWorkerOpen && !billingLocked}
+        onOpenChange={(open) => {
+          if (open && !requireBillingUnlocked()) return;
+          setIsAddWorkerOpen(open);
+        }}
         onAddWorker={async (w) => {
+          if (!requireBillingUnlocked()) {
+            throw new Error(billingLockedMessage);
+          }
           try {
             const res = await api.post('/api/users', {
               email: w.email,
@@ -1800,8 +1835,11 @@ export default function DatabaseDashboard() {
       />
 
       <AddCustomerNoteDialog
-        open={isAddZaznamekOpen}
-        onOpenChange={setIsAddZaznamekOpen}
+        open={isAddZaznamekOpen && !billingLocked}
+        onOpenChange={(open) => {
+          if (open && !requireBillingUnlocked()) return;
+          setIsAddZaznamekOpen(open);
+        }}
         customerNameEditable
         customerNameOptions={zaznamkiCustomerOptions}
         onSuccess={() => {
@@ -1833,7 +1871,9 @@ export default function DatabaseDashboard() {
           detailJobId ? jobsById[detailJobId]?.scheduled_at ?? null : null
         }
         cardMutable={
-          detailJobId && jobsById[detailJobId]
+          billingLocked
+            ? false
+            : detailJobId && jobsById[detailJobId]
             ? isJobCardMutable({
                 scheduled_at: jobsById[detailJobId].scheduled_at,
                 created_at: jobsById[detailJobId].created_at,
@@ -1843,14 +1883,17 @@ export default function DatabaseDashboard() {
         onRefresh={() => void loadJobs()}
         jobStatus={detailJobId ? jobsById[detailJobId]?.status : undefined}
         onChangeJobStatus={
-          detailJobId ? (status) => void handleDetailJobStatus(status) : undefined
+          !billingLocked && detailJobId ? (status) => void handleDetailJobStatus(status) : undefined
         }
-        canManageCustomerNotes
+        canManageCustomerNotes={!billingLocked}
       />
 
       <AddCustomerNoteDialog
-        open={isAddZaznamekOpen}
-        onOpenChange={setIsAddZaznamekOpen}
+        open={isAddZaznamekOpen && !billingLocked}
+        onOpenChange={(open) => {
+          if (open && !requireBillingUnlocked()) return;
+          setIsAddZaznamekOpen(open);
+        }}
         customerNameEditable
         customerNameOptions={zaznamkiCustomerOptions}
         onSuccess={() => {
@@ -1884,14 +1927,18 @@ export default function DatabaseDashboard() {
         onRefresh={() => void loadJobs()}
         jobStatus={detailJobId ? jobsById[detailJobId]?.status : undefined}
         onChangeJobStatus={
-          detailJobId ? (status) => void handleDetailJobStatus(status) : undefined
+          !billingLocked && detailJobId ? (status) => void handleDetailJobStatus(status) : undefined
         }
-        canManageCustomerNotes
+        cardMutable={!billingLocked}
+        canManageCustomerNotes={!billingLocked}
       />
 
       <AddTaskModal
-        isOpen={isAddTaskOpen}
-        onOpenChange={setIsAddTaskOpen}
+        isOpen={isAddTaskOpen && !billingLocked}
+        onOpenChange={(open) => {
+          if (open && !requireBillingUnlocked()) return;
+          setIsAddTaskOpen(open);
+        }}
         workers={staffList
           .filter((w) => w.is_active)
           .map((w) => ({
@@ -1901,6 +1948,7 @@ export default function DatabaseDashboard() {
           }))}
         defaultDate={new Date().toLocaleDateString('sl-SI', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\s+/g, '')}
         onAddTask={async (taskData) => {
+          if (!requireBillingUnlocked()) return;
           try {
             const res = await api.post('/api/jobs', taskData);
             if (res.status === 201 || res.status === 200) {
@@ -1918,8 +1966,9 @@ export default function DatabaseDashboard() {
       />
 
       <Dialog
-        open={isAddAttachmentOpen}
+        open={isAddAttachmentOpen && !billingLocked}
         onOpenChange={(open) => {
+          if (open && !requireBillingUnlocked()) return;
           setIsAddAttachmentOpen(open);
           if (!open) {
             setAttachFile(null);
