@@ -74,6 +74,7 @@ export default function WorkerDashboard() {
 
   const [messages, setMessages] = useState<ApiJobMessage[]>([]);
   const messagesRef = useRef<ApiJobMessage[]>([]);
+  const activeJobIdRef = useRef<string | null>(null);
   const [chatInput, setChatInput] = useState("");
   const [inboundNotifs, setInboundNotifs] = useState<ApiNotification[]>([]);
   const prevUnreadRef = useRef(0);
@@ -86,6 +87,10 @@ export default function WorkerDashboard() {
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    activeJobIdRef.current = job?.id ?? null;
+  }, [job?.id]);
 
   const loadAll = useCallback(async () => {
     if (company?.subscription_active === false) {
@@ -228,9 +233,19 @@ export default function WorkerDashboard() {
           const nextMessages = messagesRes.data.messages ?? [];
           const prevMessages = messagesRef.current;
           const prevIds = new Set(prevMessages.map((m) => m.id));
+          const prevById = new Map(prevMessages.map((m) => [m.id, m]));
           const changed =
             nextMessages.length !== prevMessages.length ||
-            nextMessages.some((m, index) => prevMessages[index]?.id !== m.id);
+            nextMessages.some((m, index) => {
+              const prev = prevById.get(m.id);
+              return (
+                prevMessages[index]?.id !== m.id ||
+                !prev ||
+                prev.content !== m.content ||
+                prev.read_at !== m.read_at ||
+                prev.attachment_id !== m.attachment_id
+              );
+            });
           if (changed) {
             if (nextMessages.some((m) => m.sender_id !== user.id && !prevIds.has(m.id))) {
               shouldBeep = true;
@@ -386,6 +401,23 @@ export default function WorkerDashboard() {
     }
   };
 
+  const refreshMessagesForJob = useCallback(async (jobId: string) => {
+    const res = await api.get<{ messages: ApiJobMessage[] }>(
+      `/api/jobs/${jobId}/messages`
+    );
+    if (res.status === 200 && res.data && activeJobIdRef.current === jobId) {
+      setMessages(res.data.messages ?? []);
+    }
+  }, []);
+
+  const scheduleVoiceTranscriptRefresh = useCallback((jobId: string) => {
+    for (const delay of [1000, 2500, 5000, 10000, 20000, 32000]) {
+      window.setTimeout(() => {
+        void refreshMessagesForJob(jobId);
+      }, delay);
+    }
+  }, [refreshMessagesForJob]);
+
   const handleVoiceComplete = useCallback(
     async (blob: Blob, mimeType: string) => {
       if (!job) return;
@@ -398,6 +430,7 @@ export default function WorkerDashboard() {
         );
         if ((res.status === 200 || res.status === 201) && res.data) {
           setMessages((prev) => [...prev, res.data!.message]);
+          scheduleVoiceTranscriptRefresh(job.id);
           showToast(t("workerVoiceSent"));
         } else {
           logClientError("worker.voiceUpload", res.error, {
@@ -420,7 +453,7 @@ export default function WorkerDashboard() {
         );
       }
     },
-    [job, t]
+    [job, scheduleVoiceTranscriptRefresh, t]
   );
 
   const handleVoiceError = useCallback(
