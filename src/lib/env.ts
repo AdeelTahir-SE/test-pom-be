@@ -38,6 +38,14 @@ export const env = {
   get mistralApiKey() {
     return optional("MISTRAL_API_KEY");
   },
+  get mistralDocumentExtractModel() {
+    return optional("MISTRAL_DOCUMENT_EXTRACT_MODEL") || "mistral-large-latest";
+  },
+  get documentLlmExtractTimeoutMs() {
+    const raw = optional("DOCUMENT_LLM_EXTRACT_TIMEOUT_MS");
+    const parsed = raw ? Number.parseInt(raw, 10) : 15_000;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 15_000;
+  },
   /** Optional — voice STT structuring after Deepgram (Mark: GPT-4o mini / 4.1). */
   get openaiApiKey() {
     return optional("OPENAI_API_KEY");

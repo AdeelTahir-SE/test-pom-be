@@ -200,7 +200,7 @@ describe("Add-on 1 — document preview (Mark pack 2)", () => {
     expect(result.document_preview.split("\n")).toEqual([
       "Račun 185678/533/1",
       "Manuela Glavinic",
-      "1. 9. 2023.",
+      "01.09.2023",
       "1.160,34 €",
     ]);
     expect(result.document_preview).not.toContain("Zadeva:");

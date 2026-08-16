@@ -1,5 +1,7 @@
 import { DOCUMENT_PREVIEW_MAX_CHARS, type AttachmentType, type DocumentType } from "@/config/constants";
 import { classifyDocument } from "./classify";
+import { normalizeDocumentDate } from "./date";
+import { extractDocumentFieldsWithLlm, type ExtractedDocumentFields } from "./llmExtract";
 
 export interface DocumentEnrichment {
   document_type: DocumentType;
@@ -10,6 +12,8 @@ export interface DocumentEnrichment {
 export interface DocumentPreviewOptions {
   attachmentType?: AttachmentType | null;
 }
+
+export type RegexDocumentFields = ExtractedDocumentFields;
 
 function stripMarkdownNoise(text: string): string {
   return text
@@ -105,9 +109,15 @@ function typeHeading(type: DocumentType): string {
 }
 
 function extractDocumentNo(text: string): string | null {
+  for (const line of stripMarkdownNoise(text).split(/\n/).map(cleanLine)) {
+    const direct = line.match(/\bra[cč]un[ \t]*(?:št\.?|st\.?|številka|stevilka|no\.?|nr\.?)[ \t]*[:#-]?[ \t]*([A-Za-z0-9][A-Za-z0-9/._-]*)/i);
+    if (direct?.[1]) return direct[1].trim();
+  }
+
   return findLabeledValue(text, [
     /broj\s+ra[cč]una/i,
     /št(?:evilka|\.?)\s*ra[cč]una/i,
+    /ra[cč]un\s*(?:št\.?|st\.?|številka|stevilka|nr\.?)/i,
     /invoice\s*(?:no\.?|number|#|nr\.?)/i,
     /(?:številka|št\.?)\s*(?:dokumenta|ponudbe|pogodbe|dobavnice|naloga)/i,
     /(?:offer|quote|quotation|contract|delivery\s*note|service\s*report)\s*(?:no\.?|number|#|nr\.?)/i,
@@ -116,44 +126,59 @@ function extractDocumentNo(text: string): string | null {
 }
 
 function extractCustomer(text: string): string | null {
-  return findLabeledValue(text, [
+  const labeled = findLabeledValue(text, [
     /naro[cč]nik/i,
     /stranka/i,
     /kupec/i,
+    /prejemnik/i,
+    /pla[cč]nik/i,
     /customer/i,
     /client/i,
+    /buyer/i,
+    /bill\s*to/i,
+    /kunde/i,
+    /cliente/i,
+    /destinatario/i,
     /kupac/i,
   ]);
-}
+  if (labeled) return labeled;
 
-function normalizeDate(value: string): string {
-  const dateOnly = value.match(/(\d{1,2}\.\s*\d{1,2}\.\s*\d{2,4}\.?)/);
-  return (dateOnly?.[1] ?? value).replace(/\s+/g, " ").trim();
+  const lines = stripMarkdownNoise(text).split(/\n/).map(cleanLine).filter((line) => line && !isNoiseLine(line));
+  const companyLines = lines.filter((line) => /\b(?:d\.?\s*o\.?\s*o\.?|s\.?\s*p\.?|d\.?\s*d\.?|doo|gmbh|srl|ltd|llc)\b/i.test(line));
+  return companyLines.length >= 2 ? companyLines[1]!.trim() : null;
 }
 
 function extractDate(text: string): string | null {
   const preferred = findLabeledValue(text, [
+    /izdano/i,
     /datum\s+ra[cč]una/i,
     /datum\s+(?:dokumenta|ponudbe|pogodbe|dobavnice|naloga)/i,
+    /date\s+of\s+issue/i,
+    /issue\s+date/i,
     /invoice\s*date/i,
     /\bdate\b/i,
     /\bdatum\b/i,
   ]);
-  if (preferred) return normalizeDate(preferred);
+  if (preferred) return normalizeDocumentDate(preferred, text);
 
-  const inline = stripMarkdownNoise(text).match(/\b(\d{1,2}\.\s*\d{1,2}\.\s*\d{2,4}\.?)\b/);
-  return inline?.[1]?.replace(/\s+/g, " ").trim() ?? null;
+  const inline = stripMarkdownNoise(text).match(/\b(\d{1,2}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{2,4}\.?|\d{4}-\d{1,2}-\d{1,2})\b/);
+  return normalizeDocumentDate(inline?.[1], text);
 }
 
 function extractAmount(text: string): string | null {
   const labeled = findLabeledValue(text, [
     /\bznesek\b/i,
+    /znesek\s+za\s+pla[cč]ilo/i,
     /\bvsota\b/i,
     /skupaj/i,
     /za\s+pla[cč]ilo/i,
+    /skupaj\s+za\s+pla[cč]ilo/i,
     /amount\s*due/i,
+    /grand\s*total/i,
     /\btotal\b/i,
     /\bamount\b/i,
+    /totale(?:\s+documento)?/i,
+    /gesamtbetrag/i,
     /ukupan\s+iznos(?:\s+eur)?/i,
   ]);
   if (labeled) {
@@ -164,7 +189,7 @@ function extractAmount(text: string): string | null {
   }
 
   const inline = stripMarkdownNoise(text).match(
-    /(?:znesek|vsota|skupaj|total|amount(?:\s*due)?|ukupan\s+iznos(?:\s+eur)?)\s*[:\-]?\s*([0-9][0-9.\s]*,[0-9]{2}\s*(?:€|eur)?)/i
+    /(?:znesek\s+za\s+pla[cč]ilo|znesek|vsota|skupaj(?:\s+za\s+pla[cč]ilo)?|grand\s*total|total|amount(?:\s*due)?|ukupan\s+iznos(?:\s+eur)?|totale(?:\s+documento)?|gesamtbetrag)\s*[:|\-]?\s*(?:\|\s*)?([0-9][0-9.\s]*,[0-9]{2}\s*(?:€|eur)?)/i
   );
   return inline?.[1]?.replace(/\s+/g, " ").trim() ?? null;
 }
@@ -182,6 +207,51 @@ function extractStructuredLines(type: DocumentType, text: string): string[] {
   pushRaw(lines, extractDate(text));
   pushRaw(lines, extractAmount(text));
   return lines;
+}
+
+function cleanOptional(value: string | null | undefined): string | null {
+  const cleaned = value?.replace(/\s+/g, " ").trim();
+  return cleaned ? cleaned : null;
+}
+
+export function extractDocumentFieldsWithRegex(
+  text: string,
+  _fileName = "",
+  source: "regex" | "llm" = "regex"
+): RegexDocumentFields {
+  const document_type = classifyDocument(text) as Exclude<DocumentType, "receipt">;
+  const normalizedDate = normalizeDocumentDate(extractDate(text), text);
+  return {
+    document_type,
+    document_number: cleanOptional(extractDocumentNo(text)),
+    customer_name: cleanOptional(extractCustomer(text)),
+    date: normalizedDate,
+    amount: cleanOptional(extractAmount(text)),
+    title: document_type === "other" ? cleanOptional(extractOtherTitle(text)) : null,
+    source,
+  };
+}
+
+function isUsefulFields(fields: ExtractedDocumentFields): boolean {
+  if (fields.document_type === "other") return !!fields.title || !!fields.date;
+  return !!fields.document_number || !!fields.customer_name || !!fields.date || !!fields.amount;
+}
+
+export function buildDocumentPreviewFromFields(fields: ExtractedDocumentFields, fileName: string): string {
+  if (fields.document_type === "other") {
+    const lines = [fallbackPreview(fileName)];
+    pushRaw(lines, fields.title);
+    pushRaw(lines, fields.date);
+    return truncate(lines.join("\n"));
+  }
+
+  const heading = typeHeading(fields.document_type);
+  const lines = [fields.document_number ? `${heading} ${fields.document_number}` : heading];
+  pushRaw(lines, fields.customer_name);
+  pushRaw(lines, fields.date);
+  pushRaw(lines, fields.amount);
+  if (lines.length <= 1) return fallbackPreview(fileName, fields.document_type);
+  return truncate(lines.join("\n"));
 }
 
 function fallbackPreview(fileName: string, type: DocumentType = "other"): string {
@@ -230,12 +300,13 @@ export function buildDocumentPreview(
     return buildOtherPreview(text, fileName);
   }
 
-  const structured = extractStructuredLines(documentType, text);
-  if (structured.length <= 1) {
-    return fallbackPreview(fileName, documentType);
-  }
-
-  return truncate(structured.join("\n"));
+  return buildDocumentPreviewFromFields(
+    {
+      ...extractDocumentFieldsWithRegex(text, fileName),
+      document_type: documentType as Exclude<DocumentType, "receipt">,
+    },
+    fileName
+  );
 }
 
 export function enrichDocumentFromOcr(
@@ -247,4 +318,25 @@ export function enrichDocumentFromOcr(
   const document_preview = buildDocumentPreview(document_type, ocrText, fileName, options);
   const should_store_ocr_text = !(options.attachmentType === "image" && document_type === "other");
   return { document_type, document_preview, should_store_ocr_text };
+}
+
+export async function enrichDocumentFromText(
+  text: string,
+  fileName: string,
+  options: DocumentPreviewOptions = {}
+): Promise<DocumentEnrichment> {
+  const llmFields = await extractDocumentFieldsWithLlm(text, fileName, options.attachmentType);
+  let fields = llmFields;
+
+  if (!fields || !isUsefulFields(fields)) {
+    fields = extractDocumentFieldsWithRegex(text, fileName);
+  }
+
+  const document_preview = buildDocumentPreviewFromFields(fields, fileName);
+  const should_store_ocr_text = !(options.attachmentType === "image" && fields.document_type === "other");
+  return {
+    document_type: fields.document_type,
+    document_preview,
+    should_store_ocr_text,
+  };
 }

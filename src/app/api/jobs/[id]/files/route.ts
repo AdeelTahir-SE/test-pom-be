@@ -14,7 +14,7 @@ import {
 import { processImage } from "@/lib/storage/image";
 import { classifyUpload } from "@/lib/services/files";
 import { extractText } from "@/lib/integrations/mistral";
-import { enrichDocumentFromOcr } from "@/lib/documents/preview";
+import { enrichDocumentFromText } from "@/lib/documents/preview";
 import { extractOfficeText, isOfficeDocument } from "@/lib/documents/officeParse";
 import { LIMITS } from "@/config/constants";
 
@@ -67,8 +67,8 @@ interface PreparedUpload {
   fileSize: number;
   fileHash: string;
   upload: { path: string; buffer: Buffer; contentType: string }[];
-  // Text for classification/preview — Mistral OCR for PDF/images only.
-  // Word/Excel use direct parsers (mammoth / xlsx); never rasterize for OCR (Mark).
+  // Text for classification/preview. Images and PDFs use Mistral OCR; Office/TXT
+  // documents use direct text extraction.
   textExtract:
     | { kind: "ocr"; buffer: Buffer; contentType: string }
     | { kind: "office"; buffer: Buffer; fileName: string }
@@ -205,38 +205,38 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
   );
 
   // Upload everything to storage first. If any storage upload fails, remove
-// all objects uploaded by this batch. If the DB insert fails, the same
-// cleanup runs below.
+  // all objects uploaded by this batch. If the DB insert fails, the same
+  // cleanup runs below.
   const uploadedStoragePaths: string[] = [];
 
-try {
-  await Promise.all(
-    prepared.flatMap((item) =>
-      item.upload.map(async (target) => {
-        await uploadToStorage(
-          db,
-          target.path,
-          target.buffer,
-          target.contentType
-        );
+  try {
+    await Promise.all(
+      prepared.flatMap((item) =>
+        item.upload.map(async (target) => {
+          await uploadToStorage(
+            db,
+            target.path,
+            target.buffer,
+            target.contentType
+          );
 
-        uploadedStoragePaths.push(target.path);
-      })
-    )
-  );
-} catch (error) {
-  await Promise.all(
-    uploadedStoragePaths.map((storagePath) =>
-      deleteFromStorage(db, storagePath)
-    )
-  );
+          uploadedStoragePaths.push(target.path);
+        })
+      )
+    );
+  } catch (error) {
+    await Promise.all(
+      uploadedStoragePaths.map((storagePath) =>
+        deleteFromStorage(db, storagePath)
+      )
+    );
 
-  throw new ApiError(
-    "internal",
-    "Failed to upload files.",
-    error instanceof Error ? error.message : undefined
-  );
-}
+    throw new ApiError(
+      "internal",
+      "Failed to upload files.",
+      error instanceof Error ? error.message : undefined
+    );
+  }
 
   const { data: inserted, error: insertError } = await db
     .from("job_files")
@@ -257,18 +257,18 @@ try {
     .select();
 
   if (insertError || !inserted) {
-  await Promise.all(
-    uploadedStoragePaths.map((storagePath) =>
-      deleteFromStorage(db, storagePath)
-    )
-  );
+    await Promise.all(
+      uploadedStoragePaths.map((storagePath) =>
+        deleteFromStorage(db, storagePath)
+      )
+    );
 
-  throw new ApiError(
-    "internal",
-    "Files were uploaded but could not be recorded.",
-    insertError?.message
-  );
-}
+    throw new ApiError(
+      "internal",
+      "Files were uploaded but could not be recorded.",
+      insertError?.message
+    );
+  }
 
   for (const record of inserted) {
     await createTimelineEvent(db, {
@@ -296,17 +296,23 @@ try {
   void Promise.all(
     inserted.map(async (record) => {
       const textExtract = textExtractByHash.get(record.file_hash);
-      if (!textExtract) return;
+      if (!textExtract) {
+        return;
+      }
 
       try {
-        const text =
-          textExtract.kind === "office"
-            ? await extractOfficeText(textExtract.buffer, textExtract.fileName)
-            : await extractText(textExtract.buffer, textExtract.contentType);
-        if (!text) return;
+        let text: string | null = null;
+        if (textExtract.kind === "office") {
+          text = await extractOfficeText(textExtract.buffer, textExtract.fileName);
+        } else {
+          text = await extractText(textExtract.buffer, textExtract.contentType);
+        }
+        if (!text) {
+          return;
+        }
 
         const isImage = record.attachment_type === "image";
-        const enrichment = enrichDocumentFromOcr(text, record.file_name, {
+        const enrichment = await enrichDocumentFromText(text, record.file_name, {
           attachmentType: record.attachment_type,
         });
         // Photos often OCR into noise. For untyped images, keep only document
@@ -326,11 +332,20 @@ try {
           .select()
           .single();
         if (updateError || !updated) {
-          console.error("[text_extract_update_failed]", record.id, updateError?.message);
+          console.log("[ocr] Failed to update enriched file", {
+            companyId,
+            jobId,
+            fileId: record.id,
+            fileName: record.file_name,
+            documentType: enrichment.document_type,
+            error: updateError?.message ?? "No updated row returned.",
+          });
           return;
         }
 
-        if (!publishTyped) return;
+        if (!publishTyped) {
+          return;
+        }
 
         await createTimelineEvent(db, {
           companyId,
@@ -348,7 +363,14 @@ try {
           },
         });
       } catch (err) {
-        console.error("[text_extract_background_failed]", record.id, err);
+        console.log("[ocr] Background enrichment failed", {
+          companyId,
+          jobId,
+          fileId: record.id,
+          fileName: record.file_name,
+          extractKind: textExtract.kind,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     })
   );

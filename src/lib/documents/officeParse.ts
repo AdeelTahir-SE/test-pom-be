@@ -7,12 +7,11 @@ function extensionOf(filename: string): string {
 }
 
 export function isOfficeDocument(filename: string): boolean {
-  return ["doc", "docx", "xls", "xlsx"].includes(extensionOf(filename));
+  return ["doc", "docx", "xls", "xlsx", "txt"].includes(extensionOf(filename));
 }
 
 /**
- * Direct text extraction for Word/Excel — never rasterize for OCR (Mark).
- * DOC/DOCX via mammoth; XLS/XLSX via SheetJS. Returns null on any failure
+ * Direct text extraction for Office/TXT documents. Returns null on any failure
  * so upload enrichment stays best-effort (same rule as Mistral OCR).
  */
 export async function extractOfficeText(
@@ -25,6 +24,11 @@ export async function extractOfficeText(
       // mammoth targets DOCX; legacy .doc often fails — null is fine.
       const result = await mammoth.extractRawText({ buffer });
       const text = (result.value ?? "").trim();
+      return text.length > 0 ? text : null;
+    }
+
+    if (ext === "txt") {
+      const text = buffer.toString("utf8").replace(/\u0000/g, "").trim();
       return text.length > 0 ? text : null;
     }
 
@@ -42,8 +46,14 @@ export async function extractOfficeText(
       return text.length > 0 ? text : null;
     }
 
+    console.log("[ocr] Unsupported direct document extraction type", { fileName, extension: ext });
     return null;
-  } catch {
+  } catch (error) {
+    console.log("[ocr] Office/TXT extraction error", {
+      fileName,
+      extension: ext,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
 }

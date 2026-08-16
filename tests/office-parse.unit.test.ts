@@ -8,6 +8,7 @@ describe("Office document text extract (Mark — no OCR rasterize)", () => {
     expect(isOfficeDocument("a.doc")).toBe(true);
     expect(isOfficeDocument("a.xlsx")).toBe(true);
     expect(isOfficeDocument("a.xls")).toBe(true);
+    expect(isOfficeDocument("a.txt")).toBe(true);
     expect(isOfficeDocument("a.pdf")).toBe(false);
     expect(isOfficeDocument("a.png")).toBe(false);
   });
@@ -32,5 +33,14 @@ describe("Office document text extract (Mark — no OCR rasterize)", () => {
   it("returns null for garbage docx bytes (upload still succeeds elsewhere)", async () => {
     const text = await extractOfficeText(Buffer.from("not-a-docx"), "broken.docx");
     expect(text).toBeNull();
+  });
+
+  it("extracts txt content without OCR", async () => {
+    const text = await extractOfficeText(
+      Buffer.from("Račun št.: 12\nKupec: Novak d.o.o.", "utf8"),
+      "invoice.txt"
+    );
+    expect(text).toContain("Račun št.: 12");
+    expect(text).toContain("Novak d.o.o.");
   });
 });
