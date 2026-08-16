@@ -31,7 +31,7 @@ export async function extractText(
 ): Promise<string | null> {
   const apiKey = env.mistralApiKey;
   if (!apiKey) {
-    console.warn("[mistral_ocr_skipped]", { reason: "missing_api_key" });
+    console.log("[ocr] Mistral OCR skipped: missing MISTRAL_API_KEY", { mimeType });
     return null;
   }
 
@@ -56,10 +56,12 @@ export async function extractText(
       }),
     });
     if (!res.ok) {
-      console.warn("[mistral_ocr_failed]", {
+      const bodySnippet = await res.text().catch(() => "");
+      console.log("[ocr] Mistral OCR failed", {
         status: res.status,
         statusText: res.statusText,
         mimeType,
+        bodySnippet: bodySnippet.slice(0, 500),
       });
       return null;
     }
@@ -71,14 +73,19 @@ export async function extractText(
       .trim();
     const text = fromPages || json.text?.trim() || "";
     if (!text) {
-      console.warn("[mistral_ocr_empty]", { mimeType });
+      console.log("[ocr] Mistral OCR returned empty text", {
+        mimeType,
+        pagesCount: json.pages?.length ?? 0,
+        hasTopLevelText: typeof json.text === "string",
+      });
+      return null;
     }
-    return text.length > 0 ? text : null;
+
+    return text;
   } catch (error) {
-    console.warn("[mistral_ocr_error]", {
-      reason: error instanceof Error ? error.name : "unknown",
-      message: error instanceof Error ? error.message : String(error),
+    console.log("[ocr] Mistral OCR error", {
       mimeType,
+      error: error instanceof Error ? error.message : String(error),
     });
     return null;
   } finally {

@@ -28,6 +28,8 @@ export interface ApiJob {
   created_at: string;
   hidden_at?: string | null;
   hidden_by?: string | null;
+  created_by?: string | null;
+  created_by_name?: string | null;
 }
 
 export function jobNumber(job: Pick<ApiJob, "company_seq">): string {
@@ -70,6 +72,8 @@ export interface ApiOfficeReminder {
   link: string | null;
   order_index: number;
   hidden_at: string | null;
+  created_by?: string | null;
+  created_by_name?: string | null;
   created_at: string;
 }
 
@@ -166,7 +170,7 @@ export function reminderToCard(
         ? "zavrnjeno"
         : "caka_potrditev",
     workerId: "",
-    workerName: t("cardSenderOffice"),
+    workerName: r.created_by_name?.trim() || t("cardSenderOffice"),
     hasEmail: r.actions.includes("email"),
     // Paperclip only when a file is actually stored (Mark a16 #2).
     hasAttachment: (() => {

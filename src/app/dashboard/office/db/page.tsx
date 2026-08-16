@@ -10,7 +10,12 @@ import { normalizePhone } from '@/lib/phone';
 import type { ApiJob, ApiChecklistItem, ApiOfficeReminder, ApiUser } from '@/lib/dashboardMappers';
 import { jobNumber, jobToWorkerCard } from '@/lib/dashboardMappers';
 import type { Worker } from '@/lib/mockData';
-import { isJobCardMutable } from '@/lib/officeDate';
+import {
+  isJobCardMutable,
+  localDayToScheduledAt,
+  parseFlexibleDate,
+  startOfLocalDay,
+} from '@/lib/officeDate';
 import { dbAttachmentCategory, type DbAttachmentCategory } from '@/lib/dbAttachmentCategory';
 import {
   jobAttachmentErrorMessage,
@@ -32,6 +37,10 @@ import { AuraFileInput } from '@/components/dashboard/AuraForm';
 import { parseNoteText } from '@/components/dashboard/CustomerNotesBanner';
 import { AddCustomerNoteDialog } from '@/components/dashboard/AddCustomerNoteDialog';
 import { BillingLockBanner } from '@/components/dashboard/BillingRequired';
+import {
+  AttachmentLightbox,
+  type AttachmentLightboxItem,
+} from '@/components/dashboard/AttachmentLightbox';
 
 interface TeamUser {
   id: string;
@@ -104,11 +113,19 @@ export default function DatabaseDashboard() {
   const { user, company, officeContact, loading: authLoading, logout } = useCurrentUser();
   const billingLocked = company?.subscription_active === false;
   const billingLockedMessage = 'Aktivirajte naročnino za uporabo.';
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = useCallback((message: string) => {
+    setToastMessage(message);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToastMessage(null), 2500);
+  }, []);
   const requireBillingUnlocked = useCallback(() => {
     if (!billingLocked) return true;
-    alert(billingLockedMessage);
+    showToast(billingLockedMessage);
     return false;
-  }, [billingLocked]);
+  }, [billingLocked, showToast]);
+
   useEffect(() => {
     if (!authLoading && user && user.role === 'worker') {
       router.replace('/dashboard/worker');
@@ -121,6 +138,9 @@ export default function DatabaseDashboard() {
   // Live Staff Data
   const [staffList, setStaffList] = useState<TeamUser[]>([]);
   const [staffLoading, setStaffLoading] = useState(true);
+  const [visiblePinUserIds, setVisiblePinUserIds] = useState<Set<string>>(
+    () => new Set()
+  );
   const [jobsList, setJobsList] = useState<DbJobRow[]>([]);
   /** Full job payloads for opening the existing details popup from Dela / Priponke→Dela (Mark). */
   const [jobsById, setJobsById] = useState<Record<string, ApiJob>>({});
@@ -139,8 +159,7 @@ export default function DatabaseDashboard() {
   const [isAddZaznamekOpen, setIsAddZaznamekOpen] = useState(false);
   const [officeNotes, setOfficeNotes] = useState<DbOfficeNoteRow[]>([]);
   const [notesLoading, setNotesLoading] = useState(false);
-  const [previewAttachmentUrl, setPreviewAttachmentUrl] = useState<string | null>(null);
-  const [previewAttachmentName, setPreviewAttachmentName] = useState<string>('');
+  const [previewAttachment, setPreviewAttachment] = useState<AttachmentLightboxItem | null>(null);
   const [dataError, setDataError] = useState<string | null>(null);
 
   // Modals state
@@ -405,14 +424,23 @@ export default function DatabaseDashboard() {
 
   /** Fresh signed URL on open — list URLs expire (Mark InvalidJWT / exp). */
   const openAttachmentPreview = useCallback(async (item: DbAttachmentRow) => {
-    setPreviewAttachmentName(item.name);
-    setPreviewAttachmentUrl(item.signedUrl);
+    if (item.signedUrl) {
+      setPreviewAttachment({
+        url: item.signedUrl,
+        fileName: item.name,
+        attachmentType: item.attachmentType,
+      });
+    }
     try {
       const res = await api.get<{ file: { signed_url: string | null } }>(
         `/api/files/${item.id}`
       );
       if (res.status === 200 && res.data?.file?.signed_url) {
-        setPreviewAttachmentUrl(res.data.file.signed_url);
+        setPreviewAttachment({
+          url: res.data.file.signed_url,
+          fileName: item.name,
+          attachmentType: item.attachmentType,
+        });
         return;
       }
     } catch (err) {
@@ -420,8 +448,7 @@ export default function DatabaseDashboard() {
     }
     if (!item.signedUrl) {
       alert('Predogleda ni bilo mogoče odpreti.');
-      setPreviewAttachmentName('');
-      setPreviewAttachmentUrl(null);
+      setPreviewAttachment(null);
     }
   }, []);
 
@@ -945,6 +972,12 @@ export default function DatabaseDashboard() {
     <div
       className="min-h-screen bg-[#f3f5f8] flex text-slate-800 font-sans selection:bg-blue-500/10 selection:text-blue-600"
     >
+      {toastMessage && (
+        <div className="fixed top-5 left-1/2 z-[100] -translate-x-1/2 rounded-lg bg-[#0f172a] px-4 py-2 text-sm font-medium text-white shadow-lg">
+          {toastMessage}
+        </div>
+      )}
+
       {/* LEFT SIDEBAR — top as before (Mark: do NOT push left column down) */}
       <aside className="w-64 bg-white border-r border-slate-200 shrink-0 flex flex-col py-8 px-4 min-h-screen">
         <div className="flex flex-col">
@@ -1309,7 +1342,32 @@ export default function DatabaseDashboard() {
                                   {member.email}
                                 </td>
                                 <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle12}>
-                                  {member.role === 'owner' ? '—' : member.login_pin || '—'}
+                                  {member.role === 'owner' || !member.login_pin ? (
+                                    '—'
+                                  ) : (
+                                    <div className="flex items-center gap-2">
+                                      <span className="tracking-[0.2em]">
+                                        {visiblePinUserIds.has(member.id) ? member.login_pin : '••••'}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setVisiblePinUserIds((prev) => {
+                                            const next = new Set(prev);
+                                            if (next.has(member.id)) {
+                                              next.delete(member.id);
+                                            } else {
+                                              next.add(member.id);
+                                            }
+                                            return next;
+                                          });
+                                        }}
+                                        className="font-sans text-[11px] text-blue-600 hover:underline cursor-pointer"
+                                      >
+                                        {visiblePinUserIds.has(member.id) ? 'Skrij' : 'Pokaži'}
+                                      </button>
+                                    </div>
+                                  )}
                                 </td>
                                 <td className="px-6 py-4 text-right" style={tdStyle10}>
                                   {member.role !== 'owner' ? (
@@ -1940,7 +1998,7 @@ export default function DatabaseDashboard() {
           setIsAddTaskOpen(open);
         }}
         workers={staffList
-          .filter((w) => w.is_active)
+          .filter((w) => w.role === 'worker' && w.is_active)
           .map((w) => ({
             id: w.id,
             name: w.full_name,
@@ -1949,18 +2007,33 @@ export default function DatabaseDashboard() {
         defaultDate={new Date().toLocaleDateString('sl-SI', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\s+/g, '')}
         onAddTask={async (taskData) => {
           if (!requireBillingUnlocked()) return;
+          const parsedDate = parseFlexibleDate(taskData.datum);
+          if (!parsedDate) {
+            showToast('Neveljaven datum.');
+            return;
+          }
+          if (parsedDate.getTime() < startOfLocalDay().getTime()) {
+            showToast('Datum ne sme biti v preteklosti.');
+            return;
+          }
           try {
-            const res = await api.post('/api/jobs', taskData);
+            const res = await api.post('/api/jobs', {
+              title: taskData.opravilo,
+              location: taskData.kraj || undefined,
+              customer: taskData.narocnik || undefined,
+              worker_id: taskData.workerId,
+              scheduled_at: localDayToScheduledAt(parsedDate),
+            });
             if (res.status === 201 || res.status === 200) {
               await loadJobs();
               setActiveTab(1);
-              alert('Naloga uspešno dodana.');
+              showToast('Naloga uspešno dodana.');
             } else {
-              alert(res.error?.message || 'Napaka pri ustvarjanju naloge.');
+              showToast(res.error?.message || 'Napaka pri ustvarjanju naloge.');
             }
           } catch (err) {
             console.error(err);
-            alert('Težava pri povezavi z strežnikom.');
+            showToast('Težava pri povezavi z strežnikom.');
           }
         }}
       />
@@ -2027,31 +2100,10 @@ export default function DatabaseDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Attachment inline preview (Mark a13: open, don't force download) */}
-      <Dialog
-        open={!!previewAttachmentUrl}
-        onOpenChange={(open) => {
-          if (!open) {
-            setPreviewAttachmentUrl(null);
-            setPreviewAttachmentName('');
-          }
-        }}
-      >
-        <DialogContent className="max-w-4xl w-[min(96vw,900px)] h-[min(90vh,720px)] p-0 overflow-hidden flex flex-col">
-          <DialogHeader className="px-4 py-3 border-b border-slate-100 shrink-0">
-            <DialogTitle className="text-sm font-semibold truncate pr-8">
-              {previewAttachmentName || 'Predogled'}
-            </DialogTitle>
-          </DialogHeader>
-          {previewAttachmentUrl ? (
-            <iframe
-              title={previewAttachmentName}
-              src={previewAttachmentUrl}
-              className="flex-1 w-full border-0 bg-slate-50"
-            />
-          ) : null}
-        </DialogContent>
-      </Dialog>
+      <AttachmentLightbox
+        item={previewAttachment}
+        onClose={() => setPreviewAttachment(null)}
+      />
     </div>
   );
 }

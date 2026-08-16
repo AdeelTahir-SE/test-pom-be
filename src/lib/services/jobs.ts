@@ -18,7 +18,10 @@ export async function assertValidWorker(
     throw new ApiError("internal", "Failed to validate worker.", error.message);
   }
   if (!data || data.role !== "worker" || !data.is_active) {
-    throw new ApiError("bad_request", "worker_id must reference an active worker in your company.");
+    throw new ApiError(
+      "bad_request",
+      "Delo lahko dodelite samo aktivnemu terenskemu delavcu."
+    );
   }
   return { full_name: data.full_name };
 }

@@ -104,29 +104,45 @@ export const GET = withAuth(async (request, auth) => {
 
   const workerByJobId = new Map((assignments ?? []).map((a) => [a.job_id, a.worker_id]));
   const workerIds = [...new Set([...workerByJobId.values()])];
+  const creatorIds = [
+    ...new Set(
+      (jobs ?? [])
+        .map((j) => (typeof j.created_by === "string" ? j.created_by : null))
+        .filter((id): id is string => !!id)
+    ),
+  ];
   const workerInfoById = new Map<string, { full_name: string; phone: string | null }>();
-  if (workerIds.length > 0) {
-    const { data: workers, error: workersError } = await db
+  const userInfoById = new Map<string, { full_name: string; phone: string | null }>();
+  const userIds = [...new Set([...workerIds, ...creatorIds])];
+  if (userIds.length > 0) {
+    const { data: users, error: usersError } = await db
       .from("users")
       .select("id, full_name, phone")
       .eq("company_id", auth.companyId)
-      .in("id", workerIds);
-    if (workersError) {
-      throw new ApiError("internal", "Failed to load workers for jobs.", workersError.message);
+      .in("id", userIds);
+    if (usersError) {
+      throw new ApiError("internal", "Failed to load users for jobs.", usersError.message);
     }
-    for (const w of workers ?? []) {
-      workerInfoById.set(w.id, { full_name: w.full_name, phone: w.phone });
+    for (const u of users ?? []) {
+      userInfoById.set(u.id, { full_name: u.full_name, phone: u.phone });
     }
+  }
+  for (const workerId of workerIds) {
+    const user = userInfoById.get(workerId);
+    if (user) workerInfoById.set(workerId, user);
   }
 
   const result = (jobs ?? []).map((j) => {
     const workerId = workerByJobId.get(j.id) ?? null;
     const worker = workerId ? workerInfoById.get(workerId) : undefined;
+    const creator =
+      typeof j.created_by === "string" ? userInfoById.get(j.created_by) : undefined;
     return {
       ...j,
       worker_id: workerId,
       worker_name: worker?.full_name ?? null,
       worker_phone: worker?.phone ?? null,
+      created_by_name: creator?.full_name ?? null,
     };
   });
 
@@ -228,7 +244,13 @@ export const POST = withAuth(
       });
     }
 
-    return created({ job: { ...job, worker_id: input.worker_id ?? null } });
+    return created({
+      job: {
+        ...job,
+        worker_id: input.worker_id ?? null,
+        created_by_name: creator?.full_name ?? null,
+      },
+    });
   },
   { roles: ["owner", "manager"] }
 );

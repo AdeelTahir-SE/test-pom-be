@@ -200,7 +200,11 @@ function scoreText(text: string, rule: TypeRule): number {
 
 export function classifyDocument(ocrText: string): DocumentType {
   // Bank-account "račun" / IBAN must not score as invoice; predračun → offer.
-  const text = ocrText
+  const original = ocrText.trim();
+  const hasClearInvoiceHeading =
+    /^\s*(?:#\s*)?ra[cč]un\s*(?:št\.?|st\.?|številka|stevilka|nr\.?|no\.?|:|$)/im.test(original) ||
+    /^\s*(?:#\s*)?invoice\s*(?:no\.?|number|#|nr\.?|:|$)/im.test(original);
+  const text = original
     .trim()
     .replace(
       /\b(?:žiro|tekoči|transakcijski|osnovni|varčevalni|devizni|poslovni|osebni|gospodinjski)\s*ra[cč]un\w*\b/gi,
@@ -211,8 +215,9 @@ export function classifyDocument(ocrText: string): DocumentType {
 
   if (!text) return "other";
 
-  // ABSOLUTNO PRAVILO: predračun je vedno ponudba
-  if (text.includes("PREDRACUN_OFFER")) {
+  // Predračun usually means offer, unless the document itself is clearly an invoice
+  // and predračun only appears as payment/context text.
+  if (text.includes("PREDRACUN_OFFER") && !hasClearInvoiceHeading) {
     return "offer";
   }
 

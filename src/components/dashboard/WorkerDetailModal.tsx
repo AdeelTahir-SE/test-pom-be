@@ -41,6 +41,10 @@ import { queryKeys } from "@/lib/query/keys";
 import { fetchJobFiles, fetchJobTimeline } from "@/lib/query/office";
 import { parseNoteText } from "./CustomerNotesBanner";
 import { AddCustomerNoteDialog } from "./AddCustomerNoteDialog";
+import {
+  AttachmentLightbox,
+  type AttachmentLightboxItem,
+} from "./AttachmentLightbox";
 import { formatSiDateFromIso, formatSiTimeFromIso } from "@/lib/officeDate";
 import { isOptimisticId } from "@/lib/optimisticId";
 import { JOB_CARD_FROZEN_MESSAGE } from "@/lib/services/jobCardFreeze";
@@ -94,6 +98,10 @@ interface AttachmentItem {
   checklistItemId: string | null;
   attachmentType: string | null;
 }
+
+type WorkerPreviewAttachment = AttachmentLightboxItem & {
+  id: string;
+};
 
 interface TimelineItem {
   id: string;
@@ -311,7 +319,7 @@ export function WorkerDetailModal({
   const [confirmUploading, setConfirmUploading] = React.useState(false);
   const [confirmStepFile, setConfirmStepFile] = React.useState<File | null>(null);
   const [deleteStepId, setDeleteStepId] = React.useState<string | null>(null);
-  const [previewAttachment, setPreviewAttachment] = React.useState<AttachmentItem | null>(null);
+  const [previewAttachment, setPreviewAttachment] = React.useState<WorkerPreviewAttachment | null>(null);
   const [attachOnlyOpen, setAttachOnlyOpen] = React.useState(false);
   const [attachOnlyFile, setAttachOnlyFile] = React.useState<File | null>(null);
   const [attachOnlyUploading, setAttachOnlyUploading] = React.useState(false);
@@ -880,31 +888,13 @@ export function WorkerDetailModal({
       }
     }
   };
-  const handleForceDownload = async (urlStr: string, fileName: string): Promise<void> => {
-    try {
-      const res = await fetch(urlStr);
-      const blob = await res.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(blobUrl);
-    } catch {
-      const a = document.createElement("a");
-      a.href = urlStr;
-      a.download = fileName;
-      a.target = "_blank";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    }
-  };
-
   const handleOpenPreview = async (att: AttachmentItem) => {
-    setPreviewAttachment(att);
+    setPreviewAttachment({
+      id: att.id,
+      url: att.url ?? "",
+      fileName: att.name,
+      attachmentType: att.attachmentType,
+    });
     try {
       const res = await api.get<{ file: { signed_url: string } }>(`/api/files/${att.id}`);
       if (res.status >= 200 && res.status < 300 && res.data?.file?.signed_url) {
@@ -912,7 +902,7 @@ export function WorkerDetailModal({
           if (!prev || prev.id !== att.id) return prev;
           return {
             ...prev,
-            url: res?.data?.file?.signed_url ?? null,
+            url: res?.data?.file?.signed_url ?? "",
           };
         });
       }
@@ -1227,9 +1217,9 @@ export function WorkerDetailModal({
                               fontFamily: "'PT Sans', sans-serif",
                               fontSize: "12px",
                               fontWeight: 400,
-                              color: "#0F172A",
+                              color: "#2563EB",
                             }}
-                            className="group-hover:text-[#1B3A6B] transition-colors truncate"
+                            className="underline underline-offset-2 transition-colors truncate"
                           >
                             {att.name}
                           </span>
@@ -1239,10 +1229,6 @@ export function WorkerDetailModal({
                               alt={att.name}
                               className="mt-1 h-16 w-16 rounded object-cover border border-slate-200"
                             />
-                          ) : att.documentPreview ? (
-                            <span className="text-[11px] text-slate-500 whitespace-pre-line break-words">
-                              {att.documentPreview}
-                            </span>
                           ) : null}
                         </div>
                       </button>
@@ -1446,9 +1432,9 @@ export function WorkerDetailModal({
                               fontFamily: "'PT Sans', sans-serif",
                               fontSize: "12px",
                               fontWeight: 400,
-                              color: "#0F172A",
+                              color: "#2563EB",
                             }}
-                            className="group-hover:text-[#1B3A6B] transition-colors truncate"
+                            className="underline underline-offset-2 transition-colors truncate"
                           >
                             {att.name}
                           </span>
@@ -1458,10 +1444,6 @@ export function WorkerDetailModal({
                               alt={att.name}
                               className="mt-1 h-16 w-16 rounded object-cover border border-slate-200"
                             />
-                          ) : att.documentPreview ? (
-                            <span className="text-[11px] text-slate-500 whitespace-pre-line break-words">
-                              {att.documentPreview}
-                            </span>
                           ) : null}
                         </div>
                       </button>
@@ -1636,7 +1618,7 @@ export function WorkerDetailModal({
 
 
           {/* NAPREDEK section */}
-          <div className="flex flex-col">
+          <div className="order-5 flex flex-col">
             <div className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-3">
               NAPREDEK
             </div>
@@ -1652,7 +1634,69 @@ export function WorkerDetailModal({
           </div>
 
           {/* Divider */}
-          <div className="border-t border-slate-100" />
+          <div className="order-5 border-t border-slate-100" />
+
+          {inlineDrawer && (
+            <>
+              {/* OPOMNIKI section */}
+              <div className="order-1 flex flex-col">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
+                    OPOMNIKI
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!guardMutable()) return;
+                      setIsAddNoteOpen(true);
+                    }}
+                    className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
+                  >
+                    <svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M17.9705 9.48535H9.48528M9.48528 9.48535H1M9.48528 9.48535V1.00007M9.48528 9.48535V17.9706" stroke="#6D778E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-2 max-h-[180px] overflow-y-auto custom-ios-scrollbar pr-1">
+                  {displayedNotes.length === 0 ? (
+                    <span className="text-xs text-slate-400 font-light">
+                      Ni opomnikov za tega naročnika.
+                    </span>
+                  ) : (
+                    displayedNotes.map((n, idx) => (
+                      <div key={n.id} className="flex items-start gap-2.5 group">
+                        <div className="bg-slate-200 text-slate-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 font-mono">
+                          {idx + 1}
+                        </div>
+                        <span className="text-xs text-[#0F172A] flex-1 min-w-0 font-normal leading-relaxed">
+                          {n.noteText}
+                        </span>
+                        {canManageCustomerNotes && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCustomerNote(n.id)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500 bg-transparent border-none cursor-pointer p-0.5 shrink-0"
+                            title={t("customerNotesDelete") || "Izbriši"}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6"></polyline>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                              <line x1="10" y1="11" x2="10" y2="17"></line>
+                              <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="order-1 border-t border-slate-100" />
+            </>
+          )}
 
           {inlineDrawer && (
             <>
@@ -1717,7 +1761,7 @@ export function WorkerDetailModal({
           )}
 
           {/* PREDVIDENA DELA (Tasks) */}
-          <div className="flex flex-col gap-3">
+          <div className="order-2 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
                 {t("modalSectionTasks")}
@@ -1770,10 +1814,10 @@ export function WorkerDetailModal({
           </div>
 
           {/* Divider */}
-          <div className="border-t border-slate-100" />
+          <div className="order-3 border-t border-slate-100" />
 
           {/* Group of Attachments and Timeline */}
-          <div className="flex flex-col gap-5">
+          <div className="order-4 flex flex-col gap-5">
             {/* PRIPONKE (Attachments) */}
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
@@ -1814,9 +1858,9 @@ export function WorkerDetailModal({
                             fontFamily: "'PT Sans', sans-serif",
                             fontSize: "12px",
                             fontWeight: 400,
-                            color: "#0F172A",
+                            color: "#2563EB",
                           }}
-                          className="group-hover:text-[#1B3A6B] transition-colors truncate"
+                          className="underline underline-offset-2 transition-colors truncate"
                         >
                           {att.name}
                         </span>
@@ -1826,10 +1870,6 @@ export function WorkerDetailModal({
                             alt={att.name}
                             className="mt-1 h-16 w-16 rounded object-cover border border-slate-200"
                           />
-                        ) : att.documentPreview ? (
-                          <span className="text-[11px] text-slate-500 whitespace-pre-line break-words">
-                            {att.documentPreview}
-                          </span>
                         ) : null}
                       </div>
                     </button>
@@ -2534,155 +2574,10 @@ export function WorkerDetailModal({
         </DialogContent>
       </Dialog>
 
-      {}
-      <Dialog open={!!previewAttachment} onOpenChange={(open) => {
-        if (!open) setPreviewAttachment(null);
-      }}>
-        <DialogContent
-          showCloseButton={false}
-          className="w-full max-w-[95vw] md:max-w-[85vw] h-[85vh] outline-none mx-auto p-0 bg-transparent border-none shadow-none flex flex-col items-center justify-center animate-in fade-in zoom-in-95 duration-200"
-        >
-          {previewAttachment && (
-            <div className="relative w-full h-full flex items-center justify-center">
-              {/* Close Button */}
-              <button
-                type="button"
-                onClick={() => setPreviewAttachment(null)}
-                className="absolute top-4 right-4 z-50 w-8 h-8 flex items-center justify-center rounded-full bg-white text-slate-800 hover:bg-slate-100 transition-colors border border-slate-200 cursor-pointer shadow-lg"
-                title="Zapri"
-              >
-                <svg width="10" height="10" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </button>
-
-              {(() => {
-                const url = previewAttachment.url;
-                const isLocalUrl = (urlStr: string) => {
-                  try {
-                    const parsed = new URL(urlStr);
-                    return (
-                      parsed.hostname === "localhost" ||
-                      parsed.hostname === "127.0.0.1" ||
-                      parsed.hostname.startsWith("192.168.") ||
-                      parsed.hostname.startsWith("10.") ||
-                      parsed.hostname.startsWith("172.16.")
-                    );
-                  } catch {
-                    return true;
-                  }
-                };
-
-                const isImage =
-                  previewAttachment.attachmentType === "image" ||
-                  /\.(jpe?g|png|gif|webp|heic|bmp)$/i.test(previewAttachment.name);
-                const isPdf =
-                  previewAttachment.attachmentType === "pdf" ||
-                  /\.pdf$/i.test(previewAttachment.name);
-                const isDocxOrOffice =
-                  /\.(docx?|xlsx?|pptx?)$/i.test(previewAttachment.name);
-                const isAudio =
-                  previewAttachment.attachmentType === "audio" ||
-                  /\.(mp3|wav|ogg|m4a|aac|flac|webm)$/i.test(previewAttachment.name);
-                const isVideo =
-                  previewAttachment.attachmentType === "video" ||
-                  /\.(mp4|webm|ogv|mov|avi|mkv|3gp)$/i.test(previewAttachment.name);
-
-                if (url && isImage) {
-                  return (
-                    <img
-                      src={url}
-                      alt={previewAttachment.name}
-                      className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl cursor-pointer"
-                      onClick={() => setPreviewAttachment(null)}
-                    />
-                  );
-                }
-
-                if (url && isPdf) {
-                  return (
-                    <iframe
-                      src={url}
-                      title={previewAttachment.name}
-                      className="w-full h-[85vh] rounded-lg border-none shadow-2xl bg-white"
-                    />
-                  );
-                }
-
-                if (url && isDocxOrOffice) {
-                  if (isLocalUrl(url)) {
-                    return (
-                      <div
-                        onClick={() => handleForceDownload(url, previewAttachment.name)}
-                        className="w-full max-w-md p-8 rounded-2xl bg-white border border-slate-200 flex flex-col items-center justify-center gap-4 text-center cursor-pointer shadow-2xl"
-                      >
-                        <Paperclip className="w-16 h-16 text-slate-400" />
-                        <span className="text-sm text-slate-800 font-semibold truncate max-w-[80%]">
-                          {previewAttachment.name}
-                        </span>
-                        <span className="text-xs text-slate-500 font-light">
-                          Lokalni predogled Word/Excel dokumentov ni na voljo. Kliknite za prenos.
-                        </span>
-                      </div>
-                    );
-                  }
-                  return (
-                    <iframe
-                      src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`}
-                      title={previewAttachment.name}
-                      className="w-full h-[85vh] rounded-lg border-none shadow-2xl bg-white"
-                    />
-                  );
-                }
-
-                if (url && isAudio) {
-                  return (
-                    <div className="w-full max-w-md p-6 rounded-2xl bg-white border border-slate-100 flex flex-col items-center justify-center gap-4 shadow-2xl">
-                      <div className="w-16 h-16 rounded-full bg-[#EFF6FF] flex items-center justify-center text-[#1B3A6B]">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                          <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-                        </svg>
-                      </div>
-                      <audio controls className="w-full mt-2" src={url} autoPlay>
-                        Your browser does not support the audio element.
-                      </audio>
-                    </div>
-                  );
-                }
-
-                if (url && isVideo) {
-                  return (
-                    <video controls className="max-w-full max-h-[85vh] rounded-lg bg-black shadow-2xl" src={url} autoPlay>
-                      Your browser does not support the video tag.
-                    </video>
-                  );
-                }
-
-                if (url) {
-                  return (
-                    <div
-                      onClick={() => handleForceDownload(url, previewAttachment.name)}
-                      className="w-full max-w-md p-8 rounded-2xl bg-white border border-slate-200 flex flex-col items-center justify-center gap-4 text-center cursor-pointer shadow-2xl"
-                    >
-                      <Paperclip className="w-16 h-16 text-slate-400" />
-                      <span className="text-sm text-slate-800 font-semibold truncate max-w-[80%]">
-                        {previewAttachment.name}
-                      </span>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div className="w-full max-w-md p-8 rounded-2xl bg-white border border-slate-200 flex items-center justify-center shadow-2xl">
-                    <Paperclip className="w-16 h-16 text-slate-300" />
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <AttachmentLightbox
+        item={previewAttachment}
+        onClose={() => setPreviewAttachment(null)}
+      />
 
       {}
       <Dialog

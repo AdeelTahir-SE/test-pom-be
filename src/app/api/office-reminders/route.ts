@@ -10,6 +10,39 @@ import { normalizePhone } from "@/lib/phone";
 
 export const dynamic = "force-dynamic";
 
+async function attachCreatorNames(
+  db: ReturnType<typeof getAdminClient>,
+  companyId: string,
+  reminders: Array<Record<string, unknown>>
+) {
+  const creatorIds = [
+    ...new Set(
+      reminders
+        .map((r) => (typeof r.created_by === "string" ? r.created_by : null))
+        .filter((id): id is string => !!id)
+    ),
+  ];
+  if (creatorIds.length === 0) {
+    return reminders.map((r) => ({ ...r, created_by_name: null }));
+  }
+
+  const { data: users, error } = await db
+    .from("users")
+    .select("id, full_name")
+    .eq("company_id", companyId)
+    .in("id", creatorIds);
+  if (error) {
+    throw new ApiError("internal", "Failed to load reminder creators.", error.message);
+  }
+
+  const nameById = new Map((users ?? []).map((u) => [u.id, u.full_name]));
+  return reminders.map((r) => ({
+    ...r,
+    created_by_name:
+      typeof r.created_by === "string" ? nameById.get(r.created_by) ?? null : null,
+  }));
+}
+
 // GET /api/office-reminders — owner/manager only; Workers never see this
 // column (Dashboard spec: "Workers never see this column"). Hidden reminders
 // are excluded. Exact `remind_on = forDate` match (like jobs by date). Legacy
@@ -51,7 +84,13 @@ export const GET = withAuth(
       throw new ApiError("internal", "Failed to load office reminders.", error.message);
     }
 
-    return ok({ reminders: data ?? [] });
+    return ok({
+      reminders: await attachCreatorNames(
+        db,
+        auth.companyId,
+        (data ?? []) as Array<Record<string, unknown>>
+      ),
+    });
   },
   { roles: ["owner", "manager"] }
 );
@@ -139,7 +178,11 @@ export const POST = withAuth(
       );
     }
 
-    return created({ reminder });
+    const [reminderWithCreator] = await attachCreatorNames(db, auth.companyId, [
+      reminder as Record<string, unknown>,
+    ]);
+
+    return created({ reminder: reminderWithCreator });
   },
   { roles: ["owner", "manager"] }
 );
