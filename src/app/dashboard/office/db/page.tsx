@@ -137,6 +137,9 @@ export default function DatabaseDashboard() {
   // Live Staff Data
   const [staffList, setStaffList] = useState<TeamUser[]>([]);
   const [staffLoading, setStaffLoading] = useState(true);
+  const [visiblePinUserIds, setVisiblePinUserIds] = useState<Set<string>>(
+    () => new Set()
+  );
   const [jobsList, setJobsList] = useState<DbJobRow[]>([]);
   /** Full job payloads for opening the existing details popup from Dela / Priponke→Dela (Mark). */
   const [jobsById, setJobsById] = useState<Record<string, ApiJob>>({});
@@ -1338,7 +1341,32 @@ export default function DatabaseDashboard() {
                                   {member.email}
                                 </td>
                                 <td className="px-6 py-4 text-slate-800 font-mono" style={tdStyle12}>
-                                  {member.role === 'owner' ? '—' : member.login_pin || '—'}
+                                  {member.role === 'owner' || !member.login_pin ? (
+                                    '—'
+                                  ) : (
+                                    <div className="flex items-center gap-2">
+                                      <span className="tracking-[0.2em]">
+                                        {visiblePinUserIds.has(member.id) ? member.login_pin : '••••'}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setVisiblePinUserIds((prev) => {
+                                            const next = new Set(prev);
+                                            if (next.has(member.id)) {
+                                              next.delete(member.id);
+                                            } else {
+                                              next.add(member.id);
+                                            }
+                                            return next;
+                                          });
+                                        }}
+                                        className="font-sans text-[11px] text-blue-600 hover:underline cursor-pointer"
+                                      >
+                                        {visiblePinUserIds.has(member.id) ? 'Skrij' : 'Pokaži'}
+                                      </button>
+                                    </div>
+                                  )}
                                 </td>
                                 <td className="px-6 py-4 text-right" style={tdStyle10}>
                                   {member.role !== 'owner' ? (
