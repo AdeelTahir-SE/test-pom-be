@@ -279,6 +279,7 @@ export default function OfficeDashboard() {
 
   const [replyJobId, setReplyJobId] = useState<string | null>(null);
   const [replyMessages, setReplyMessages] = useState<ApiJobMessage[]>([]);
+  const replyJobIdRef = useRef<string | null>(null);
   const [replyInput, setReplyInput] = useState('');
   const [replyLoading, setReplyLoading] = useState(false);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
@@ -312,6 +313,10 @@ export default function OfficeDashboard() {
     showBillingLockedToast();
     return false;
   }, [billingLocked, showBillingLockedToast]);
+
+  useEffect(() => {
+    replyJobIdRef.current = replyJobId;
+  }, [replyJobId]);
 
   const cardAttachInputRef = useRef<HTMLInputElement | null>(null);
   const cardAttachTargetRef = useRef<{ jobId: string; taskId: string } | null>(
@@ -1230,6 +1235,24 @@ export default function OfficeDashboard() {
     void handleOpenReply(job.id);
   };
 
+  const refreshReplyMessagesForJob = useCallback(async (jobId: string) => {
+    const res = await api.get<{ messages: ApiJobMessage[] }>(
+      `/api/jobs/${jobId}/messages`,
+    );
+    if (res.status === 200 && res.data && replyJobIdRef.current === jobId) {
+      setReplyMessages(res.data.messages ?? []);
+    }
+  }, []);
+
+  const scheduleVoiceTranscriptRefresh = useCallback((jobId: string) => {
+    for (const delay of [1000, 2500, 5000, 10000, 20000, 32000]) {
+      window.setTimeout(() => {
+        void refreshReplyMessagesForJob(jobId);
+        void refreshBoard();
+      }, delay);
+    }
+  }, [refreshBoard, refreshReplyMessagesForJob]);
+
   const handleSendReply = async () => {
     if (!requireBillingUnlocked()) return;
     if (!communicationAllowed) {
@@ -1272,6 +1295,7 @@ export default function OfficeDashboard() {
         );
         if ((res.status === 200 || res.status === 201) && res.data) {
           setReplyMessages((prev) => [...prev, res.data!.message]);
+          scheduleVoiceTranscriptRefresh(jobIdForUpload);
           void refreshBoard();
         } else {
           logClientError("office.voiceUpload", res.error, {
@@ -1294,7 +1318,7 @@ export default function OfficeDashboard() {
         );
       }
     },
-    [refreshBoard, replyJobId, requireBillingUnlocked, showToast, t]
+    [refreshBoard, replyJobId, requireBillingUnlocked, scheduleVoiceTranscriptRefresh, showToast, t]
   );
 
   const handleVoiceReplyError = useCallback(
