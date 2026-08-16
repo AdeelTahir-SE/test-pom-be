@@ -73,7 +73,24 @@ export const PATCH = withAuth<{ id: string }>(
       throw new ApiError("internal", "Failed to update office reminder.", updateError?.message);
     }
 
-    return ok({ reminder: updated });
+    const { data: creator, error: creatorError } = updated.created_by
+      ? await db
+          .from("users")
+          .select("full_name")
+          .eq("id", updated.created_by)
+          .eq("company_id", auth.companyId)
+          .maybeSingle()
+      : { data: null, error: null };
+    if (creatorError) {
+      throw new ApiError("internal", "Failed to load reminder creator.", creatorError.message);
+    }
+
+    return ok({
+      reminder: {
+        ...updated,
+        created_by_name: creator?.full_name ?? null,
+      },
+    });
   },
   { roles: ["owner", "manager"] }
 );

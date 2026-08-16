@@ -768,6 +768,8 @@ export default function OfficeDashboard() {
       completed_at: null,
       worker_id: taskData.workerId,
       created_at: now,
+      created_by: user?.id ?? null,
+      created_by_name: user?.full_name ?? null,
     };
 
     const optimisticChecklist: ApiChecklistItem[] = taskData.steps.map(

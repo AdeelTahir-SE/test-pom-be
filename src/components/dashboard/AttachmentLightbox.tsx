@@ -30,6 +30,20 @@ function isOfficeName(name: string) {
   return /\.(docx?|xlsx?|pptx?)$/i.test(name);
 }
 
+function isAudioName(name: string, type?: string | null) {
+  return (
+    type === "audio" ||
+    /\.(mp3|wav|ogg|m4a|aac|flac|webm)$/i.test(name)
+  );
+}
+
+function isVideoName(name: string, type?: string | null) {
+  return (
+    type === "video" ||
+    /\.(mp4|webm|ogv|mov|avi|mkv|3gp)$/i.test(name)
+  );
+}
+
 function isLocalUrl(urlStr: string) {
   try {
     const parsed = new URL(urlStr);
@@ -74,7 +88,7 @@ export function AttachmentLightbox({ item, onClose }: AttachmentLightboxProps) {
     >
       <DialogContent
         showCloseButton={false}
-        className="w-[min(98vw,1200px)] max-w-[98vw] h-[min(96vh,900px)] outline-none mx-auto p-0 bg-[#0b1220]/92 border-none shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+        className="!w-[90vw] !max-w-[90vw] sm:!max-w-[90vw] !h-[90vh] outline-none mx-auto p-0 bg-[#0b1220]/92 border-none shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
       >
         {item && (
           <>
@@ -150,7 +164,7 @@ export function AttachmentLightbox({ item, onClose }: AttachmentLightboxProps) {
                         transformOrigin: "center center",
                         transition: "transform 120ms ease-out",
                       }}
-                      className="max-w-full max-h-full object-contain rounded-md shadow-2xl select-none"
+                      className="w-full h-full object-contain rounded-md shadow-2xl select-none"
                       onDoubleClick={() =>
                         setZoom((z) => (z >= 1.5 ? 1 : 2))
                       }
@@ -175,6 +189,35 @@ export function AttachmentLightbox({ item, onClose }: AttachmentLightboxProps) {
                       title={fileName}
                       className="w-full h-full min-h-[70vh] rounded-md border-none bg-white shadow-2xl"
                     />
+                  );
+                }
+
+                if (isAudioName(fileName, attachmentType)) {
+                  return (
+                    <div className="w-full max-w-md p-6 rounded-2xl bg-white border border-slate-100 flex flex-col items-center justify-center gap-4 shadow-2xl">
+                      <div className="w-16 h-16 rounded-full bg-[#EFF6FF] flex items-center justify-center text-[#1B3A6B]">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                          <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                        </svg>
+                      </div>
+                      <audio controls className="w-full mt-2" src={url} autoPlay>
+                        Your browser does not support the audio element.
+                      </audio>
+                    </div>
+                  );
+                }
+
+                if (isVideoName(fileName, attachmentType)) {
+                  return (
+                    <video
+                      controls
+                      className="max-w-full max-h-full rounded-lg bg-black shadow-2xl"
+                      src={url}
+                      autoPlay
+                    >
+                      Your browser does not support the video tag.
+                    </video>
                   );
                 }
 
