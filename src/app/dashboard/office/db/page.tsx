@@ -125,6 +125,7 @@ export default function DatabaseDashboard() {
     showToast(billingLockedMessage);
     return false;
   }, [billingLocked, showToast]);
+
   useEffect(() => {
     if (!authLoading && user && user.role === 'worker') {
       router.replace('/dashboard/worker');
