@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useLanguage } from "@/lib/useLanguage";
@@ -34,7 +34,7 @@ import {
   userFacingCatchMessage,
 } from "@/lib/clientError";
 
-export default function WorkerDashboard() {
+function WorkerDashboardContent() {
   const { t } = useLanguage();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1437,5 +1437,19 @@ export default function WorkerDashboard() {
 
       <SearchModal isOpen={isSearchOpen} onOpenChange={setIsSearchOpen} />
     </div>
+  );
+}
+
+export default function WorkerDashboard() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-[#f3f5f8] text-slate-400 text-sm">
+          Nalaganje…
+        </div>
+      }
+    >
+      <WorkerDashboardContent />
+    </Suspense>
   );
 }
