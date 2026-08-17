@@ -16,11 +16,13 @@ function vapidPublicKeyToApplicationServerKey(value: string): ArrayBuffer {
   );
 }
 
-function isPushServiceAbort(error: unknown): boolean {
+function isRetryableSubscribeAbort(error: unknown): boolean {
+  if (!(error instanceof DOMException) || error.name !== "AbortError") return false;
+  const message = error.message.toLowerCase();
   return (
-    error instanceof DOMException &&
-    error.name === "AbortError" &&
-    error.message.toLowerCase().includes("push service")
+    message.includes("push service") ||
+    message.includes("no active service worker") ||
+    message.includes("subscription failed")
   );
 }
 
@@ -79,14 +81,14 @@ export async function subscribeToPush(): Promise<PushSubscription> {
     try {
       subscription = await createBrowserPushSubscription(registration, publicKey);
     } catch (err) {
-      if (!isPushServiceAbort(err)) throw err;
+      if (!isRetryableSubscribeAbort(err)) throw err;
       await resetPushRegistration();
       const retryRegistration = await registerServiceWorker();
       if (!retryRegistration) throw new Error("Service worker could not be registered.");
       try {
         subscription = await createBrowserPushSubscription(retryRegistration, publicKey);
       } catch (retryErr) {
-        if (isPushServiceAbort(retryErr)) throw new Error(pushServiceFailureMessage());
+        if (isRetryableSubscribeAbort(retryErr)) throw new Error(pushServiceFailureMessage());
         throw retryErr;
       }
     }

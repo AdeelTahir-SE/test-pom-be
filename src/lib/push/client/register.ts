@@ -53,5 +53,9 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
   if (typeof window === "undefined") return null;
   if (!("serviceWorker" in navigator)) return null;
   const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
-  return waitForActiveRegistration(registration);
+  const activeRegistration = await waitForActiveRegistration(registration);
+  const readyRegistration = await navigator.serviceWorker.ready;
+  return readyRegistration.scope === activeRegistration.scope
+    ? readyRegistration
+    : activeRegistration;
 }
