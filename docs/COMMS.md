@@ -1,96 +1,211 @@
-# Communications Implementation
+# Communications v2
 
-This document describes the current messaging, voice-note, transcription, notification, and sound behavior in the app. It is based on the current code in `src/app`, `src/lib`, `src/hooks`, and `src/components`.
+This document describes the current messaging, voice-note, transcription, realtime, notification, push, sound, and offline text behavior in `pom-be`.
 
-## Core Model
+## Architecture
 
-Communications are job-scoped. The source of truth for chat messages is `public.job_messages`.
+Job communication is job-scoped. The authoritative message table is `public.job_messages`; every UI surface reads or derives from that table.
 
-Relevant schema is created in `supabase/migrations/0001_init.sql`:
+The runtime split is:
 
-- `job_messages.company_id`
-- `job_messages.job_id`
-- `job_messages.sender_id`
-- `job_messages.recipient_id`
-- `job_messages.message_type`
-- `job_messages.content`
-- `job_messages.is_urgent`
-- `job_messages.attachment_id`
-- `job_messages.read_at`
-- `job_messages.created_at`
+- Next.js API routes validate access, persist messages, mark reads, create timeline rows, create in-app notifications, and enqueue push delivery jobs.
+- Supabase Realtime syncs active chat sessions and the office communication feed.
+- `notification_delivery_jobs` is a durable Web Push outbox.
+- `workers/push-delivery-worker.ts` is the primary push processor.
+- IndexedDB stores offline text messages until the browser reconnects.
 
-Voice messages store their audio file in `public.job_files`; the corresponding `job_messages.attachment_id` points at that file.
+Messages, in-app notifications, push jobs, timeline events, audio files, and offline queue rows are separate concerns. A failure in notification/push delivery must not roll back message creation.
 
-`office_hidden_at` is added in `supabase/migrations/0014_message_office_hidden.sql`. It is used only to hide a message from the shared office communication feed. It does not delete the message and does not hide it from the job chat thread.
+## Schema
 
-Notifications are stored separately in `public.notifications`. They are lightweight delivery records, not the message source of truth.
+Base message fields are created in `supabase/migrations/0001_init.sql`. Communications v2 fields are added in `supabase/migrations/0018_communications_v2.sql`.
 
-## Access And Routing Rules
+Important `job_messages` fields:
 
-Text and voice messages use the same asymmetric routing rule:
+- `id`
+- `company_id`
+- `job_id`
+- `sender_id`
+- `recipient_id`
+- `message_type`: `text | voice | system`
+- `content`: nullable for pending/failed voice transcription
+- `attachment_id`: points to `job_files.id` for voice audio
+- `is_urgent`
+- `read_at`
+- `office_hidden_at`
+- `client_message_id`: client idempotency key for text sends
+- `transcription_status`: `pending | processing | completed | failed | not_applicable`
+- `transcription_error`
+- `transcribed_at`
+- `created_at`
+
+Idempotency:
+
+- Unique index on `(sender_id, client_message_id)` where `client_message_id is not null`.
+- API-level duplicate handling also checks company/job/sender/client id and returns the existing row.
+
+Push tables:
+
+- `push_subscriptions`: one row per browser/device subscription.
+- `notification_delivery_jobs`: durable outbox rows with `pending | processing | retry | delivered | failed | cancelled`.
+
+## Routing And Access
+
+Text and voice use the same recipient rule:
 
 - Worker sends to the company office contact.
-- Owner/manager sends to the assigned worker for that job.
+- Owner/manager sends to the job's assigned worker.
 - Workers cannot choose a recipient.
 - Office users cannot message a job without an assigned worker.
 
-This is implemented in:
+Implemented in:
 
 - `src/app/api/jobs/[id]/messages/route.ts`
 - `src/app/api/jobs/[id]/voice-message/route.ts`
 - `src/lib/services/officeContact.ts`
 
-Both text and voice sending call `loadJobWithAccess`, so users can only interact with jobs they are allowed to access.
+Both routes call `loadJobWithAccess`, so users can only access jobs in their company and role scope.
 
-New messages are date-gated by `assertJobCommunicationAllowed` in `src/lib/services/jobCommunication.ts`. New text/voice communication is allowed only for the job's current board day. Reading history and playing old voice messages remain allowed.
+New message creation is date-gated by `assertJobCommunicationAllowed` in `src/lib/services/jobCommunication.ts`. Reading history and playing old audio remain allowed.
 
-## Text Messages
+## Message API
 
-### Load Thread
+### GET `/api/jobs/[id]/messages`
 
-`GET /api/jobs/[id]/messages`
+Query params:
 
-Implemented in `src/app/api/jobs/[id]/messages/route.ts`.
+- `limit`: default `40`, clamped by `clampMessageLimit`.
+- `cursor`: encoded `created_at + id` cursor from the previous page.
 
-Behavior:
+Response:
 
-- Authenticated and job-access checked.
-- Returns all messages for the job.
-- Ordered by `created_at ASC`.
-- Response shape is `{ messages }`.
+```json
+{
+  "messages": [],
+  "nextCursor": null,
+  "hasMore": false
+}
+```
 
-### Send Text
+The DB query reads newest-first for stable cursor pagination, then reverses the returned page so UI receives ascending chronological messages.
 
-`POST /api/jobs/[id]/messages`
+### POST `/api/jobs/[id]/messages`
 
-Request body:
+Request:
 
 ```json
 {
   "content": "message text",
-  "is_urgent": false
+  "is_urgent": false,
+  "client_message_id": "uuid"
 }
 ```
 
 Behavior:
 
-- Validates `content` as non-empty and max `LIMITS.MESSAGE_MAX_LENGTH`.
-- Applies the asymmetric recipient rule.
-- Applies the communication date guard.
-- Inserts a `job_messages` row with `message_type = "text"`.
-- Creates a `message_sent` timeline event.
-- Creates one `message_received` notification for the direct recipient.
+- Validates non-empty `content` up to `LIMITS.MESSAGE_MAX_LENGTH`.
+- Applies routing and date guard.
+- If `client_message_id` already exists for the same sender/job/company, returns the existing message.
+- Inserts `message_type = "text"` and `transcription_status = "not_applicable"`.
+- Creates `message_sent` timeline event.
+- Creates one direct-recipient `message_received` in-app notification.
+- Builds a Web Push payload and inserts one `notification_delivery_jobs` row.
 - Returns `201 { message }`.
 
-Text message notification body is the first 100 characters of the message.
+## Shared Client Hook
+
+Active chat state is centralized in `src/hooks/useJobMessages.ts`.
+
+It provides:
+
+- initial latest-page load
+- cursor `loadOlder`
+- Supabase Realtime subscription to `INSERT` and `UPDATE` for the active job
+- merge/dedupe by server `id`, then `client_message_id`
+- optimistic text sends
+- `sending | sent | failed | queued` local delivery states
+- read marking via `PATCH /api/jobs/[id]/messages/read`
+- reconnect/focus reconciliation
+- offline text queue drain
+
+The merge helper is `src/lib/communications/mergeMessages.ts`.
+
+## Realtime Flow
+
+The chat hook opens a Supabase channel named `job:{jobId}` and listens to `job_messages` inserts and updates for that job.
+
+On `INSERT`:
+
+- Merge the new row into local messages.
+- Replace optimistic rows when `client_message_id` matches.
+- Fire `onInboundMessage` for messages from another sender.
+
+On `UPDATE`:
+
+- Merge the updated row into local messages.
+- Voice transcription updates replace the existing bubble content/status.
+
+On reconnect, browser focus, or network restoration:
+
+- Drain queued offline text messages first.
+- Refetch latest messages.
+- Let server idempotency resolve any duplicate delivery attempts.
+
+## Office UI
+
+Main file: `src/app/dashboard/office/page.tsx`.
+
+The reply popup uses `useJobMessages`.
+
+Allowed behavior:
+
+- Load latest messages when a job is selected.
+- Load older pages via cursor.
+- Send optimistic text replies.
+- Retry failed optimistic sends with the same `client_message_id`.
+- Send voice replies through `/api/jobs/[id]/voice-message`.
+- Play voice audio with `VoiceMessagePlayer`.
+- Show transcription states from `transcription_status`.
+- Show an offline banner when `navigator.onLine === false`.
+
+KOMUNIKACIJA feed:
+
+- Data source is `GET /api/office/communications?date=YYYY-MM-DD`.
+- The page subscribes to realtime `job_messages` changes and invalidates/refetches the communication feed.
+- It does not use chat polling for normal message delivery.
+
+Hiding a communication:
+
+- `PATCH /api/office/communications/[id]`
+- Sets `job_messages.office_hidden_at`.
+- Does not delete the message and does not hide it from the job thread.
+
+## Worker UI
+
+Main file: `src/app/dashboard/worker/page.tsx`.
+
+The chat popup uses `useJobMessages`.
+
+Allowed behavior:
+
+- Open chat from query params: `/dashboard/worker?job=<jobId>&chat=open&message=<messageId>`.
+- Load latest messages and older cursor pages.
+- Mark inbound messages read when the chat opens.
+- Send optimistic text messages.
+- Retry failed text messages with the same `client_message_id`.
+- Queue text messages in IndexedDB while offline.
+- Send voice messages online only.
+- Play voice audio with `VoiceMessagePlayer`.
+- Show transcription states from `transcription_status`.
+- Show a push notification opt-in banner and bell toggle.
+
+The worker page still has lightweight background checks for job assignment and notification badges. Chat delivery itself is handled by realtime plus reconciliation, not message polling.
 
 ## Voice Messages
 
-### Recorder
+Recorder code is in `src/hooks/useVoiceRecorder.ts`.
 
-The shared recorder hook is `src/hooks/useVoiceRecorder.ts`.
-
-State machine:
+Recorder states:
 
 - `idle`
 - `recording`
@@ -101,273 +216,228 @@ Behavior:
 
 - Uses `navigator.mediaDevices.getUserMedia({ audio: true })`.
 - Uses `MediaRecorder`.
-- Preferred MIME type order:
-  - `audio/webm;codecs=opus`
-  - `audio/webm`
-  - browser default fallback
-- Supports pause/resume when the browser supports `MediaRecorder.pause()` and `MediaRecorder.resume()`.
+- Prefers `audio/webm;codecs=opus`, falls back to `audio/webm`, then browser default.
+- Supports pause/resume where the browser supports it.
 - Timer counts active recording time only.
-- Auto-finishes when `LIMITS.VOICE_MAX_SECONDS` is reached.
-- Current limit is 15 seconds in `src/config/constants.ts`.
-- Empty audio triggers an `empty-audio` error.
+- Auto-finishes at `LIMITS.VOICE_MAX_SECONDS`.
 
-### Send Voice
+### POST `/api/jobs/[id]/voice-message`
 
-`POST /api/jobs/[id]/voice-message`
-
-Implemented in `src/app/api/jobs/[id]/voice-message/route.ts`.
-
-Request shape:
+Request:
 
 - Multipart form data.
-- Field name: `audio`.
+- Field: `audio`.
 
 Behavior:
 
-- Authenticated and job-access checked.
-- Applies the communication date guard.
-- Validates audio exists.
-- Rejects files above `LIMITS.VOICE_MAX_BYTES`.
-- Applies the same asymmetric recipient rule as text messages.
-- Reads the uploaded audio into a `Buffer`.
-- Computes SHA-256 hash.
-- Checks for an existing `job_files` row with the same `job_id` and `file_hash`.
-- If an existing file and voice message exist, returns the existing message instead of creating a duplicate.
-- Uploads the audio to Supabase Storage.
-- Inserts a `job_files` row with `attachment_type = "audio"`.
-- Inserts a `job_messages` row with:
+- Validates access/date/size.
+- Reads audio into a `Buffer`.
+- Computes SHA-256 file hash for idempotency.
+- Reuses an existing voice message when the same audio hash already exists for the job.
+- Uploads audio to Supabase Storage.
+- Inserts `job_files` with `attachment_type = "audio"`.
+- Inserts `job_messages` with:
   - `message_type = "voice"`
-  - `content = "Voice message (untranscribed)"`
+  - `content = null`
   - `attachment_id = fileRecord.id`
-- Schedules transcription with `after()` from `next/server`.
-- Sends one immediate notification with title `New voice message`.
+  - `transcription_status = "pending"`
+- Enqueues in-app notification and push job with generic voice copy.
 - Returns immediately with `201 { message }`.
+- Runs transcription after the response with `after()` from `next/server`.
 
-Voice creation intentionally does not wait for transcription.
+### Transcription State Machine
 
-### Transcription
+Background finalization:
 
-Transcription is implemented in `src/lib/integrations/deepgram.ts`.
+1. Update message to `transcription_status = "processing"`.
+2. Call Deepgram.
+3. On transcript:
+   - set `content = transcript`
+   - set `transcription_status = "completed"`
+   - set `transcribed_at`
+   - clear `transcription_error`
+4. On failure:
+   - keep `content = null`
+   - set `transcription_status = "failed"`
+   - set `transcription_error`
+5. Create `voice_message_transcribed` timeline event.
 
-Current Deepgram request:
+UI state:
+
+- `pending`: "Prepis se pripravlja..."
+- `processing`: "Prepisovanje..."
+- `completed`: render transcript content
+- `failed`: "Prepis ni na voljo"
+
+Voice playback is independent from transcription; if `attachment_id` exists, audio can be played even when transcription is pending or failed.
+
+## Deepgram
+
+Runtime code is `src/lib/integrations/deepgram.ts`.
+
+Current query:
 
 ```text
 model=nova-3&language=sl&punctuate=true&smart_format=true&diarize=false
 ```
 
-Runtime behavior:
+Behavior:
 
 - Requires `DEEPGRAM_API_KEY`.
-- Uses `DEEPGRAM_API_URL`, defaulting to `https://api.deepgram.com/v1/listen`.
+- Uses `DEEPGRAM_API_URL`, defaulting to Deepgram listen endpoint.
 - Accepts only `audio/*` content types.
 - Uses a 30 second timeout.
-- Sends the Node `Buffer` directly as the fetch body.
-- Returns the transcript string on success.
-- Returns `null` on missing key, empty audio, unsupported content type, Deepgram non-2xx, timeout, network error, or empty transcript.
-- Logs failures through structured `console.error`.
+- Sends the Node `Buffer` directly.
+- Returns transcript text on success.
+- Returns `null` on missing key, empty audio, unsupported content type, non-2xx, timeout, network error, or empty transcript.
+- Logs Deepgram failures with structured `console.error`.
 
-The background finalization flow:
-
-1. `finalizeVoiceTranscription` calls `transcribeAudio`.
-2. If a transcript is returned, it updates the same `job_messages.content`.
-3. It creates a `voice_message_transcribed` timeline event.
-4. If transcription fails, the original fallback text remains in `job_messages.content`, but the timeline event still records `transcribed: false`.
-
-There is no OpenAI voice post-processing in the voice message path.
+There is no OpenAI voice cleanup/post-processing in the runtime path.
 
 ## Voice Playback
 
-Playback UI is shared through `src/components/dashboard/VoiceMessagePlayer.tsx`.
+Shared playback component:
+
+- `src/components/dashboard/VoiceMessagePlayer.tsx`
 
 Behavior:
 
-- Accepts a `job_files` `attachmentId`.
+- Accepts `attachmentId`.
 - Fetches a signed URL from `GET /api/files/{attachmentId}`.
-- Caches signed URLs in an in-memory `Map`.
-- Renders a speaker button.
-- Shows loading state while fetching the URL.
+- Caches signed URLs in memory.
+- Shows loading/error states.
 - Renders `<audio controls autoPlay>` when active.
-- Shows inline error text if signed URL fetch fails.
 
-`OfficeCard` uses `useVoicePlaybackController` directly so voice cards in the KOMUNIKACIJA column can play inline.
+Used by both office and worker chat popups. `OfficeCard` also has inline KOMUNIKACIJA playback behavior.
 
-Chat popups in both `/dashboard/office` and `/dashboard/worker` render `VoiceMessagePlayer` for voice messages with `attachment_id`.
+## In-App Notifications
 
-## Office UI
+Notification helpers live in `src/lib/services/notifications.ts`.
 
-Main file: `src/app/dashboard/office/page.tsx`.
-
-### Board Data
-
-`/office` uses `useOfficeBoard` from `src/hooks/useOfficeBoard.ts`.
-
-Important queries:
-
-- `/api/jobs`
-- `/api/office-reminders`
-- `/api/notifications`
-- `/api/office/communications`
-- `/api/users`
-- `/api/jobs/checklists`
-- `/api/office/summary`
-
-Polling:
-
-- Notifications refetch every 30 seconds.
-- Office communications refetch every 15 seconds.
-
-### KOMUNIKACIJA Column
-
-The shared office communication feed comes from:
-
-`GET /api/office/communications?date=YYYY-MM-DD`
-
-Implemented in `src/app/api/office/communications/route.ts`.
-
-Behavior:
-
-- Workers are forbidden.
-- Requires a date query param.
-- Reads `job_messages`.
-- Filters out rows with `office_hidden_at`.
-- Filters messages to the selected app calendar day.
-- Enriches rows with:
-  - job title
-  - assigned worker ID/name
-  - sender name
-  - recipient name
-  - attachment ID
-- Returns `{ messages }`.
-
-The office feed is mapped into dashboard cards by `communicationToMessage` in `src/lib/dashboardMappers.ts`.
-
-### Office Reply Popup
-
-Opening a reply popup:
-
-- `handleOpenReply(jobId)` loads `/api/jobs/{jobId}/messages`.
-- Messages render oldest to newest.
-- Voice messages show playback controls and transcript/fallback text.
-
-Sending text:
-
-- `handleSendReply` posts to `/api/jobs/{replyJobId}/messages`.
-- On success, appends the returned message and refreshes the board.
-
-Sending voice:
-
-- `handleVoiceReplyComplete` posts multipart audio to `/api/jobs/{replyJobId}/voice-message`.
-- On success, appends the returned placeholder message.
-- Schedules follow-up refreshes at 1s, 2.5s, 5s, 10s, 20s, and 32s.
-- Those refreshes reload the open thread and refresh the board so the async transcript replaces the placeholder when available.
-
-The office recording dialog uses the shared recorder hook and shows pause/resume/finish controls.
-
-### Hiding Office Communications
-
-`PATCH /api/office/communications/[id]`
-
-Implemented in `src/app/api/office/communications/[id]/route.ts`.
-
-Behavior:
-
-- Office-only.
-- Sets `job_messages.office_hidden_at`.
-- Does not delete the message.
-- Does not hide it from the job chat thread.
-
-## Worker UI
-
-Main file: `src/app/dashboard/worker/page.tsx`.
-
-### Initial Data
-
-Worker dashboard loads:
-
-- `/api/jobs`
-- active job checklist
-- active job messages
-- `/api/messages/unread-count`
-- `/api/notifications`
-
-Only the active/open job for the selected worker day is displayed.
-
-### Chat Popup
-
-Opening chat:
-
-- Sets chat open.
-- Calls `PATCH /api/jobs/{job.id}/messages/read`.
-- Resets local unread count.
-
-Sending text:
-
-- `handleSendMessage` posts to `/api/jobs/{job.id}/messages`.
-- On success, appends the returned message locally.
-
-Sending voice:
-
-- `handleVoiceComplete` posts multipart audio to `/api/jobs/{job.id}/voice-message`.
-- On success, appends the returned placeholder message.
-- Schedules thread refreshes at 1s, 2.5s, 5s, 10s, 20s, and 32s so the async transcript replaces the placeholder.
-
-Message polling:
-
-- Runs every 15 seconds.
-- Checks unread count, notifications, jobs, and active job messages.
-- Message comparison checks length, order, `content`, `read_at`, and `attachment_id`, so async transcription content changes are picked up.
-
-Voice messages in the worker chat render playback controls and the transcript/fallback text.
-
-## Notifications
-
-Notification creation lives in `src/lib/services/notifications.ts`.
-
-Two helpers exist:
+Helpers:
 
 - `notifyUser`
 - `notifyMessageReceived`
 
-Design:
+Behavior:
 
-- Notifications are best-effort.
-- Insert failures are logged but do not roll back the message/job operation.
+- Best-effort only.
+- Insert failures are logged and do not roll back the message.
 - Message notifications are direct-recipient only.
-- The shared office communication column does not require fan-out notifications to every manager because it reads `job_messages` directly.
+- Office KOMUNIKACIJA does not fan out notification rows to every manager because it reads `job_messages`.
 
-Notification APIs:
+APIs:
 
 - `GET /api/notifications`
 - `PATCH /api/notifications/[id]`
 
-`GET /api/notifications` returns the current user's visible notifications only, ordered newest first.
+Unread count:
 
-`PATCH /api/notifications/[id]` can:
+- `GET /api/messages/unread-count`
+- Counts unread `job_messages` for the current user.
 
-- set `is_read = true`
-- set `hidden_at`
+Mark read:
 
-When hiding a job-linked notification, the API also creates a `notification_deleted` timeline event.
+- `PATCH /api/jobs/[id]/messages/read`
+- Marks unread messages for the current user within one job.
 
-## Unread Counts
+## Web Push
 
-`GET /api/messages/unread-count`
+Client files:
 
-Implemented in `src/app/api/messages/unread-count/route.ts`.
+- `src/hooks/usePushNotifications.ts`
+- `src/lib/push/client/register.ts`
+- `src/lib/push/client/subscribe.ts`
+- `public/sw.js`
 
-Counts unread `job_messages` where:
+Server files:
 
-- `company_id = auth.companyId`
-- `recipient_id = auth.userId`
-- `read_at is null`
+- `src/app/api/push/subscribe/route.ts`
+- `src/lib/notifications/payloads.ts`
+- `src/lib/notifications/deliveryJobs.ts`
+- `src/lib/push/server/processDelivery.ts`
+- `src/lib/push/server/sendPush.ts`
+- `src/lib/push/server/retry.ts`
+- `workers/push-delivery-worker.ts`
 
-This is global, not job-scoped.
+Required env vars:
 
-`PATCH /api/jobs/[id]/messages/read`
+- `NEXT_PUBLIC_VAPID_PUBLIC_KEY`
+- `VAPID_PRIVATE_KEY`
+- `VAPID_SUBJECT`
 
-Implemented in `src/app/api/jobs/[id]/messages/read/route.ts`.
+Client behavior:
 
-Marks unread messages as read for the current user within one job.
+- Existing subscriptions are reconciled silently on authenticated startup.
+- Browser permission is requested only from explicit user action.
+- Worker UI exposes a push opt-in banner and bell toggle.
+- Logout calls backend unsubscribe for the current device before clearing auth cookies.
+
+Service worker behavior:
+
+- Shows notifications with `public/pomocnik-logo.png` as icon/badge.
+- Click route is `payload.data.url`.
+- Focuses an existing window where possible, otherwise opens a new one.
+
+Push payload URL:
+
+```text
+/dashboard/worker?job=<jobId>&chat=open&message=<messageId>
+```
+
+## Push Worker And Retry Strategy
+
+Start worker:
+
+```bash
+npm run push-worker
+```
+
+Worker entrypoint:
+
+- `workers/push-delivery-worker.ts`
+
+Processing:
+
+1. Poll `claim_notification_delivery_jobs`.
+2. Claim due `pending`/`retry` jobs atomically.
+3. Load active push subscriptions for the recipient.
+4. Send the same payload to all active devices.
+5. Delete expired subscriptions on Web Push `404`/`410`.
+6. Mark job `delivered` when all eligible sends complete.
+7. Mark job `retry` with bounded backoff for transient failures.
+8. Mark job `failed` after max attempts or non-transient failure.
+9. Mark job `cancelled` when the recipient has no active subscriptions.
+
+Retry constants are in `src/lib/push/server/retry.ts`.
+
+Vercel Cron is not the primary push processor. It can be added later as a backup sweeper, but closed-app message notifications depend on the dedicated worker for seconds-level delivery.
+
+## Offline Text Queue
+
+Offline queue code:
+
+- `src/lib/communications/offlineQueue.ts`
+- `src/hooks/useJobMessages.ts`
+
+Storage:
+
+- IndexedDB database: `pomocnik-comms`
+- Object store: `queued_text_messages`
+- Key: `clientMessageId`
+- Index: `[jobId, userId]`
+
+Behavior:
+
+- Text only.
+- Voice messages remain online-only.
+- If browser is offline, `sendText` creates a local optimistic message with `delivery_state = "queued"` and stores it in IndexedDB.
+- Both office and worker chat popups show an offline banner.
+- On reconnect/focus, queued messages are sent in order.
+- The same `client_message_id` is reused for retry/idempotency.
+- On server success, the queued IndexedDB row is deleted and the optimistic row is replaced by the server row.
+- If a queued send fails because the browser goes offline again, it stays queued.
+- If it fails while online, it becomes `failed` and can be retried by the UI.
 
 ## Push Sounds
 
@@ -377,62 +447,60 @@ Behavior:
 
 - Uses Web Audio API.
 - Generates a short sine-wave beep.
-- No audio asset file is required.
-- `unlockMessageBeep()` is called after the first pointer interaction to reduce autoplay blocking.
-- `playMessageBeep()` ignores failures because browsers may still block audio.
+- `unlockMessageBeep()` runs after first pointer interaction.
+- `playMessageBeep()` ignores failures because browsers may block audio.
 
 Office:
 
-- Unlocks audio on first pointer down.
-- Plays a beep when a new inbound communication appears in the polled communication feed.
-- Does not beep for messages sent by the current user.
+- Plays a beep when realtime communication updates indicate inbound activity and the sender is not the current user.
 
 Worker:
 
-- Unlocks audio on first pointer down.
-- Polls unread count, notifications, jobs, and active job messages.
-- Plays a beep for new assigned jobs or new inbound messages.
+- Plays a beep for new inbound chat messages and assigned job/notification changes.
 
-This is not native push notification. It is in-page polling plus a local beep.
+These sounds are separate from Web Push. They only work while the app page is open and browser audio is unlocked.
 
 ## Timeline Integration
 
-Text messages create a `message_sent` timeline event in `POST /api/jobs/[id]/messages`.
+Text messages:
 
-Voice messages do not create `message_sent`; instead, background finalization creates `voice_message_transcribed`.
+- Create `message_sent` timeline event in `POST /api/jobs/[id]/messages`.
 
-Notification hides can create `notification_deleted`.
+Voice messages:
 
-Timeline rendering describes voice events in `src/lib/timeline/describe.ts`, and worker detail timeline maps `voice_message_transcribed` to a voice timeline item.
+- Do not create `message_sent`.
+- Background transcription finalization creates `voice_message_transcribed`.
 
-## Limits And Configuration
+Notification hides:
 
-Message and voice limits are centralized in `src/config/constants.ts`:
+- Can create `notification_deleted`.
+
+Timeline rendering is handled by `src/lib/timeline/describe.ts` and worker detail mapping in `src/components/dashboard/WorkerDetailModal.tsx`.
+
+## Limits
+
+Defined in `src/config/constants.ts`:
 
 - `MESSAGE_MAX_LENGTH = 400`
 - `VOICE_MAX_SECONDS = 15`
 - `VOICE_MAX_BYTES = 5 * 1024 * 1024`
 
-Deepgram config is in:
+## Current Caveats
 
-- `src/lib/integrations/deepgram.ts`
-- `src/lib/env.ts`
+- Deepgram is currently locked to `language=sl` in code despite an old comment mentioning language detection.
+- Office KOMUNIKACIJA feed is still fetched from its API after realtime invalidation; the realtime event is not used as the final enriched feed row.
+- Worker page still has lightweight polling for job assignment/notification badges. Chat messages themselves use realtime and reconciliation.
+- Offline queue is text-only. Voice is intentionally online-only for launch.
+- Push delivery requires a running dedicated worker process; Vercel alone will not process `notification_delivery_jobs`.
+- Web Push depends on user/browser permission and active subscriptions, so delivery is best-effort even though the outbox is durable.
 
-Relevant env vars:
+## Non-Goals
 
-- `DEEPGRAM_API_KEY`
-- `DEEPGRAM_API_URL`
-
-Current transcription language is explicitly Slovenian via `language=sl`.
-
-## Current Known Caveats
-
-- Voice message content is initially stored as `Voice message (untranscribed)` and later replaced only if Deepgram returns a transcript.
-- If Deepgram fails, the placeholder remains in the message content.
-- There is no separate transcription status field in `job_messages`; UI infers state from message content.
-- The open chat popup relies on scheduled refreshes after sending voice and on background polling after that.
-- Office shared communications are day-filtered by message `created_at`, not job scheduled date.
-- Hiding a communication in `/office` only sets `office_hidden_at`; the underlying job thread remains intact.
-- Notifications are not guaranteed delivery. They are intentionally best-effort.
-- Sounds are not system push notifications and only work while the app page is open and browser audio is allowed.
-- Voice transcription uses Deepgram only; there is no OpenAI cleanup or post-processing layer in the runtime path.
+- Group chat
+- Typing indicators
+- Message editing/deleting
+- Reactions
+- Read receipts per participant beyond `read_at`
+- Offline voice messages
+- Streaming transcription
+- Push delivery from Vercel Cron as the primary path
