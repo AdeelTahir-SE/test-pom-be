@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useLanguage } from "@/lib/useLanguage";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { api } from "@/lib/api-client";
-import { LogOut, Mic, Send, Search as SearchIcon, ChevronLeft, ChevronRight, Paperclip } from "lucide-react";
+import { Bell, BellOff, LogOut, Mic, Send, Search as SearchIcon, ChevronLeft, ChevronRight, Paperclip } from "lucide-react";
 import { SearchModal } from "@/components/dashboard/SearchModal";
 import { Logo } from "@/components/Logo";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -27,6 +27,7 @@ import { playMessageBeep, unlockMessageBeep } from "@/lib/playMessageBeep";
 import { AuraFileInput } from "@/components/dashboard/AuraForm";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { useJobMessages } from "@/hooks/useJobMessages";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import {
   apiFailureMessage,
   logClientError,
@@ -110,6 +111,9 @@ export default function WorkerDashboard() {
     enabled: !!user && company?.subscription_active !== false,
     onInboundMessage: handleInboundRealtimeMessage,
   });
+  const pushNotifications = usePushNotifications(
+    !!user && user.role === "worker" && company?.subscription_active !== false
+  );
 
   const loadAll = useCallback(async () => {
     if (company?.subscription_active === false) {
@@ -247,6 +251,21 @@ export default function WorkerDashboard() {
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 2000);
+  };
+
+  const handleTogglePushNotifications = async () => {
+    try {
+      if (pushNotifications.subscribed) {
+        await pushNotifications.disable();
+        showToast(t("workerPushDisabled"));
+      } else {
+        await pushNotifications.enable();
+        showToast(t("workerPushEnabled"));
+      }
+    } catch (err) {
+      logClientError("worker.pushNotifications", err);
+      showToast(t("workerPushFailed"));
+    }
   };
 
   const officePhone = officeContact?.phone?.trim() || "";
@@ -618,6 +637,25 @@ export default function WorkerDashboard() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {pushNotifications.supported ? (
+                <button
+                  type="button"
+                  onClick={handleTogglePushNotifications}
+                  disabled={pushNotifications.subscribing}
+                  title={
+                    pushNotifications.subscribed
+                      ? t("workerPushDisableAction")
+                      : t("workerPushEnableAction")
+                  }
+                  className="w-9 h-9 rounded-xl border border-slate-200 bg-white/80 flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {pushNotifications.subscribed ? (
+                    <BellOff className="w-4 h-4" />
+                  ) : (
+                    <Bell className="w-4 h-4" />
+                  )}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => setSelectedDate((prev) => addDays(prev, -1))}
@@ -642,10 +680,7 @@ export default function WorkerDashboard() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  logout();
-                  router.push("/login");
-                }}
+                onClick={logout}
                 className="w-9 h-9 rounded-xl border border-slate-200 bg-white/80 flex items-center justify-center text-slate-500 hover:text-red-500 hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
@@ -656,6 +691,34 @@ export default function WorkerDashboard() {
 
         {/* Scrollable content */}
         <div className="flex-1 w-full overflow-y-auto px-3 pb-4 flex flex-col gap-5">
+          {pushNotifications.supported &&
+          !pushNotifications.subscribed &&
+          pushNotifications.permission !== "denied" ? (
+            <div className="rounded-2xl border border-blue-100 bg-white/85 px-4 py-3 shadow-sm flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                <Bell className="w-4 h-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-slate-800">{t("workerPushTitle")}</p>
+                <p className="text-xs text-slate-500 leading-5">{t("workerPushDesc")}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleTogglePushNotifications}
+                disabled={pushNotifications.subscribing}
+                className="rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {pushNotifications.subscribing
+                  ? t("workerPushSaving")
+                  : t("workerPushEnableAction")}
+              </button>
+            </div>
+          ) : null}
+          {pushNotifications.supported && pushNotifications.permission === "denied" ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800">
+              {t("workerPushBlocked")}
+            </div>
+          ) : null}
           {!job ? (
             <p className="text-sm text-slate-400 text-center py-24">{t("workerNoActiveJob")}</p>
           ) : (

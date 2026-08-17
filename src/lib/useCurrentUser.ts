@@ -8,6 +8,7 @@ import {
   setSession,
   ensureFreshAccessToken,
 } from "./api-client";
+import { unsubscribeFromPush } from "@/lib/push/client/subscribe";
 
 export interface CurrentUser {
   id: string;
@@ -91,6 +92,9 @@ export function useCurrentUser() {
 
   const logout = useCallback(async () => {
     try {
+      await unsubscribeFromPush().catch((err) => {
+        console.warn("[push_logout_unsubscribe_failed]", err);
+      });
       await api.post("/api/auth/logout");
     } finally {
       setSession(null, null);

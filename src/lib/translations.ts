@@ -280,6 +280,15 @@ export const translations = {
     workerMessageSendFailed: "Sporočila ni bilo mogoče poslati.",
     workerVoiceSent: "Glasovno sporočilo poslano!",
     workerVoiceSendFailed: "Glasovnega sporočila ni bilo mogoče poslati.",
+    workerPushTitle: "Obvestila o sporočilih",
+    workerPushDesc: "Prejmite nova sporočila tudi, ko aplikacija ni odprta.",
+    workerPushEnableAction: "Vklopi",
+    workerPushDisableAction: "Izklopi obvestila",
+    workerPushSaving: "Shranjujem…",
+    workerPushEnabled: "Obvestila so vklopljena.",
+    workerPushDisabled: "Obvestila so izklopljena.",
+    workerPushFailed: "Obvestil ni bilo mogoče posodobiti.",
+    workerPushBlocked: "Obvestila so blokirana v brskalniku. Omogočite jih v nastavitvah strani.",
     workerLoading: "Nalaganje…",
 
     // Modals (live)
@@ -799,6 +808,15 @@ export const translations = {
     workerMessageSendFailed: "Could not send the message.",
     workerVoiceSent: "Voice message sent!",
     workerVoiceSendFailed: "Could not send the voice message.",
+    workerPushTitle: "Message notifications",
+    workerPushDesc: "Receive new messages even when the app is not open.",
+    workerPushEnableAction: "Turn on",
+    workerPushDisableAction: "Turn off notifications",
+    workerPushSaving: "Saving…",
+    workerPushEnabled: "Notifications are on.",
+    workerPushDisabled: "Notifications are off.",
+    workerPushFailed: "Could not update notifications.",
+    workerPushBlocked: "Notifications are blocked in the browser. Enable them in site settings.",
     workerLoading: "Loading…",
 
     // Modals (live)
