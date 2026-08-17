@@ -13,6 +13,7 @@ function urlBase64ToUint8Array(value: string): Uint8Array {
 export function pushSupported(): boolean {
   return (
     typeof window !== "undefined" &&
+    window.isSecureContext &&
     "Notification" in window &&
     "serviceWorker" in navigator &&
     "PushManager" in window
@@ -41,6 +42,17 @@ export async function subscribeToPush(): Promise<PushSubscription> {
     (await registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
+    }).catch((err) => {
+      if (
+        err instanceof DOMException &&
+        err.name === "AbortError" &&
+        err.message.toLowerCase().includes("push service")
+      ) {
+        throw new Error(
+          "Browser push service registration failed. Open the app on http://localhost:3000 or HTTPS, and make sure browser notifications/push services are enabled."
+        );
+      }
+      throw err;
     }));
 
   const json = subscription.toJSON();
