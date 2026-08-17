@@ -69,15 +69,18 @@ function WorkerDashboardContent() {
 
   const [chatInput, setChatInput] = useState("");
   const [inboundNotifs, setInboundNotifs] = useState<ApiNotification[]>([]);
+  const [showLocalCommunicationCard, setShowLocalCommunicationCard] = useState(false);
   const prevUnreadRef = useRef(0);
   const unreadPrimedRef = useRef(false);
   const seenJobAssignedIdsRef = useRef<Set<string> | null>(null);
   const seenJobIdsRef = useRef<Set<string> | null>(null);
   const openedQueryChatRef = useRef(false);
+  const previousJobIdRef = useRef<string | null>(null);
 
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   const handleInboundRealtimeMessage = useCallback(() => {
+    setShowLocalCommunicationCard(true);
     if (!chatOpen) setUnreadCount((prev) => prev + 1);
     playMessageBeep();
     const activeJobId = job?.id;
@@ -131,6 +134,10 @@ function WorkerDashboardContent() {
         (requestedJobId ? openJobs.find((j) => j.id === requestedJobId) : null) ??
         openJobs.find((j) => jobBelongsToDay(j, dayKey)) ??
         null;
+      if ((activeJob?.id ?? null) !== previousJobIdRef.current) {
+        previousJobIdRef.current = activeJob?.id ?? null;
+        setShowLocalCommunicationCard(false);
+      }
       setJob(activeJob);
 
       if (activeJob) {
@@ -383,6 +390,7 @@ function WorkerDashboardContent() {
   const handleDismissInboundBox = async () => {
     const snapshot = inboundNotifs;
     setInboundNotifs([]);
+    setShowLocalCommunicationCard(false);
     await Promise.all(
       snapshot.map((n) => api.patch(`/api/notifications/${n.id}`, { hidden: true }))
     );
@@ -397,6 +405,7 @@ function WorkerDashboardContent() {
     const content = chatInput.trim();
     if (!content) return;
     setChatInput("");
+    setShowLocalCommunicationCard(true);
     try {
       await sendText(content);
     } catch (err) {
@@ -435,6 +444,7 @@ function WorkerDashboardContent() {
         );
         if ((res.status === 200 || res.status === 201) && res.data) {
           mergeIncoming(res.data.message);
+          setShowLocalCommunicationCard(true);
           showToast(t("workerVoiceSent"));
         } else {
           logClientError("worker.voiceUpload", res.error, {
@@ -521,7 +531,9 @@ function WorkerDashboardContent() {
     if (message.transcription_status === "failed") return "Prepis ni na voljo";
     return message.content ?? "Prepis ni na voljo";
   };
-  const showInboundBox = Boolean(job && inboundNotifs.length > 0 && messages.length > 0);
+  const showInboundBox = Boolean(
+    job && messages.length > 0 && (inboundNotifs.length > 0 || showLocalCommunicationCard)
+  );
   const inboundThread: OfficeCardThreadItem[] = messages.map((m) => {
     const fromMe = m.sender_id === user?.id;
     return {
