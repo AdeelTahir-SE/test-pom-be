@@ -33,6 +33,9 @@ import {
   userFacingCatchMessage,
 } from "@/lib/clientError";
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
+import { useJobMessages } from '@/hooks/useJobMessages';
+import { getRealtimeClient } from '@/lib/realtime/client';
+import { queryKeys } from '@/lib/query/keys';
 import {
   LogOut,
   Send,
@@ -69,6 +72,7 @@ import { SearchModal } from '@/components/dashboard/SearchModal';
 import { SortableItem } from '@/components/dashboard/SortableItem';
 import { OfficeDayHeader } from '@/components/dashboard/OfficeDayHeader';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import {
   SortableContext,
   verticalListSortingStrategy,
@@ -94,17 +98,6 @@ import { playMessageBeep, unlockMessageBeep } from '@/lib/playMessageBeep';
 import { toTelHref } from '@/lib/phone';
 import { useOfficeBoard } from '@/hooks/useOfficeBoard';
 import { isOptimisticId, newOptimisticId } from '@/lib/optimisticId';
-
-interface ApiJobMessage {
-  id: string;
-  sender_id: string;
-  message_type: 'text' | 'voice';
-  content: string;
-  attachment_id: string | null;
-  is_urgent: boolean;
-  read_at: string | null;
-  created_at: string;
-}
 
 interface ColumnHeaderProps {
   title: string;
@@ -202,6 +195,7 @@ export default function OfficeDashboard() {
     setChecklistsByJob,
     setWorkers,
     refreshBoard,
+    queryClient,
   } = useOfficeBoard(
     selectedDayKey,
     !authLoading && !!user
@@ -219,6 +213,43 @@ export default function OfficeDashboard() {
   useEffect(() => {
     seenCommIdsRef.current = null;
   }, [selectedDayKey]);
+
+  useEffect(() => {
+    if (!user || user.role === 'worker' || !company?.id) return;
+    let cancelled = false;
+    let channel: RealtimeChannel | null = null;
+
+    void getRealtimeClient()
+      .then((client) => {
+        if (cancelled) return;
+        channel = client
+          .channel(`office-communications:${company.id}`)
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'job_messages',
+              filter: `company_id=eq.${company.id}`,
+            },
+            () => {
+              void queryClient.invalidateQueries({
+                queryKey: queryKeys.office.communications(selectedDayKey),
+              });
+            },
+          )
+          .subscribe();
+      })
+      .catch((err) => {
+        logClientError('office.communicationsRealtime', err);
+      });
+
+    return () => {
+      cancelled = true;
+      if (channel) void channel.unsubscribe();
+    };
+  }, [company?.id, queryClient, selectedDayKey, user]);
+
   useEffect(() => {
     if (!user?.id) return;
     const ids = new Set(communications.map((m) => m.id));
@@ -278,10 +309,7 @@ export default function OfficeDashboard() {
   );
 
   const [replyJobId, setReplyJobId] = useState<string | null>(null);
-  const [replyMessages, setReplyMessages] = useState<ApiJobMessage[]>([]);
-  const replyJobIdRef = useRef<string | null>(null);
   const [replyInput, setReplyInput] = useState('');
-  const [replyLoading, setReplyLoading] = useState(false);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeWorkerId, setComposeWorkerId] = useState('');
   const [pendingDeleteJobId, setPendingDeleteJobId] = useState<string | null>(
@@ -314,9 +342,20 @@ export default function OfficeDashboard() {
     return false;
   }, [billingLocked, showBillingLockedToast]);
 
-  useEffect(() => {
-    replyJobIdRef.current = replyJobId;
-  }, [replyJobId]);
+  const {
+    messages: replyMessages,
+    setMessages: setReplyMessages,
+    loading: replyLoading,
+    loadingOlder: replyLoadingOlder,
+    hasMore: replyHasMore,
+    loadOlder: loadOlderReplyMessages,
+    sendText: sendReplyText,
+    mergeIncoming: mergeReplyIncoming,
+  } = useJobMessages({
+    jobId: replyJobId,
+    userId: user?.id,
+    enabled: !!user && !!replyJobId,
+  });
 
   const cardAttachInputRef = useRef<HTMLInputElement | null>(null);
   const cardAttachTargetRef = useRef<{ jobId: string; taskId: string } | null>(
@@ -1206,12 +1245,6 @@ export default function OfficeDashboard() {
       return;
     }
     setReplyJobId(jobId);
-    setReplyLoading(true);
-    const res = await api.get<{ messages: ApiJobMessage[] }>(
-      `/api/jobs/${jobId}/messages`,
-    );
-    setReplyMessages(res.data?.messages ?? []);
-    setReplyLoading(false);
   };
 
   /** Compose only for workers with a TEREN card on the selected day (Mark). */
@@ -1235,44 +1268,45 @@ export default function OfficeDashboard() {
     void handleOpenReply(job.id);
   };
 
-  const refreshReplyMessagesForJob = useCallback(async (jobId: string) => {
-    const res = await api.get<{ messages: ApiJobMessage[] }>(
-      `/api/jobs/${jobId}/messages`,
-    );
-    if (res.status === 200 && res.data && replyJobIdRef.current === jobId) {
-      setReplyMessages(res.data.messages ?? []);
-    }
-  }, []);
-
-  const scheduleVoiceTranscriptRefresh = useCallback((jobId: string) => {
-    for (const delay of [1000, 2500, 5000, 10000, 20000, 32000]) {
-      window.setTimeout(() => {
-        void refreshReplyMessagesForJob(jobId);
-        void refreshBoard();
-      }, delay);
-    }
-  }, [refreshBoard, refreshReplyMessagesForJob]);
-
   const handleSendReply = async () => {
     if (!requireBillingUnlocked()) return;
     if (!communicationAllowed) {
       showCommunicationBlockedToast();
       return;
     }
-    if (!replyInput.trim() || !replyJobId) return;
+    const content = replyInput.trim();
+    if (!content || !replyJobId) return;
     if (isOptimisticId(replyJobId)) {
       setReplyJobId(null);
       showToast('Kartica se še shranjuje. Poskusite znova čez trenutek.');
       return;
     }
-    const res = await api.post<{ message: ApiJobMessage }>(
-      `/api/jobs/${replyJobId}/messages`,
-      { content: replyInput },
-    );
-    if (res.status === 201 && res.data) {
-      setReplyMessages((prev) => [...prev, res.data!.message]);
+    setReplyInput('');
+    try {
+      await sendReplyText(content);
       setReplyInput('');
       void refreshBoard();
+    } catch (err) {
+      logClientError('office.sendReply', err, { jobId: replyJobId });
+      showToast(userFacingCatchMessage(err, t('workerMessageSendFailed'), t('workerNetworkError')));
+      setReplyInput(content);
+    }
+  };
+
+  const retryFailedReplyMessage = async (messageId: string) => {
+    const failed = replyMessages.find((m) => m.id === messageId);
+    if (!failed?.content || !failed.client_message_id) return;
+    setReplyMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, delivery_state: 'sending' } : m)),
+    );
+    try {
+      await sendReplyText(failed.content, { clientMessageId: failed.client_message_id });
+    } catch (err) {
+      logClientError('office.retryReply', err, { jobId: replyJobId, messageId });
+      setReplyMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, delivery_state: 'failed' } : m)),
+      );
+      showToast(userFacingCatchMessage(err, t('workerMessageSendFailed'), t('workerNetworkError')));
     }
   };
 
@@ -1289,13 +1323,12 @@ export default function OfficeDashboard() {
       const formData = new FormData();
       formData.append('audio', blob, 'voice-message.webm');
       try {
-        const res = await api.post<{ message: ApiJobMessage }>(
+        const res = await api.post<{ message: typeof replyMessages[number] }>(
           `/api/jobs/${jobIdForUpload}/voice-message`,
           formData,
         );
         if ((res.status === 200 || res.status === 201) && res.data) {
-          setReplyMessages((prev) => [...prev, res.data!.message]);
-          scheduleVoiceTranscriptRefresh(jobIdForUpload);
+          mergeReplyIncoming(res.data.message);
           void refreshBoard();
         } else {
           logClientError("office.voiceUpload", res.error, {
@@ -1318,7 +1351,7 @@ export default function OfficeDashboard() {
         );
       }
     },
-    [refreshBoard, replyJobId, requireBillingUnlocked, scheduleVoiceTranscriptRefresh, showToast, t]
+    [mergeReplyIncoming, refreshBoard, replyJobId, replyMessages, requireBillingUnlocked, showToast, t]
   );
 
   const handleVoiceReplyError = useCallback(
@@ -1353,6 +1386,14 @@ export default function OfficeDashboard() {
     if (!replyJobId) return;
     if (replyVoiceRecorder.isRecording) return;
     await replyVoiceRecorder.start();
+  };
+
+  const replyMessageDisplayText = (message: (typeof replyMessages)[number]) => {
+    if (message.message_type !== 'voice') return message.content ?? '';
+    if (message.transcription_status === 'pending') return 'Prepis se pripravlja...';
+    if (message.transcription_status === 'processing') return 'Prepisovanje...';
+    if (message.transcription_status === 'failed') return 'Prepis ni na voljo';
+    return message.content ?? 'Prepis ni na voljo';
   };
 
   if (authLoading || dataLoading) {
@@ -2534,6 +2575,16 @@ export default function OfficeDashboard() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-50/50">
+            {replyHasMore && (
+              <button
+                type="button"
+                onClick={loadOlderReplyMessages}
+                disabled={replyLoadingOlder}
+                className="mx-auto block rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {replyLoadingOlder ? 'Nalagam...' : 'Naloži starejša sporočila'}
+              </button>
+            )}
             {replyLoading && (
               <p className="text-xs text-slate-400 text-center">
                 {t('officeLoading')}
@@ -2542,6 +2593,14 @@ export default function OfficeDashboard() {
             {!replyLoading &&
               replyMessages.map((m) => {
                 const isMine = m.sender_id === user?.id;
+                const deliveryLabel =
+                  m.delivery_state === 'sending'
+                    ? 'Pošiljanje...'
+                    : m.delivery_state === 'queued'
+                      ? 'V čakalni vrsti'
+                      : m.delivery_state === 'failed'
+                        ? 'Ni poslano'
+                        : '';
                 return (
                   <div
                     key={m.id}
@@ -2565,15 +2624,27 @@ export default function OfficeDashboard() {
                         />
                       )}
                       <p className={m.message_type === 'voice' ? 'italic' : ''}>
-                        {m.content}
+                        {replyMessageDisplayText(m)}
                       </p>
                     </div>
-                    <span className="text-[9px] text-slate-400 mt-1 px-1">
-                      {new Date(m.created_at).toLocaleTimeString('sl-SI', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
+                    <div className="mt-1 flex items-center gap-2 px-1 text-[9px] text-slate-400">
+                      <span>
+                        {new Date(m.created_at).toLocaleTimeString('sl-SI', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                      {deliveryLabel && <span>{deliveryLabel}</span>}
+                      {m.delivery_state === 'failed' && (
+                        <button
+                          type="button"
+                          onClick={() => retryFailedReplyMessage(m.id)}
+                          className="font-semibold text-red-500 hover:underline"
+                        >
+                          Ponovi
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
