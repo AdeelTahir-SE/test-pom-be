@@ -97,11 +97,21 @@ export function useJobMessages(input: {
   }, [jobId, loadingOlder, nextCursor]);
 
   const sendText = useCallback(
-    async (content: string) => {
+    async (content: string, options: { clientMessageId?: string } = {}) => {
       if (!jobId || !userId) return;
-      const clientMessageId = crypto.randomUUID();
+      const clientMessageId = options.clientMessageId ?? crypto.randomUUID();
       const optimistic = optimisticMessage({ jobId, userId, clientMessageId, content });
-      setMessages((prev) => mergeMessages(prev, [optimistic]));
+      setMessages((prev) => {
+        const exists = prev.some((m) => m.client_message_id === clientMessageId);
+        if (exists) {
+          return prev.map((m) =>
+            m.client_message_id === clientMessageId
+              ? { ...m, delivery_state: "sending" }
+              : m
+          );
+        }
+        return mergeMessages(prev, [optimistic]);
+      });
       try {
         const message = await sendJobTextMessage({ jobId, content, clientMessageId });
         mergeIncoming(message);

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useLanguage } from "@/lib/useLanguage";
 import { useCurrentUser } from "@/lib/useCurrentUser";
@@ -26,26 +26,19 @@ import { toTelHref } from "@/lib/phone";
 import { playMessageBeep, unlockMessageBeep } from "@/lib/playMessageBeep";
 import { AuraFileInput } from "@/components/dashboard/AuraForm";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
+import { useJobMessages } from "@/hooks/useJobMessages";
 import {
   apiFailureMessage,
   logClientError,
   userFacingCatchMessage,
 } from "@/lib/clientError";
 
-interface ApiJobMessage {
-  id: string;
-  sender_id: string;
-  message_type: "text" | "voice";
-  content: string;
-  attachment_id: string | null;
-  is_urgent: boolean;
-  read_at: string | null;
-  created_at: string;
-}
-
 export default function WorkerDashboard() {
   const { t } = useLanguage();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedJobId = searchParams.get("job");
+  const requestedChatOpen = searchParams.get("chat") === "open";
   const { user, company, officeContact, loading: authLoading, logout } = useCurrentUser();
 
   // Only workers use this screen. Pisarna (manager) + company (owner) → command center (Mark).
@@ -73,25 +66,50 @@ export default function WorkerDashboard() {
   const [attachFile, setAttachFile] = useState<File | null>(null);
   const [attachUploading, setAttachUploading] = useState(false);
 
-  const [messages, setMessages] = useState<ApiJobMessage[]>([]);
-  const messagesRef = useRef<ApiJobMessage[]>([]);
-  const activeJobIdRef = useRef<string | null>(null);
   const [chatInput, setChatInput] = useState("");
   const [inboundNotifs, setInboundNotifs] = useState<ApiNotification[]>([]);
   const prevUnreadRef = useRef(0);
   const unreadPrimedRef = useRef(false);
   const seenJobAssignedIdsRef = useRef<Set<string> | null>(null);
   const seenJobIdsRef = useRef<Set<string> | null>(null);
+  const openedQueryChatRef = useRef(false);
 
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
+  const handleInboundRealtimeMessage = useCallback(() => {
+    if (!chatOpen) setUnreadCount((prev) => prev + 1);
+    playMessageBeep();
+    const activeJobId = job?.id;
+    if (!activeJobId) return;
+    void api.get<{ notifications: ApiNotification[] }>("/api/notifications").then((res) => {
+      if (res.status !== 200 || !res.data) return;
+      setInboundNotifs(
+        (res.data.notifications ?? []).filter(
+          (n) =>
+            n.type === "message_received" &&
+            !n.hidden_at &&
+            n.job_id === activeJobId
+        )
+      );
+    });
+  }, [chatOpen, job?.id]);
 
-  useEffect(() => {
-    activeJobIdRef.current = job?.id ?? null;
-  }, [job?.id]);
+  const {
+    messages,
+    setMessages,
+    loading: messagesLoading,
+    loadingOlder,
+    hasMore: hasOlderMessages,
+    loadOlder,
+    sendText,
+    markRead,
+    mergeIncoming,
+  } = useJobMessages({
+    jobId: job?.id ?? null,
+    userId: user?.id,
+    enabled: !!user && company?.subscription_active !== false,
+    onInboundMessage: handleInboundRealtimeMessage,
+  });
 
   const loadAll = useCallback(async () => {
     if (company?.subscription_active === false) {
@@ -105,18 +123,18 @@ export default function WorkerDashboard() {
       );
       const dayKey = toIsoDate(selectedDate);
       const activeJob =
-        openJobs.find((j) => jobBelongsToDay(j, dayKey)) ?? null;
+        (requestedJobId ? openJobs.find((j) => j.id === requestedJobId) : null) ??
+        openJobs.find((j) => jobBelongsToDay(j, dayKey)) ??
+        null;
       setJob(activeJob);
 
       if (activeJob) {
-        const [checklistRes, messagesRes, unreadRes, notifsRes] = await Promise.all([
+        const [checklistRes, unreadRes, notifsRes] = await Promise.all([
           api.get<{ checklist: ApiChecklistItem[] }>(`/api/jobs/${activeJob.id}/checklist`),
-          api.get<{ messages: ApiJobMessage[] }>(`/api/jobs/${activeJob.id}/messages`),
           api.get<{ unread_count: number }>("/api/messages/unread-count"),
           api.get<{ notifications: ApiNotification[] }>("/api/notifications"),
         ]);
         setChecklist(checklistRes.data?.checklist ?? []);
-        setMessages(messagesRes.data?.messages ?? []);
         const nextUnread = unreadRes.data?.unread_count ?? 0;
         setUnreadCount(nextUnread);
         if (!unreadPrimedRef.current) {
@@ -133,7 +151,6 @@ export default function WorkerDashboard() {
         );
       } else {
         setChecklist([]);
-        setMessages([]);
         setUnreadCount(0);
         setInboundNotifs([]);
       }
@@ -146,7 +163,7 @@ export default function WorkerDashboard() {
     } finally {
       setDataLoading(false);
     }
-  }, [company?.subscription_active, t, selectedDate]);
+  }, [company?.subscription_active, requestedJobId, t, selectedDate]);
 
   useEffect(() => {
     if (!authLoading && user && company?.subscription_active !== false) loadAll();
@@ -165,8 +182,7 @@ export default function WorkerDashboard() {
     if (!user || company?.subscription_active === false) return;
     let cancelled = false;
     const interval = setInterval(async () => {
-      const [unreadRes, notifsRes, jobsRes] = await Promise.all([
-        api.get<{ unread_count: number }>("/api/messages/unread-count"),
+      const [notifsRes, jobsRes] = await Promise.all([
         api.get<{ notifications: ApiNotification[] }>("/api/notifications"),
         api.get<{ jobs: ApiJob[] }>("/api/jobs"),
       ]);
@@ -174,18 +190,6 @@ export default function WorkerDashboard() {
 
       let shouldBeep = false;
       let shouldReload = false;
-
-      if (unreadRes.status === 200 && unreadRes.data) {
-        const next = unreadRes.data.unread_count;
-        if (unreadPrimedRef.current && next > prevUnreadRef.current) {
-          shouldBeep = true;
-          shouldReload = true;
-        } else {
-          setUnreadCount(next);
-        }
-        prevUnreadRef.current = next;
-        unreadPrimedRef.current = true;
-      }
 
       if (notifsRes.status === 200 && notifsRes.data) {
         const assigned = (notifsRes.data.notifications ?? []).filter(
@@ -225,37 +229,6 @@ export default function WorkerDashboard() {
         }
       }
 
-      if (job) {
-        const messagesRes = await api.get<{ messages: ApiJobMessage[] }>(
-          `/api/jobs/${job.id}/messages`
-        );
-        if (cancelled) return;
-        if (messagesRes.status === 200 && messagesRes.data) {
-          const nextMessages = messagesRes.data.messages ?? [];
-          const prevMessages = messagesRef.current;
-          const prevIds = new Set(prevMessages.map((m) => m.id));
-          const prevById = new Map(prevMessages.map((m) => [m.id, m]));
-          const changed =
-            nextMessages.length !== prevMessages.length ||
-            nextMessages.some((m, index) => {
-              const prev = prevById.get(m.id);
-              return (
-                prevMessages[index]?.id !== m.id ||
-                !prev ||
-                prev.content !== m.content ||
-                prev.read_at !== m.read_at ||
-                prev.attachment_id !== m.attachment_id
-              );
-            });
-          if (changed) {
-            if (nextMessages.some((m) => m.sender_id !== user.id && !prevIds.has(m.id))) {
-              shouldBeep = true;
-            }
-            setMessages(nextMessages);
-          }
-        }
-      }
-
       if (shouldBeep) playMessageBeep();
       if (shouldReload) void loadAll();
     }, 15000);
@@ -263,7 +236,7 @@ export default function WorkerDashboard() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [company?.subscription_active, job, loadAll, user]);
+  }, [company?.subscription_active, loadAll, user]);
 
   useEffect(() => {
     if (chatBottomRef.current) {
@@ -374,11 +347,18 @@ export default function WorkerDashboard() {
   const handleOpenChat = async () => {
     setChatOpen(true);
     if (job) {
-      await api.patch(`/api/jobs/${job.id}/messages/read`, {});
+      await markRead();
       setUnreadCount(0);
       prevUnreadRef.current = 0;
     }
   };
+
+  useEffect(() => {
+    if (!requestedChatOpen || openedQueryChatRef.current || !job) return;
+    if (requestedJobId && job.id !== requestedJobId) return;
+    openedQueryChatRef.current = true;
+    void handleOpenChat();
+  }, [job, requestedChatOpen, requestedJobId]);
 
   const handleDismissInboundBox = async () => {
     const snapshot = inboundNotifs;
@@ -394,30 +374,34 @@ export default function WorkerDashboard() {
       showToast(JOB_COMMUNICATION_TODAY_ONLY_MESSAGE);
       return;
     }
-    if (!chatInput.trim()) return;
-    const res = await api.post<{ message: ApiJobMessage }>(`/api/jobs/${job.id}/messages`, { content: chatInput });
-    if (res.status === 201 && res.data) {
-      setMessages((prev) => [...prev, res.data!.message]);
-      setChatInput("");
+    const content = chatInput.trim();
+    if (!content) return;
+    setChatInput("");
+    try {
+      await sendText(content);
+    } catch (err) {
+      logClientError("worker.sendMessage", err, { jobId: job.id });
+      showToast(userFacingCatchMessage(err, t("workerMessageSendFailed"), t("workerNetworkError")));
+      setChatInput(content);
     }
   };
 
-  const refreshMessagesForJob = useCallback(async (jobId: string) => {
-    const res = await api.get<{ messages: ApiJobMessage[] }>(
-      `/api/jobs/${jobId}/messages`
+  const retryFailedMessage = async (messageId: string) => {
+    const failed = messages.find((m) => m.id === messageId);
+    if (!failed?.content || !failed.client_message_id) return;
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, delivery_state: "sending" } : m))
     );
-    if (res.status === 200 && res.data && activeJobIdRef.current === jobId) {
-      setMessages(res.data.messages ?? []);
+    try {
+      await sendText(failed.content, { clientMessageId: failed.client_message_id });
+    } catch (err) {
+      logClientError("worker.retryMessage", err, { jobId: job?.id, messageId });
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, delivery_state: "failed" } : m))
+      );
+      showToast(userFacingCatchMessage(err, t("workerMessageSendFailed"), t("workerNetworkError")));
     }
-  }, []);
-
-  const scheduleVoiceTranscriptRefresh = useCallback((jobId: string) => {
-    for (const delay of [1000, 2500, 5000, 10000, 20000, 32000]) {
-      window.setTimeout(() => {
-        void refreshMessagesForJob(jobId);
-      }, delay);
-    }
-  }, [refreshMessagesForJob]);
+  };
 
   const handleVoiceComplete = useCallback(
     async (blob: Blob, mimeType: string) => {
@@ -425,13 +409,12 @@ export default function WorkerDashboard() {
       const formData = new FormData();
       formData.append("audio", blob, "voice-message.webm");
       try {
-        const res = await api.post<{ message: ApiJobMessage }>(
+        const res = await api.post<{ message: typeof messages[number] }>(
           `/api/jobs/${job.id}/voice-message`,
           formData
         );
         if ((res.status === 200 || res.status === 201) && res.data) {
-          setMessages((prev) => [...prev, res.data!.message]);
-          scheduleVoiceTranscriptRefresh(job.id);
+          mergeIncoming(res.data.message);
           showToast(t("workerVoiceSent"));
         } else {
           logClientError("worker.voiceUpload", res.error, {
@@ -454,7 +437,7 @@ export default function WorkerDashboard() {
         );
       }
     },
-    [job, scheduleVoiceTranscriptRefresh, t]
+    [job, mergeIncoming, messages, t]
   );
 
   const handleVoiceError = useCallback(
@@ -511,13 +494,20 @@ export default function WorkerDashboard() {
   const displayChecklist = [...completedChecklist.slice(-1), ...pendingChecklist.slice(0, 2)];
 
   const officeSenderLabel = officeContact?.full_name?.trim() || t("cardUnknownSender");
+  const messageDisplayText = (message: (typeof messages)[number]) => {
+    if (message.message_type !== "voice") return message.content ?? "";
+    if (message.transcription_status === "pending") return "Prepis se pripravlja...";
+    if (message.transcription_status === "processing") return "Prepisovanje...";
+    if (message.transcription_status === "failed") return "Prepis ni na voljo";
+    return message.content ?? "Prepis ni na voljo";
+  };
   const showInboundBox = Boolean(job && inboundNotifs.length > 0 && messages.length > 0);
   const inboundThread: OfficeCardThreadItem[] = messages.map((m) => {
     const fromMe = m.sender_id === user?.id;
     return {
       id: m.id,
       senderLabel: fromMe ? user?.full_name || "Jaz" : officeSenderLabel,
-      text: m.content,
+      text: messageDisplayText(m),
       time: formatTime(m.created_at),
       type: m.message_type === "voice" ? "glasovno" : "tekst",
       attachmentId: m.attachment_id ?? null,
@@ -530,7 +520,7 @@ export default function WorkerDashboard() {
           id: latestInbound.id,
           workerId: user?.id ?? "",
           workerName: latestInbound.sender_id === user?.id ? user?.full_name || "Jaz" : officeSenderLabel,
-          text: latestInbound.content,
+          text: messageDisplayText(latestInbound),
           time: formatTime(latestInbound.created_at),
           type: latestInbound.message_type === "voice" ? "glasovno" : "tekst",
           targetTask: job.title,
@@ -1099,8 +1089,29 @@ export default function WorkerDashboard() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-50/50">
+            {hasOlderMessages && (
+              <button
+                type="button"
+                onClick={loadOlder}
+                disabled={loadingOlder}
+                className="mx-auto block rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {loadingOlder ? "Nalagam..." : "Naloži starejša sporočila"}
+              </button>
+            )}
+            {messagesLoading && (
+              <p className="text-xs text-slate-400 text-center">Nalagam sporočila...</p>
+            )}
             {messages.map((m) => {
               const isMine = m.sender_id === user?.id;
+              const deliveryLabel =
+                m.delivery_state === "sending"
+                  ? "Pošiljanje..."
+                  : m.delivery_state === "queued"
+                    ? "V čakalni vrsti"
+                    : m.delivery_state === "failed"
+                      ? "Ni poslano"
+                      : "";
               return (
                 <div key={m.id} className={`flex flex-col max-w-[85%] ${isMine ? "ml-auto items-end" : "mr-auto items-start"}`}>
                   <div className={`p-3 rounded-2xl text-xs leading-normal shadow-sm ${isMine ? "bg-[#1B3A6B] text-white rounded-tr-none" : "bg-white border border-slate-200/60 rounded-tl-none text-slate-800"}`}>
@@ -1120,11 +1131,23 @@ export default function WorkerDashboard() {
                         }`}
                       />
                     )}
-                    <p className={m.message_type === "voice" ? "italic" : ""}>{m.content}</p>
+                    <p className={m.message_type === "voice" ? "italic" : ""}>{messageDisplayText(m)}</p>
                   </div>
-                  <span className="text-[9px] text-slate-400 mt-1 px-1">
-                    {new Date(m.created_at).toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" })}
-                  </span>
+                  <div className="mt-1 flex items-center gap-2 px-1 text-[9px] text-slate-400">
+                    <span>
+                      {new Date(m.created_at).toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                    {deliveryLabel && <span>{deliveryLabel}</span>}
+                    {m.delivery_state === "failed" && (
+                      <button
+                        type="button"
+                        onClick={() => retryFailedMessage(m.id)}
+                        className="font-semibold text-red-500 hover:underline"
+                      >
+                        Ponovi
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
