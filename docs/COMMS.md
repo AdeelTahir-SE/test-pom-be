@@ -278,7 +278,7 @@ Runtime code is `src/lib/integrations/deepgram.ts`.
 Current query:
 
 ```text
-model=nova-3&detect_language=true&punctuate=true&smart_format=true&diarize=false
+model=nova-3&language=sl&punctuate=true&smart_format=true&diarize=false
 ```
 
 Behavior:
@@ -487,6 +487,7 @@ Defined in `src/config/constants.ts`:
 
 ## Current Caveats
 
+- Deepgram is intentionally locked to Slovenian with `language=sl`.
 - Office KOMUNIKACIJA feed is still fetched from its API after realtime invalidation; the realtime event is not used as the final enriched feed row.
 - Worker page still has lightweight polling for job assignment/notification badges. Chat messages themselves use realtime and reconciliation.
 - Offline queue is text-only. Voice is intentionally online-only for launch.

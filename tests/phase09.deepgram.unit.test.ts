@@ -99,7 +99,7 @@ describe("transcribeAudio (unit, mocked fetch)", () => {
     expect(called).toBe(false);
   });
 
-  it("sends the dynamic-language Deepgram configuration without cloning the buffer", async () => {
+  it("sends the Slovenian Deepgram configuration without cloning the buffer", async () => {
     const audio = Buffer.from("fake-audio");
     let capturedUrl: string | undefined;
     let capturedInit: RequestInit | undefined;
@@ -114,8 +114,8 @@ describe("transcribeAudio (unit, mocked fetch)", () => {
       requestId: "test-request-id",
     });
     expect(capturedUrl).toContain("model=nova-3");
-    expect(capturedUrl).toContain("detect_language=true");
-    expect(capturedUrl).not.toContain("language=sl");
+    expect(capturedUrl).toContain("language=sl");
+    expect(capturedUrl).not.toContain("detect_language=true");
     expect(capturedUrl).toContain("punctuate=true");
     expect(capturedUrl).toContain("smart_format=true");
     expect(capturedUrl).toContain("diarize=false");
