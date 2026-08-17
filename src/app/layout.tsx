@@ -17,6 +17,10 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "pomocnik.net | Teren in pisarna. Kot ena ekipa.",
   description: "Povežite terenske delavce in pisarniško vodstvo z pomocnik.net. Enostavno sledenje opravilom, pretvarjanje glasovnih posnetkov v besedilo in pregled v živo brez odvečnih klicev.",
+  icons: {
+    icon: "/pomocnik-logo.png",
+    apple: "/pomocnik-logo.png",
+  },
 };
 
 export default function RootLayout({

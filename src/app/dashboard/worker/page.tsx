@@ -8,6 +8,7 @@ import { useCurrentUser } from "@/lib/useCurrentUser";
 import { api } from "@/lib/api-client";
 import { LogOut, Mic, Send, Search as SearchIcon, ChevronLeft, ChevronRight, Paperclip } from "lucide-react";
 import { SearchModal } from "@/components/dashboard/SearchModal";
+import { Logo } from "@/components/Logo";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { WorkerDetailModal } from "@/components/dashboard/WorkerDetailModal";
 import { OfficeCard } from "@/components/dashboard/OfficeCard";
@@ -620,7 +621,10 @@ export default function WorkerDashboard() {
                 <span className="text-base font-bold text-slate-800">
                   {user?.full_name || 'Uporabnik'}
                 </span>
-                <span className="text-xs font-normal text-slate-500">pomocnik.net</span>
+                <span className="inline-flex items-center gap-1.5 text-xs font-normal text-slate-500">
+                  <Logo className="h-5 w-5 rounded-md" showText={false} />
+                  pomocnik.net
+                </span>
               </div>
             </div>
             <div className="flex items-center gap-2">

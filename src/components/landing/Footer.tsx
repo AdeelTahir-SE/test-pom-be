@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { Logo } from "@/components/Logo";
 
 export function Footer() {
   const linkClass =
@@ -41,14 +42,14 @@ export function Footer() {
 
         {/* Copyright row */}
         <div
-          className="flex flex-wrap items-center justify-center gap-1 text-xs max-[340px]:text-[11px] leading-6"
+          className="flex flex-wrap items-center justify-center gap-2 text-xs max-[340px]:text-[11px] leading-6"
           style={{
             fontFamily: "'Inter', sans-serif",
             fontWeight: 400,
             color: "#1D2A3D",
           }}
         >
-          <span>pomocnik.net</span>
+          <Logo className="h-5 w-5 rounded-md" showText={false} />
           <span>© 2026 Vse pravice zadržane.</span>
         </div>
       </div>

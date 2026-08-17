@@ -1410,8 +1410,8 @@ export default function OfficeDashboard() {
             className="relative overflow-hidden w-full max-w-[1232px] mx-auto flex flex-col justify-center"
             style={{
               boxSizing: 'border-box',
-              padding: '12px 16px',
-              height: '60px',
+              padding: '12px 18px',
+              height: '72px',
               background: 'rgba(255, 255, 255, 0.002)',
               border: '1px solid rgba(255, 255, 255, 0.9)',
               boxShadow:
@@ -1431,23 +1431,17 @@ export default function OfficeDashboard() {
               }}
             >
               <div className="flex items-center gap-3">
-                <Link
-                  href="/"
-                  className="flex items-center justify-center rounded-full hover:-translate-y-0.5 transition-all duration-300"
+                <Link 
+                  href="/" 
+                  className="flex items-center justify-center bg-white border border-[#E2E8F0] shadow-[0px_1px_2px_rgba(15,23,42,0.04),inset_0px_1px_0px_1px_#FFFFFF] rounded-[6px] hover:-translate-y-0.5 transition-all duration-300"
                   style={{
-                    boxSizing: 'border-box',
-                    padding: '8px 16px',
-                    width: '111px',
-                    height: '34px',
-                    background:
-                      'linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)',
-                    border: 'none',
-                    boxShadow: '0px 1px 2px rgba(15,23,42,0.04)',
+                    boxSizing: "border-box",
+                    padding: "6px 16px 6px 8px",
+                    width: "184px",
+                    height: "52px",
                   }}
                 >
-                  <span className="text-xs font-normal tracking-tight text-white" style={{ fontFamily: "'Inter', sans-serif" }}>
-                    pomocnik.net
-                  </span>
+                  <Logo className="h-10 w-10" textClassName="text-[18px]" />
                 </Link>
                 <span className="h-4 w-px bg-slate-200 hidden sm:inline" />
                 <div
