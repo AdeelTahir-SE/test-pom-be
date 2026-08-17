@@ -1,13 +1,50 @@
 import { api } from "@/lib/api-client";
 import { registerServiceWorker } from "@/lib/push/client/register";
 
-function urlBase64ToUint8Array(value: string): Uint8Array {
+function vapidPublicKeyToApplicationServerKey(value: string): ArrayBuffer {
   const padding = "=".repeat((4 - (value.length % 4)) % 4);
   const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
   const raw = window.atob(base64);
   const output = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
-  return output;
+  if (output.byteLength !== 65) {
+    throw new Error("Invalid VAPID public key.");
+  }
+  return output.buffer.slice(
+    output.byteOffset,
+    output.byteOffset + output.byteLength
+  );
+}
+
+function isPushServiceAbort(error: unknown): boolean {
+  return (
+    error instanceof DOMException &&
+    error.name === "AbortError" &&
+    error.message.toLowerCase().includes("push service")
+  );
+}
+
+function pushServiceFailureMessage(): string {
+  return (
+    "Browser push service registration failed. Try Google Chrome or Firefox with push services enabled. " +
+    "Realtime in-app messaging still works without Web Push."
+  );
+}
+
+async function resetPushRegistration(): Promise<void> {
+  if (!("serviceWorker" in navigator)) return;
+  const registrations = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(registrations.map((registration) => registration.unregister()));
+}
+
+async function createBrowserPushSubscription(
+  registration: ServiceWorkerRegistration,
+  publicKey: string
+): Promise<PushSubscription> {
+  return registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: vapidPublicKeyToApplicationServerKey(publicKey),
+  });
 }
 
 export function pushSupported(): boolean {
@@ -37,23 +74,23 @@ export async function subscribeToPush(): Promise<PushSubscription> {
   const registration = await registerServiceWorker();
   if (!registration) throw new Error("Service worker could not be registered.");
 
-  const subscription =
-    (await registration.pushManager.getSubscription()) ??
-    (await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
-    }).catch((err) => {
-      if (
-        err instanceof DOMException &&
-        err.name === "AbortError" &&
-        err.message.toLowerCase().includes("push service")
-      ) {
-        throw new Error(
-          "Browser push service registration failed. Open the app on http://localhost:3000 or HTTPS, and make sure browser notifications/push services are enabled."
-        );
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    try {
+      subscription = await createBrowserPushSubscription(registration, publicKey);
+    } catch (err) {
+      if (!isPushServiceAbort(err)) throw err;
+      await resetPushRegistration();
+      const retryRegistration = await registerServiceWorker();
+      if (!retryRegistration) throw new Error("Service worker could not be registered.");
+      try {
+        subscription = await createBrowserPushSubscription(retryRegistration, publicKey);
+      } catch (retryErr) {
+        if (isPushServiceAbort(retryErr)) throw new Error(pushServiceFailureMessage());
+        throw retryErr;
       }
-      throw err;
-    }));
+    }
+  }
 
   const json = subscription.toJSON();
   const res = await api.post("/api/push/subscribe", {
