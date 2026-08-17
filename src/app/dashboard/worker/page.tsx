@@ -265,7 +265,7 @@ function WorkerDashboardContent() {
       }
     } catch (err) {
       logClientError("worker.pushNotifications", err);
-      showToast(t("workerPushFailed"));
+      showToast(userFacingCatchMessage(err, t("workerPushFailed"), t("workerNetworkError")));
     }
   };
 

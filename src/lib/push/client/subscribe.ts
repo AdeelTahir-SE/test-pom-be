@@ -36,13 +36,15 @@ export async function subscribeToPush(): Promise<PushSubscription> {
   const registration = await registerServiceWorker();
   if (!registration) throw new Error("Service worker could not be registered.");
 
-  const subscription = await registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
-  });
+  const subscription =
+    (await registration.pushManager.getSubscription()) ??
+    (await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
+    }));
 
   const json = subscription.toJSON();
-  await api.post("/api/push/subscribe", {
+  const res = await api.post("/api/push/subscribe", {
     endpoint: subscription.endpoint,
     keys: {
       p256dh: json.keys?.p256dh,
@@ -50,6 +52,9 @@ export async function subscribeToPush(): Promise<PushSubscription> {
     },
     userAgent: navigator.userAgent,
   });
+  if (res.status >= 400) {
+    throw new Error(res.error?.message ?? "Failed to save push subscription.");
+  }
 
   return subscription;
 }
@@ -79,5 +84,8 @@ export async function reconcilePushSubscription(): Promise<boolean> {
     },
     userAgent: navigator.userAgent,
   });
-  return res.status < 400;
+  if (res.status >= 400) {
+    throw new Error(res.error?.message ?? "Failed to save push subscription.");
+  }
+  return true;
 }
