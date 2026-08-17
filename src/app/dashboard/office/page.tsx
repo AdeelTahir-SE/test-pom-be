@@ -348,6 +348,7 @@ export default function OfficeDashboard() {
     loading: replyLoading,
     loadingOlder: replyLoadingOlder,
     hasMore: replyHasMore,
+    offline: replyMessagesOffline,
     loadOlder: loadOlderReplyMessages,
     sendText: sendReplyText,
     mergeIncoming: mergeReplyIncoming,
@@ -2584,6 +2585,11 @@ export default function OfficeDashboard() {
               >
                 {replyLoadingOlder ? 'Nalagam...' : 'Naloži starejša sporočila'}
               </button>
+            )}
+            {replyMessagesOffline && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                Brez povezave. Besedilna sporočila bodo poslana, ko bo povezava znova na voljo.
+              </p>
             )}
             {replyLoading && (
               <p className="text-xs text-slate-400 text-center">

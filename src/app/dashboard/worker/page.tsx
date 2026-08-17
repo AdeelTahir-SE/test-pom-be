@@ -101,6 +101,7 @@ export default function WorkerDashboard() {
     loading: messagesLoading,
     loadingOlder,
     hasMore: hasOlderMessages,
+    offline: messagesOffline,
     loadOlder,
     sendText,
     markRead,
@@ -1161,6 +1162,11 @@ export default function WorkerDashboard() {
               >
                 {loadingOlder ? "Nalagam..." : "Naloži starejša sporočila"}
               </button>
+            )}
+            {messagesOffline && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                Brez povezave. Besedilna sporočila bodo poslana, ko bo povezava znova na voljo.
+              </p>
             )}
             {messagesLoading && (
               <p className="text-xs text-slate-400 text-center">Nalagam sporočila...</p>

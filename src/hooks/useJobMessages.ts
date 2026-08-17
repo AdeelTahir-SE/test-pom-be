@@ -4,6 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { fetchJobMessages, markJobMessagesRead, sendJobTextMessage } from "@/lib/communications/messageApi";
 import { mergeMessages, sortMessagesAsc } from "@/lib/communications/mergeMessages";
+import {
+  enqueueTextMessage,
+  listQueuedTextMessages,
+  removeQueuedTextMessage,
+} from "@/lib/communications/offlineQueue";
 import type { ApiJobMessageV2, LocalJobMessage } from "@/lib/communications/types";
 import { getRealtimeClient } from "@/lib/realtime/client";
 
@@ -12,6 +17,8 @@ function optimisticMessage(input: {
   userId: string;
   clientMessageId: string;
   content: string;
+  createdAt?: string;
+  deliveryState?: "sending" | "queued";
 }): LocalJobMessage {
   return {
     id: `optimistic-${input.clientMessageId}`,
@@ -27,8 +34,8 @@ function optimisticMessage(input: {
     transcription_status: "not_applicable",
     transcription_error: null,
     transcribed_at: null,
-    created_at: new Date().toISOString(),
-    delivery_state: "sending",
+    created_at: input.createdAt ?? new Date().toISOString(),
+    delivery_state: input.deliveryState ?? "sending",
   };
 }
 
@@ -45,8 +52,12 @@ export function useJobMessages(input: {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [realtimeStatus, setRealtimeStatus] = useState<"idle" | "connecting" | "connected" | "offline">("idle");
+  const [online, setOnline] = useState(() =>
+    typeof navigator === "undefined" ? true : navigator.onLine
+  );
   const messagesRef = useRef<LocalJobMessage[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const drainingRef = useRef(false);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -72,14 +83,42 @@ export function useJobMessages(input: {
     }
     setLoading(true);
     try {
-      const page = await fetchJobMessages(jobId);
-      setMessages(sortMessagesAsc(page.messages.map((m) => ({ ...m, delivery_state: "sent" }))));
+      const [page, queued] = await Promise.all([
+        fetchJobMessages(jobId),
+        userId ? listQueuedTextMessages({ jobId, userId }) : Promise.resolve([]),
+      ]);
+      const serverClientIds = new Set(
+        page.messages.map((m) => m.client_message_id).filter(Boolean)
+      );
+      await Promise.all(
+        queued
+          .filter((m) => serverClientIds.has(m.clientMessageId))
+          .map((m) => removeQueuedTextMessage(m.clientMessageId))
+      );
+      const queuedMessages = queued
+        .filter((m) => !serverClientIds.has(m.clientMessageId))
+        .map((m) =>
+          optimisticMessage({
+            jobId,
+            userId: m.userId,
+            clientMessageId: m.clientMessageId,
+            content: m.content,
+            createdAt: m.createdAt,
+            deliveryState: "queued",
+          })
+        );
+      setMessages(
+        sortMessagesAsc([
+          ...page.messages.map((m) => ({ ...m, delivery_state: "sent" as const })),
+          ...queuedMessages,
+        ])
+      );
       setNextCursor(page.nextCursor);
       setHasMore(page.hasMore);
     } finally {
       setLoading(false);
     }
-  }, [enabled, jobId]);
+  }, [enabled, jobId, userId]);
 
   const loadOlder = useCallback(async () => {
     if (!jobId || !nextCursor || loadingOlder) return;
@@ -100,20 +139,34 @@ export function useJobMessages(input: {
     async (content: string, options: { clientMessageId?: string } = {}) => {
       if (!jobId || !userId) return;
       const clientMessageId = options.clientMessageId ?? crypto.randomUUID();
-      const optimistic = optimisticMessage({ jobId, userId, clientMessageId, content });
+      const createdAt = new Date().toISOString();
+      const offline = !online;
+      const optimistic = optimisticMessage({
+        jobId,
+        userId,
+        clientMessageId,
+        content,
+        createdAt,
+        deliveryState: offline ? "queued" : "sending",
+      });
       setMessages((prev) => {
         const exists = prev.some((m) => m.client_message_id === clientMessageId);
         if (exists) {
           return prev.map((m) =>
             m.client_message_id === clientMessageId
-              ? { ...m, delivery_state: "sending" }
+              ? { ...m, delivery_state: offline ? "queued" : "sending" }
               : m
           );
         }
         return mergeMessages(prev, [optimistic]);
       });
+      if (offline) {
+        await enqueueTextMessage({ jobId, userId, clientMessageId, content, createdAt });
+        return;
+      }
       try {
         const message = await sendJobTextMessage({ jobId, content, clientMessageId });
+        await removeQueuedTextMessage(clientMessageId).catch(() => undefined);
         mergeIncoming(message);
       } catch (err) {
         setMessages((prev) =>
@@ -124,8 +177,56 @@ export function useJobMessages(input: {
         throw err;
       }
     },
-    [jobId, mergeIncoming, userId]
+    [jobId, mergeIncoming, online, userId]
   );
+
+  const drainQueuedMessages = useCallback(async () => {
+    if (!jobId || !userId || !enabled || drainingRef.current) return;
+    if (!online) return;
+    drainingRef.current = true;
+    try {
+      const queued = await listQueuedTextMessages({ jobId, userId });
+      for (const item of queued) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.client_message_id === item.clientMessageId
+              ? { ...m, delivery_state: "sending" }
+              : m
+          )
+        );
+        try {
+          const message = await sendJobTextMessage({
+            jobId: item.jobId,
+            content: item.content,
+            clientMessageId: item.clientMessageId,
+          });
+          await removeQueuedTextMessage(item.clientMessageId);
+          mergeIncoming(message);
+        } catch (err) {
+          if (typeof navigator !== "undefined" && !navigator.onLine) {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.client_message_id === item.clientMessageId
+                  ? { ...m, delivery_state: "queued" }
+                  : m
+              )
+            );
+            break;
+          }
+          await removeQueuedTextMessage(item.clientMessageId).catch(() => undefined);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.client_message_id === item.clientMessageId
+                ? { ...m, delivery_state: "failed" }
+                : m
+            )
+          );
+        }
+      }
+    } finally {
+      drainingRef.current = false;
+    }
+  }, [enabled, jobId, mergeIncoming, online, userId]);
 
   const markRead = useCallback(async () => {
     if (!jobId) return 0;
@@ -135,6 +236,27 @@ export function useJobMessages(input: {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    void drainQueuedMessages();
+  }, [drainQueuedMessages]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setOnline(true);
+      setRealtimeStatus("connecting");
+    };
+    const handleOffline = () => {
+      setOnline(false);
+      setRealtimeStatus("offline");
+    };
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     if (!jobId || !enabled) return;
@@ -165,7 +287,9 @@ export function useJobMessages(input: {
       .catch(() => setRealtimeStatus("offline"));
 
     const reconcile = () => {
-      if (document.visibilityState === "visible" && navigator.onLine) void reload();
+      if (document.visibilityState === "visible" && online) {
+        void drainQueuedMessages().then(() => reload());
+      }
     };
     window.addEventListener("online", reconcile);
     document.addEventListener("visibilitychange", reconcile);
@@ -178,7 +302,7 @@ export function useJobMessages(input: {
       channelRef.current = null;
       if (channel) void channel.unsubscribe();
     };
-  }, [enabled, jobId, mergeIncoming, reload]);
+  }, [drainQueuedMessages, enabled, jobId, mergeIncoming, online, reload]);
 
   return {
     messages,
@@ -187,6 +311,7 @@ export function useJobMessages(input: {
     loadingOlder,
     hasMore,
     realtimeStatus,
+    offline: !online,
     reload,
     loadOlder,
     sendText,
