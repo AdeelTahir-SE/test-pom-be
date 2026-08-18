@@ -88,6 +88,12 @@ export default function DatabaseDashboard() {
   // Active Main Tab: 0 = Zaposleni, 1 = Dela, 2 = Stranke, 3 = Priponke, 4 = Pisarna, 5 = Podatki podjetja
   const [activeTab, setActiveTab] = useState(0);
 
+  // Default date computed safely on the client
+  const [defaultDate, setDefaultDate] = useState("");
+  useEffect(() => {
+    setDefaultDate(new Date().toLocaleDateString('sl-SI', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\s+/g, ''));
+  }, []);
+
   // Live Staff Data
   const [staffList, setStaffList] = useState<TeamUser[]>([]);
   const [staffLoading, setStaffLoading] = useState(true);
@@ -1427,7 +1433,7 @@ export default function DatabaseDashboard() {
   name: w.full_name,
   phone: w.phone,
 }))}
-        defaultDate={new Date().toLocaleDateString('sl-SI', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\s+/g, '')}
+        defaultDate={defaultDate}
         onAddTask={async (taskData) => {
           try {
             const res = await api.post('/api/jobs', taskData);

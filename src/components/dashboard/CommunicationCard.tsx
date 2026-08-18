@@ -36,18 +36,30 @@ export function CommunicationCard({
   showRedButton = false,
 }: CommunicationCardProps) {
   // Top tiny time = card creation time (createdAt) if available, otherwise live system clock.
-  const [displayTime, setDisplayTime] = useState(() => {
-    if (order.createdAt) {
-      return formatSystemClock(new Date(order.createdAt));
-    }
-    return formatSystemClock();
-  });
+  const [displayTime, setDisplayTime] = useState("");
 
   useEffect(() => {
+    const getFormattedTime = () => {
+      if (order.createdAt) {
+        // If it's a simple pre-formatted time like "09:02", use it directly to prevent timezone shift.
+        if (order.createdAt.length <= 5 && order.createdAt.includes(":")) {
+          return order.createdAt;
+        }
+        try {
+          const parsed = new Date(order.createdAt);
+          return isNaN(parsed.getTime()) ? order.createdAt : formatSystemClock(parsed);
+        } catch {
+          return order.createdAt;
+        }
+      }
+      return formatSystemClock();
+    };
+
+    setDisplayTime(getFormattedTime());
+
     // Only use live clock if no createdAt (fallback for other card types)
     if (!order.createdAt) {
       const tick = () => setDisplayTime(formatSystemClock());
-      tick();
       const id = window.setInterval(tick, 1000);
       return () => window.clearInterval(id);
     }

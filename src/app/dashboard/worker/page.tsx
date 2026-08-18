@@ -48,6 +48,21 @@ export default function WorkerDashboard() {
   const [job, setJob] = useState<ApiJob | null>(null);
   const [checklist, setChecklist] = useState<ApiChecklistItem[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [currentTime, setCurrentTime] = useState("");
+
+  useEffect(() => {
+    const tick = () => {
+      setCurrentTime(
+        new Date().toLocaleTimeString("sl-SI", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      );
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const [chatOpen, setChatOpen] = useState(false);
@@ -456,7 +471,7 @@ export default function WorkerDashboard() {
           className="shrink-0"
         >
           <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: "14px", lineHeight: "20px", color: "#1E293B" }}>
-            {new Date().toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" })}
+            {currentTime}
           </span>
           <div className="flex items-center gap-1.5 text-[#1E293B]">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
