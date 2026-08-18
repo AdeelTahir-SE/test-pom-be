@@ -802,10 +802,9 @@ export function DashboardPreview() {
         </div>
       ) : (
         /* Desktop 3D Perspective Layout (WITHOUT Grid lines) */
- /* Desktop 3D Perspective Layout (WITHOUT Grid lines) */
         <div
           ref={viewportRef}
-          className={`relative w-full rounded-[24px] md:rounded-[44px] border border-slate-200/80 dark:border-white/10 overflow-hidden bg-white/60 dark:bg-[#101827]/60 backdrop-blur-md shadow-xl transition-all duration-300 itp-in-view`}
+          className={`relative w-full rounded-[24px] md:rounded-[44px] border border-slate-200/80 dark:border-white/10 overflow-hidden bg-white/60 dark:bg-[#101827]/60 backdrop-blur-md shadow-xl transition-all duration-300`}
           style={{ height: "720px" }}
         >
           {/* Ambient Decorative Glowing Orbs */}
@@ -813,7 +812,7 @@ export function DashboardPreview() {
           <div className="absolute bottom-[15%] right-[10%] w-[220px] h-[220px] rounded-full bg-indigo-400/5 dark:bg-indigo-500/10 blur-3xl pointer-events-none" style={{ animation: "itp-float-slow 9s ease-in-out infinite 1s" }} />
 
           <div className={`w-full h-full relative transition-opacity duration-700 ${inView ? "itp-in-view opacity-100" : "opacity-0"}`}>
-            <div style={{ position: "absolute", left: "53%", top: "48%", transform: "translate(-50%, -50%)" }}>
+            <div style={{ position: "absolute", left: "50%", top: "45%", transform: "translate(-50%, -50%)" }}>
               <div
                 style={{
                   position: "relative",

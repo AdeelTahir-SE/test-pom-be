@@ -506,7 +506,7 @@ export default function CardAnimationSection() {
         ) : (
           /* Desktop & Tablet 3D Perspective Layout */
           <div className={`w-full h-full relative transition-opacity duration-700 ${inView ? "itp-in-view opacity-100" : "opacity-0"}`}>
-            <div style={{ position: "absolute", left: "53%", top: "48%", transform: "translate(-50%, -50%)" }}>
+            <div style={{ position: "absolute", left: "50%", top: "45%", transform: "translate(-50%, -50%)" }}>
               <div
                 style={{
                   position: "relative",
