@@ -5,6 +5,8 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { parseJsonBody } from "@/lib/validation/schemas";
 import { createTimelineEvent } from "@/lib/timeline/events";
 import { notifyUser } from "@/lib/services/notifications";
+import { buildJobAssignedPushPayload } from "@/lib/notifications/payloads";
+import { createPushDeliveryJob } from "@/lib/notifications/deliveryJobs";
 import { findOrCreateCustomer } from "@/lib/services/customers";
 import { JOB_STATUSES } from "@/config/constants";
 import { assertValidWorker } from "@/lib/services/jobs";
@@ -241,6 +243,13 @@ export const POST = withAuth(
         title: "You have been assigned to a job",
         body: job.title,
         jobId: job.id,
+      });
+      await createPushDeliveryJob(db, {
+        companyId: auth.companyId,
+        userId: input.worker_id,
+        messageId: null,
+        notificationType: "job_assigned",
+        payload: buildJobAssignedPushPayload({ jobId: job.id, jobTitle: job.title }),
       });
     }
 

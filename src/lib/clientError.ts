@@ -34,6 +34,10 @@ export function isMicPermissionError(err: unknown): boolean {
   );
 }
 
+export function isPushServiceUnavailableError(err: unknown): boolean {
+  return err instanceof Error && err.name === "PushServiceUnavailableError";
+}
+
 /**
  * Pick a toast string for an unexpected throw.
  * Prefer API `error.message` at call sites when you have an ApiResult.

@@ -68,3 +68,19 @@ export async function buildMessagePushPayload(
     },
   };
 }
+
+export function buildJobAssignedPushPayload(input: {
+  jobId: string;
+  jobTitle: string;
+}): PushNotificationPayload {
+  return {
+    type: "job_assigned",
+    title: "Nova naloga",
+    body: input.jobTitle,
+    tag: `job-assigned:${input.jobId}`,
+    data: {
+      jobId: input.jobId,
+      url: `/dashboard/worker?job=${encodeURIComponent(input.jobId)}`,
+    },
+  };
+}

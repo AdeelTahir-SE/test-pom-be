@@ -26,11 +26,14 @@ function isRetryableSubscribeAbort(error: unknown): boolean {
   );
 }
 
-function pushServiceFailureMessage(): string {
-  return (
-    "Browser push service registration failed. Try Google Chrome or Firefox with push services enabled. " +
-    "Realtime in-app messaging still works without Web Push."
-  );
+export class PushServiceUnavailableError extends Error {
+  constructor() {
+    super(
+      "Browser push service registration failed. Try Google Chrome or Firefox with push services enabled. " +
+        "Realtime in-app messaging still works without Web Push."
+    );
+    this.name = "PushServiceUnavailableError";
+  }
 }
 
 async function resetPushRegistration(): Promise<void> {
@@ -88,7 +91,7 @@ export async function subscribeToPush(): Promise<PushSubscription> {
       try {
         subscription = await createBrowserPushSubscription(retryRegistration, publicKey);
       } catch (retryErr) {
-        if (isRetryableSubscribeAbort(retryErr)) throw new Error(pushServiceFailureMessage());
+        if (isRetryableSubscribeAbort(retryErr)) throw new PushServiceUnavailableError();
         throw retryErr;
       }
     }

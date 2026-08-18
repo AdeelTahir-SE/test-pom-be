@@ -28,8 +28,10 @@ import { AuraFileInput } from "@/components/dashboard/AuraForm";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { useJobMessages } from "@/hooks/useJobMessages";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { isIosInstallRequiredForPush } from "@/lib/pwaInstall";
 import {
   apiFailureMessage,
+  isPushServiceUnavailableError,
   logClientError,
   userFacingCatchMessage,
 } from "@/lib/clientError";
@@ -256,9 +258,9 @@ function WorkerDashboardContent() {
     }
   }, [messages, chatOpen]);
 
-  const showToast = (msg: string) => {
+  const showToast = (msg: string, durationMs = 2000) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 2000);
+    setTimeout(() => setToastMessage(null), durationMs);
   };
 
   const handleTogglePushNotifications = async () => {
@@ -272,6 +274,10 @@ function WorkerDashboardContent() {
       }
     } catch (err) {
       logClientError("worker.pushNotifications", err);
+      if (isPushServiceUnavailableError(err)) {
+        showToast(t("pushServiceUnavailable"), 8000);
+        return;
+      }
       showToast(userFacingCatchMessage(err, t("workerPushFailed"), t("workerNetworkError")));
     }
   };
@@ -730,6 +736,11 @@ function WorkerDashboardContent() {
           {pushNotifications.supported && pushNotifications.permission === "denied" ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800">
               {t("workerPushBlocked")}
+            </div>
+          ) : null}
+          {!pushNotifications.supported && isIosInstallRequiredForPush() ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800">
+              {t("iosInstallForPush")}
             </div>
           ) : null}
           {!job ? (

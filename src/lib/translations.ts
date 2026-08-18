@@ -289,6 +289,19 @@ export const translations = {
     workerPushDisabled: "Obvestila so izklopljena.",
     workerPushFailed: "Obvestil ni bilo mogoče posodobiti.",
     workerPushBlocked: "Obvestila so blokirana v brskalniku. Omogočite jih v nastavitvah strani.",
+    pushServiceUnavailable:
+      "Brskalnik blokira potisna obvestila. V Brave omogočite »Uporabi Googlove storitve za potisna sporočila« v Nastavitve → Zasebnost in varnost, ali uporabite Chrome/Firefox.",
+    iosInstallForPush:
+      "Na iPhonu najprej dodajte to aplikacijo na domači zaslon (Deli → Dodaj na domači zaslon), da omogočite obvestila.",
+    officePushTitle: "Obvestila o sporočilih",
+    officePushDesc: "Prejmite nova sporočila delavcev tudi, ko aplikacija ni odprta.",
+    officePushEnableAction: "Vklopi",
+    officePushDisableAction: "Izklopi obvestila",
+    officePushSaving: "Shranjujem…",
+    officePushEnabled: "Obvestila so vklopljena.",
+    officePushDisabled: "Obvestila so izklopljena.",
+    officePushFailed: "Obvestil ni bilo mogoče posodobiti.",
+    officePushBlocked: "Obvestila so blokirana v brskalniku. Omogočite jih v nastavitvah strani.",
     workerLoading: "Nalaganje…",
 
     // Modals (live)
@@ -817,6 +830,19 @@ export const translations = {
     workerPushDisabled: "Notifications are off.",
     workerPushFailed: "Could not update notifications.",
     workerPushBlocked: "Notifications are blocked in the browser. Enable them in site settings.",
+    pushServiceUnavailable:
+      'Your browser is blocking push notifications. In Brave, enable "Use Google services for push messaging" under Settings → Privacy and security, or use Chrome/Firefox instead.',
+    iosInstallForPush:
+      'On iPhone, first add this app to your Home Screen (Share → Add to Home Screen) to enable notifications.',
+    officePushTitle: "Message notifications",
+    officePushDesc: "Receive new worker messages even when the app is not open.",
+    officePushEnableAction: "Turn on",
+    officePushDisableAction: "Turn off notifications",
+    officePushSaving: "Saving…",
+    officePushEnabled: "Notifications are on.",
+    officePushDisabled: "Notifications are off.",
+    officePushFailed: "Could not update notifications.",
+    officePushBlocked: "Notifications are blocked in the browser. Enable them in site settings.",
     workerLoading: "Loading…",
 
     // Modals (live)

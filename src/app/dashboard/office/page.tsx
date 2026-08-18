@@ -29,11 +29,13 @@ import {
 } from "@/lib/uploadValidation";
 import {
   apiFailureMessage,
+  isPushServiceUnavailableError,
   logClientError,
   userFacingCatchMessage,
 } from "@/lib/clientError";
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import { useJobMessages } from '@/hooks/useJobMessages';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { getRealtimeClient } from '@/lib/realtime/client';
 import { queryKeys } from '@/lib/query/keys';
 import {
@@ -45,6 +47,8 @@ import {
   Settings,
   Paperclip,
   UserPlus,
+  Bell,
+  BellOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -328,14 +332,34 @@ export default function OfficeDashboard() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showToast = useCallback((msg: string) => {
+  const showToast = useCallback((msg: string, durationMs = 2500) => {
     setToastMessage(msg);
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToastMessage(null), 2500);
+    toastTimerRef.current = setTimeout(() => setToastMessage(null), durationMs);
   }, []);
   const showBillingLockedToast = useCallback(() => {
     showToast(billingLockedMessage);
   }, [showToast]);
+
+  const pushNotifications = usePushNotifications();
+  const handleTogglePushNotifications = useCallback(async () => {
+    try {
+      if (pushNotifications.subscribed) {
+        await pushNotifications.disable();
+        showToast(t('officePushDisabled'));
+      } else {
+        await pushNotifications.enable();
+        showToast(t('officePushEnabled'));
+      }
+    } catch (err) {
+      logClientError('office.pushNotifications', err);
+      if (isPushServiceUnavailableError(err)) {
+        showToast(t('pushServiceUnavailable'), 8000);
+        return;
+      }
+      showToast(userFacingCatchMessage(err, t('officePushFailed'), t('workerNetworkError')));
+    }
+  }, [pushNotifications, showToast, t]);
   const requireBillingUnlocked = useCallback(() => {
     if (!billingLocked) return true;
     showBillingLockedToast();
@@ -1518,6 +1542,25 @@ export default function OfficeDashboard() {
                       .toUpperCase() || 'U'}
                   </div>
                 </div>
+                {pushNotifications.supported ? (
+                  <button
+                    type="button"
+                    onClick={handleTogglePushNotifications}
+                    disabled={pushNotifications.subscribing}
+                    title={
+                      pushNotifications.subscribed
+                        ? t('officePushDisableAction')
+                        : t('officePushEnableAction')
+                    }
+                    className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {pushNotifications.subscribed ? (
+                      <BellOff className="h-5 w-5" />
+                    ) : (
+                      <Bell className="h-5 w-5" />
+                    )}
+                  </button>
+                ) : null}
                 <button
                   onClick={() => setIsSearchOpen(true)}
                   title="Išči"
@@ -1570,6 +1613,32 @@ export default function OfficeDashboard() {
             />
           </div>
         )}
+        {pushNotifications.supported &&
+        !pushNotifications.subscribed &&
+        pushNotifications.permission !== 'denied' ? (
+          <div className="mb-5 rounded-2xl border border-blue-100 bg-white/85 px-4 py-3 shadow-sm flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <Bell className="w-4 h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-slate-800">{t('officePushTitle')}</p>
+              <p className="text-xs text-slate-500 leading-5">{t('officePushDesc')}</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleTogglePushNotifications}
+              disabled={pushNotifications.subscribing}
+              className="rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {pushNotifications.subscribing ? t('officePushSaving') : t('officePushEnableAction')}
+            </button>
+          </div>
+        ) : null}
+        {pushNotifications.supported && pushNotifications.permission === 'denied' ? (
+          <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800">
+            {t('officePushBlocked')}
+          </div>
+        ) : null}
         <OfficeDayHeader
           title={t('officeHeading')}
           selectedDate={selectedDate}

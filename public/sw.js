@@ -8,6 +8,12 @@ self.addEventListener("push", (event) => {
     icon: "/pomocnik-logo.png",
     badge: "/pomocnik-logo.png",
     tag: payload.tag,
+    // Without this, a second notification sharing the same tag (e.g. another
+    // message in the same job) silently replaces the first with no new
+    // sound/vibration alert.
+    renotify: true,
+    vibrate: [200, 100, 200],
+    requireInteraction: payload.type === "urgent_message",
     data: payload.data || {},
   };
 
