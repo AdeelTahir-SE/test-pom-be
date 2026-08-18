@@ -5,7 +5,7 @@ module.exports = {
       name: "push-delivery-worker",
       cwd: "/opt/pomocnik/pom-be",
       script: "npx",
-      args: "tsx --env-file=.env.production workers/push-delivery-worker.ts",
+      args: "tsx --env-file=.env.worker workers/push-delivery-worker.ts",
       interpreter: "none",
       autorestart: true,
       restart_delay: 5000,

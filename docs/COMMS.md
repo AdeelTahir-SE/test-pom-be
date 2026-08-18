@@ -431,7 +431,7 @@ The Next.js app deploys to Vercel, which is serverless and cannot run a long-liv
 The worker runs under [pm2](https://pm2.keymetrics.io/) on a Hostinger VPS. A process definition is provided at `deploy/ecosystem.config.js`. To deploy:
 
 1. Check out the repo to a stable path on the VPS (matching the ecosystem file's `cwd`, e.g. `/opt/pomocnik/pom-be`) and run `npm ci`.
-2. Create a production env file at that path (`.env.production`) with the same Supabase service-role key and VAPID vars used by the Next.js deployment. Do not reuse a dev `.env.local`.
+2. Create `.env.worker` at that path from `.env.worker.example`, filled in with the Supabase service-role key and VAPID vars used by the Next.js deployment. Do not reuse a dev `.env.local` or the full app `.env.production` — the worker only needs a small subset of the app's secrets (see `.env.worker.example`).
 3. Install pm2 globally on the VPS if not already present:
 
    ```bash
