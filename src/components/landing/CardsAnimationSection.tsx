@@ -415,7 +415,8 @@ export default function CardAnimationSection() {
           </h2>
           <p className="font-['Inter',sans-serif] text-sm md:text-base font-light text-slate-500 dark:text-slate-400 mt-4 max-w-2xl leading-relaxed">
             <p>Vsak delovni dan je bolje organiziran.
-             Ekipa dela samostojneje,</p><p> komunikacije je manj, a je hitrejša, pregled nad deli </p><p>je boljši in vodenje lažje.</p>
+             Ekipa dela samostojneje,</p><p> komunikacije je manj, a je hitrejša, pregled nad deli </p><p>je boljši in vodenje l
+              ažje.</p>
           </p>
         </div>
 
