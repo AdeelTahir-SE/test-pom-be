@@ -20,7 +20,7 @@ import type { ApiNotification } from "@/lib/dashboardMappers";
 import type { Message } from "@/lib/types/messages";
 import type { OfficeCardThreadItem } from "@/components/dashboard/OfficeCard";
 import { LIMITS } from "@/config/constants";
-import { addDays, formatSiDate, formatSiDateTimeCompact, isJobCardMutable, startOfLocalDay, isJobCommunicationAllowed, jobBelongsToDay, toIsoDate } from "@/lib/officeDate";
+import { addDays, formatSiDateShort, formatSiDateTimeCompact, isJobCardMutable, startOfLocalDay, isJobCommunicationAllowed, jobBelongsToDay, toIsoDate } from "@/lib/officeDate";
 import { JOB_COMMUNICATION_TODAY_ONLY_MESSAGE } from "@/lib/services/jobCommunication";
 import { toTelHref } from "@/lib/phone";
 import { playMessageBeep, unlockMessageBeep } from "@/lib/playMessageBeep";
@@ -685,9 +685,9 @@ function WorkerDashboardContent() {
               </button>
               <time
                 dateTime={toIsoDate(selectedDate)}
-                className="min-w-[74px] text-center text-xs font-semibold tabular-nums text-slate-600"
+                className="text-center text-xs font-semibold tabular-nums text-slate-600"
               >
-                {formatSiDate(selectedDate)}
+                {formatSiDateShort(selectedDate)}
               </time>
               <button
                 type="button"
