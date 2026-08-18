@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { useLanguage } from "@/lib/useLanguage";
 import { Logo } from "@/components/Logo";
+import { useLandingSession } from "@/lib/useLandingSession";
 
 function scrollToSection(id: string) {
   const el = document.getElementById(id);
@@ -16,6 +17,9 @@ function scrollToSection(id: string) {
 
 export function Navbar() {
   const { t } = useLanguage();
+  const session = useLandingSession();
+  const loginHref = session.status === "authenticated" ? session.dashboardHref : "/login";
+  const loginLabel = session.status === "authenticated" ? t("navDashboard") : t("navLogin");
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50">
@@ -182,8 +186,8 @@ export function Navbar() {
                   {t("navSupport")}
                 </span>
               </Link>
-              <Link 
-                href="/login" 
+              <Link
+                href={loginHref}
                 className="hover:-translate-y-0.5 transition-all duration-300"
                 style={{
                   boxSizing: "border-box",
@@ -192,7 +196,8 @@ export function Navbar() {
                   justifyContent: "center",
                   alignItems: "center",
                   padding: "8px 16px",
-                  width: "72px",
+                  width: "auto",
+                  minWidth: "72px",
                   height: "34px",
                   background: "linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)",
                   border: "1px solid #1D4ED8",
@@ -202,7 +207,6 @@ export function Navbar() {
               >
                 <span
                   style={{
-                    width: "38px",
                     height: "16px",
                     fontFamily: "'Inter', sans-serif",
                     fontStyle: "normal",
@@ -214,9 +218,10 @@ export function Navbar() {
                     justifyContent: "center",
                     textAlign: "center",
                     color: "#FFFFFF",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  {t("navLogin")}
+                  {loginLabel}
                 </span>
               </Link>
             </div>

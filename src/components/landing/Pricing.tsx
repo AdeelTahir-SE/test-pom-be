@@ -3,9 +3,13 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useLanguage } from "@/lib/useLanguage";
+import { useLandingSession } from "@/lib/useLandingSession";
 
 export function Pricing() {
   const { t } = useLanguage();
+  const session = useLandingSession();
+  const ctaHref = session.status === "authenticated" ? session.dashboardHref : "/register";
+  const ctaLabel = session.status === "authenticated" ? t("navDashboard") : t("priceCtaSubscribe");
   const [isYearly, setIsYearly] = useState(false);
   const displayPrice = 59;
 
@@ -136,12 +140,12 @@ export function Pricing() {
 
             {/* Bottom Actions */}
             <div className="flex flex-col gap-6 mt-8">
-              <Link 
-                href="/register" 
+              <Link
+                href={ctaHref}
                 className="w-full sm:w-[250px] sm:mx-auto inline-flex items-center justify-center gap-2 py-3 bg-gradient-to-b from-blue-500 to-blue-600 border border-blue-700 text-white text-sm font-normal shadow-[0_4px_10px_rgba(59,130,246,0.3),inset_0_1px_0_rgba(255,255,255,0.3)] hover:from-blue-400 hover:to-blue-500 active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] transition-all duration-300"
                 style={{ borderRadius: "16px" }}
               >
-                Naroči
+                {ctaLabel}
               </Link>
 
               {/* Cancel Anytime with extra gap from top */}

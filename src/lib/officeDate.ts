@@ -17,6 +17,12 @@ export function formatSiDate(d: Date): string {
   return `${day}.${m}.${d.getFullYear()}`;
 }
 
+export function formatSiDateShort(d: Date): string {
+  const day = String(d.getDate()).padStart(2, "0");
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  return `${day}.${m}`;
+}
+
 export function formatSiTime(d: Date): string {
   return d.toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" });
 }
