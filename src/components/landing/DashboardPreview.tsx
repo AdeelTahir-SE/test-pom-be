@@ -802,11 +802,12 @@ export function DashboardPreview() {
         </div>
       ) : (
         /* Desktop 3D Perspective Layout (WITHOUT Grid lines) */
+ /* Desktop 3D Perspective Layout (WITHOUT Grid lines) */
         <div
-        ref={viewportRef}
-        className={`relative w-full rounded-[24px] md:rounded-[44px] border border-slate-200/80 dark:border-white/10 overflow-hidden bg-white dark:bg-[#101827] shadow-xl transition-all duration-300 itp-in-view`}
-        style={{ height: "780px" }}
-      >
+          ref={viewportRef}
+          className={`relative w-full rounded-[24px] md:rounded-[44px] border border-slate-200/80 dark:border-white/10 overflow-hidden bg-white/60 dark:bg-[#101827]/60 backdrop-blur-md shadow-xl transition-all duration-300 itp-in-view`}
+          style={{ height: "780px" }}
+        >
           {/* Ambient Decorative Glowing Orbs */}
           <div className="absolute top-[10%] left-[5%] w-[160px] h-[160px] rounded-full bg-blue-400/5 dark:bg-blue-500/10 blur-2xl pointer-events-none" style={{ animation: "itp-float-slow 7s ease-in-out infinite" }} />
           <div className="absolute bottom-[15%] right-[10%] w-[220px] h-[220px] rounded-full bg-indigo-400/5 dark:bg-indigo-500/10 blur-3xl pointer-events-none" style={{ animation: "itp-float-slow 9s ease-in-out infinite 1s" }} />
