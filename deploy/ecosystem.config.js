@@ -3,7 +3,7 @@ module.exports = {
   apps: [
     {
       name: "push-delivery-worker",
-      cwd: "/deployment/pomocnik/pom-be",
+      cwd: "/root/deployment/pomocnik/pom-be",
       script: "npx",
       args: "tsx --env-file=.env.worker workers/push-delivery-worker.ts",
       interpreter: "none",
