@@ -11,6 +11,8 @@ out
 .env
 .env.local
 .env.*.local
+.env.worker
+.env.production
 
 # Testing
 coverage

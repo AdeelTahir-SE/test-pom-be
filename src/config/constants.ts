@@ -41,6 +41,8 @@ export const NOTIFICATION_TYPES = [
   "job_assigned",
   "job_updated",
   "message_received",
+  "voice_message_received",
+  "urgent_message",
   "job_completed",
   "system_alert",
 ] as const;
@@ -49,6 +51,25 @@ export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 // Message types (Communication §7 — closed set)
 export const MESSAGE_TYPES = ["text", "voice", "system"] as const;
 export type MessageType = (typeof MESSAGE_TYPES)[number];
+
+export const TRANSCRIPTION_STATUSES = [
+  "not_applicable",
+  "pending",
+  "processing",
+  "completed",
+  "failed",
+] as const;
+export type TranscriptionStatus = (typeof TRANSCRIPTION_STATUSES)[number];
+
+export const DELIVERY_JOB_STATUSES = [
+  "pending",
+  "processing",
+  "delivered",
+  "retry",
+  "failed",
+  "cancelled",
+] as const;
+export type DeliveryJobStatus = (typeof DELIVERY_JOB_STATUSES)[number];
 
 // File attachment types (Attachments §8)
 export const ATTACHMENT_TYPES = ["image", "pdf", "audio", "other"] as const;

@@ -49,7 +49,6 @@ export function useOfficeBoard(dayKey: string, enabled: boolean) {
     queryFn: () => fetchOfficeCommunications(dayKey),
     enabled,
     staleTime: 15_000,
-    refetchInterval: 15_000,
     placeholderData: keepPreviousData,
   });
 

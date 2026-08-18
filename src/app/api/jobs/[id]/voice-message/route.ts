@@ -10,10 +10,10 @@ import { assertJobCommunicationAllowed } from "@/lib/services/jobCommunication";
 import { sha256Hex, buildStoragePath, uploadToStorage } from "@/lib/storage/upload";
 import { transcribeAudio } from "@/lib/integrations/deepgram";
 import { LIMITS } from "@/config/constants";
+import { buildMessagePushPayload } from "@/lib/notifications/payloads";
+import { createPushDeliveryJob } from "@/lib/notifications/deliveryJobs";
 
 export const dynamic = "force-dynamic";
-
-const UNTRANSCRIBED_FALLBACK = "Voice message (untranscribed)";
 
 interface FinalizeVoiceTranscriptionInput {
   buffer: Buffer;
@@ -47,19 +47,44 @@ async function finalizeVoiceTranscription({
   userId,
 }: FinalizeVoiceTranscriptionInput) {
   const db = getAdminClient();
+  await db
+    .from("job_messages")
+    .update({ transcription_status: "processing", transcription_error: null })
+    .eq("id", messageId)
+    .eq("company_id", companyId);
+
   const transcript = await transcribeAudio(buffer, contentType, {
     requestId: fileId,
   });
-  const content = transcript ?? UNTRANSCRIBED_FALLBACK;
 
   if (transcript) {
     const { error } = await db
       .from("job_messages")
-      .update({ content: transcript })
+      .update({
+        content: transcript,
+        transcription_status: "completed",
+        transcription_error: null,
+        transcribed_at: new Date().toISOString(),
+      })
       .eq("id", messageId)
       .eq("company_id", companyId);
     if (error) {
       logVoiceFinalize("Failed to update voice message transcript", {
+        messageId,
+        error: error.message,
+      });
+    }
+  } else {
+    const { error } = await db
+      .from("job_messages")
+      .update({
+        transcription_status: "failed",
+        transcription_error: "Deepgram returned no transcript.",
+      })
+      .eq("id", messageId)
+      .eq("company_id", companyId);
+    if (error) {
+      logVoiceFinalize("Failed to update voice message transcription failure", {
         messageId,
         error: error.message,
       });
@@ -80,7 +105,7 @@ async function finalizeVoiceTranscription({
       userId,
       metadata: {
         transcribed: transcript !== null,
-        content,
+        content: transcript,
         job_seq: jobSeq,
         sender_name: sender?.full_name ?? null,
       },
@@ -186,8 +211,9 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
       sender_id: auth.userId,
       recipient_id: recipientId,
       message_type: "voice",
-      content: UNTRANSCRIBED_FALLBACK,
+      content: null,
       attachment_id: fileRecord.id,
+      transcription_status: "pending",
     })
     .select()
     .single();
@@ -214,6 +240,31 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     title: "New voice message",
     body: "Voice message received",
     jobId: params.id,
+  });
+
+  const payload = await buildMessagePushPayload(db, {
+    companyId: auth.companyId,
+    jobId: params.id,
+    messageId: message.id,
+    senderId: auth.userId,
+    messageType: "voice",
+    content: null,
+  });
+  const deliveryJobId = await createPushDeliveryJob(db, {
+    companyId: auth.companyId,
+    userId: recipientId,
+    messageId: message.id,
+    notificationType: payload.type,
+    payload,
+  });
+
+  console.log("[voice_message_created]", {
+    message_id: message.id,
+    sender_id: auth.userId,
+    recipient_id: recipientId,
+    job_id: params.id,
+    file_id: fileRecord.id,
+    delivery_job_id: deliveryJobId,
   });
 
   return created({ message });

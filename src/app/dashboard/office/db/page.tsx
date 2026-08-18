@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Logo } from '@/components/Logo';
 import { useLanguage } from '@/lib/useLanguage';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { api } from '@/lib/api-client';
@@ -980,6 +981,18 @@ export default function DatabaseDashboard() {
 
       {/* LEFT SIDEBAR — top as before (Mark: do NOT push left column down) */}
       <aside className="w-64 bg-white border-r border-slate-200 shrink-0 flex flex-col py-8 px-4 min-h-screen">
+        <Link 
+          href="/" 
+          className="flex items-center justify-center bg-white border border-[#E2E8F0] shadow[0px_1px_2px_rgba(15,23,42,0.04),inset_0px_1px_0px_1px_#FFFFFF] rounded-[6px] hover:-translate-y-0.5 transition-all duration-300 mb-4 self-center"
+          style={{
+            boxSizing: "border-box",
+            padding: "6px 16px 6px 8px",
+            width: "184px",
+            height: "52px",
+          }}
+        >
+          <Logo className="h-10 w-10" textClassName="text-[18px]" />
+        </Link>
         <div className="flex flex-col">
           {/* Nazaj — basic for now; button polish later per Mark */}
           <div className="px-3">

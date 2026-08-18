@@ -91,4 +91,16 @@ export const env = {
   get cronSecret() {
     return optional("CRON_SECRET");
   },
+  get vapidPublicKey() {
+    return optional("NEXT_PUBLIC_VAPID_PUBLIC_KEY");
+  },
+  get vapidPrivateKey() {
+    return optional("VAPID_PRIVATE_KEY");
+  },
+  get vapidSubject() {
+    return optional("VAPID_SUBJECT") || "mailto:notifications@pomocnik.net";
+  },
+  get pushWorkerSecret() {
+    return optional("PUSH_WORKER_SECRET") || optional("CRON_SECRET");
+  },
 };
