@@ -634,28 +634,20 @@ function WorkerDashboardContent() {
               width: "100%",
             }}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
               <div className="relative inline-flex items-center justify-center w-10 h-10 rounded-[10px] bg-gradient-to-b from-white to-slate-100 border border-white shadow-[0_16px_34px_-20px_rgba(15,23,42,0.55),inset_0_1px_0_white shrink-0">
-                <div className="absolute inset-0.5 rounded-[8px] bg-gradient-to-b from-blue-400 to-blue-600 border border-blue-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_22px_rgba(59,130,246,0.28)]" />
-                <span className="relative font-['Inter',sans-serif] text-[14px] font-semibold text-white">
-                  {user?.full_name
-                    ?.split(' ')
-                    .map((n) => n[0])
-                    .join('')
-                    .toUpperCase() || 'U'}
-                </span>
+                <Logo className="h-7 w-7" showText={false} />
               </div>
-              <div className="flex flex-col">
-                <span className="text-base font-bold text-slate-800">
+              <div className="flex flex-col min-w-0">
+                <span className="text-base font-bold text-slate-800 truncate">
                   {user?.full_name || 'Uporabnik'}
                 </span>
-                <span className="inline-flex items-center gap-1.5 text-xs font-normal text-slate-500">
-                  <Logo className="h-5 w-5 rounded-md" showText={false} />
+                <span className="text-xs font-normal text-slate-500 pl-1">
                   pomocnik.net
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               {pushNotifications.supported ? (
                 <button
                   type="button"
@@ -666,7 +658,7 @@ function WorkerDashboardContent() {
                       ? t("workerPushDisableAction")
                       : t("workerPushEnableAction")
                   }
-                  className="w-9 h-9 rounded-xl border border-slate-200 bg-white/80 flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-9 h-9 rounded-xl border border-slate-200 bg-white/80 flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
                 >
                   {pushNotifications.subscribed ? (
                     <BellOff className="w-4 h-4" />
@@ -677,34 +669,45 @@ function WorkerDashboardContent() {
               ) : null}
               <button
                 type="button"
-                onClick={() => setSelectedDate((prev) => addDays(prev, -1))}
-                title="Prejšnji dan"
-                className="w-9 h-9 rounded-xl border border-slate-200 bg-white/80 flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <time
-                dateTime={toIsoDate(selectedDate)}
-                className="text-center text-xs font-semibold tabular-nums text-slate-600"
-              >
-                {formatSiDateShort(selectedDate)}
-              </time>
-              <button
-                type="button"
-                onClick={() => setSelectedDate((prev) => addDays(prev, 1))}
-                title="Naslednji dan"
-                className="w-9 h-9 rounded-xl border border-slate-200 bg-white/80 flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
                 onClick={logout}
-                className="w-9 h-9 rounded-xl border border-slate-200 bg-white/80 flex items-center justify-center text-slate-500 hover:text-red-500 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="w-9 h-9 rounded-xl border border-slate-200 bg-white/80 flex items-center justify-center text-slate-500 hover:text-red-500 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
               >
                 <LogOut className="w-4 h-4" />
               </button>
             </div>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              justifyContent: "center",
+              alignItems: "center",
+              width: "100%",
+              gap: "8px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setSelectedDate((prev) => addDays(prev, -1))}
+              title="Prejšnji dan"
+              className="w-9 h-9 rounded-xl border border-slate-200 bg-white/80 flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <time
+              dateTime={toIsoDate(selectedDate)}
+              className="min-w-11 text-center text-xs font-semibold tabular-nums text-slate-600"
+            >
+              {formatSiDateShort(selectedDate)}
+            </time>
+            <button
+              type="button"
+              onClick={() => setSelectedDate((prev) => addDays(prev, 1))}
+              title="Naslednji dan"
+              className="w-9 h-9 rounded-xl border border-slate-200 bg-white/80 flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
@@ -1036,7 +1039,7 @@ function WorkerDashboardContent() {
 
               {!showInboundBox && (
                 <div
-                  className="shrink-0"
+                  className="shrink-0 mt-auto"
                   style={{
                     background: "rgba(255, 255, 255, 0.3)",
                     border: "1px solid #1D4ED8",
