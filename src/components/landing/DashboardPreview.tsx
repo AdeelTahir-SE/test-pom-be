@@ -806,7 +806,7 @@ export function DashboardPreview() {
         <div
           ref={viewportRef}
           className={`relative w-full rounded-[24px] md:rounded-[44px] border border-slate-200/80 dark:border-white/10 overflow-hidden bg-white/60 dark:bg-[#101827]/60 backdrop-blur-md shadow-xl transition-all duration-300 itp-in-view`}
-          style={{ height: "780px" }}
+          style={{ height: "720px" }}
         >
           {/* Ambient Decorative Glowing Orbs */}
           <div className="absolute top-[10%] left-[5%] w-[160px] h-[160px] rounded-full bg-blue-400/5 dark:bg-blue-500/10 blur-2xl pointer-events-none" style={{ animation: "itp-float-slow 7s ease-in-out infinite" }} />
