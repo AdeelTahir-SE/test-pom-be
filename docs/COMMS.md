@@ -167,6 +167,7 @@ Allowed behavior:
 - Play voice audio with `VoiceMessagePlayer`.
 - Show transcription states from `transcription_status`.
 - Show an offline banner when `navigator.onLine === false`.
+- Show a push notification opt-in banner and bell toggle, same as the worker dashboard, so office/secretary devices can receive push (`usePushNotifications` in `src/app/dashboard/office/page.tsx`).
 
 KOMUNIKACIJA feed:
 
@@ -325,6 +326,8 @@ Behavior:
 - Insert failures are logged and do not roll back the message.
 - Message notifications are direct-recipient only.
 - Office KOMUNIKACIJA does not fan out notification rows to every manager because it reads `job_messages`.
+- `notifyUser` only inserts the in-app `notifications` row; it never enqueues a push delivery job by itself. Callers that also want a push must explicitly call `createPushDeliveryJob` alongside it, same as the message routes.
+- `job_assigned` (worker assigned to a job from `src/app/api/jobs/route.ts` and `src/app/api/jobs/[id]/route.ts`) now does this via `buildJobAssignedPushPayload` (`src/lib/notifications/payloads.ts`), so assigning a worker also pushes to their device(s).
 
 APIs:
 
@@ -370,12 +373,16 @@ Client behavior:
 
 - Existing subscriptions are reconciled silently on authenticated startup.
 - Browser permission is requested only from explicit user action.
-- Worker UI exposes a push opt-in banner and bell toggle.
+- Both worker and office dashboards expose a push opt-in banner and bell toggle (`src/app/dashboard/worker/page.tsx`, `src/app/dashboard/office/page.tsx`).
 - Logout calls backend unsubscribe for the current device before clearing auth cookies.
+- If browser-level `pushManager.subscribe()` fails (e.g. Brave with "Use Google services for push messaging" disabled), `subscribeToPush()` throws a `PushServiceUnavailableError` (`src/lib/push/client/subscribe.ts`). The UI detects this via `isPushServiceUnavailableError()` (`src/lib/clientError.ts`) and shows an actionable toast (`pushServiceUnavailable` translation key) instead of the generic failure message.
+- iOS Safari only exposes the Push API to a home-screen-installed PWA. `isIosInstallRequiredForPush()` (`src/lib/pwaInstall.ts`) detects iOS-in-browser-tab and both dashboards show an "Add to Home Screen" hint (`iosInstallForPush`) instead of silently hiding the notification option.
 
 Service worker behavior:
 
 - Shows notifications with `public/pomocnik-logo.png` as icon/badge.
+- `renotify: true` and `vibrate: [200, 100, 200]` are set so a second message in the same job re-alerts instead of silently replacing the previous OS notification.
+- `requireInteraction: true` for `urgent_message` payloads.
 - Click route is `payload.data.url`.
 - Focuses an existing window where possible, otherwise opens a new one.
 
@@ -384,6 +391,10 @@ Push payload URL:
 ```text
 /dashboard/worker?job=<jobId>&chat=open&message=<messageId>
 ```
+
+PWA installability:
+
+- `public/manifest.json` + `<link rel="manifest">`/`appleWebApp` metadata in `src/app/layout.tsx` make the app installable to the home screen, which is required for Web Push to function at all on iOS Safari and improves Android's willingness to keep the push registration alive in the background.
 
 ## Push Worker And Retry Strategy
 
@@ -412,6 +423,39 @@ Processing:
 Retry constants are in `src/lib/push/server/retry.ts`.
 
 Vercel Cron is not the primary push processor. It can be added later as a backup sweeper, but closed-app message notifications depend on the dedicated worker for seconds-level delivery.
+
+### Running the push worker in production
+
+The Next.js app deploys to Vercel, which is serverless and cannot run a long-lived process — `npm run push-worker` must run continuously somewhere else, or `notification_delivery_jobs` will only ever accumulate as `pending` and no push will ever be sent, on any browser or device, regardless of every other setting.
+
+The worker runs under [pm2](https://pm2.keymetrics.io/) on a Hostinger VPS. A process definition is provided at `deploy/ecosystem.config.js`. To deploy:
+
+1. Check out the repo to a stable path on the VPS (matching the ecosystem file's `cwd`, e.g. `/opt/pomocnik/pom-be`) and run `npm ci`.
+2. Create a production env file at that path (`.env.production`) with the same Supabase service-role key and VAPID vars used by the Next.js deployment. Do not reuse a dev `.env.local`.
+3. Install pm2 globally on the VPS if not already present:
+
+   ```bash
+   npm install -g pm2
+   ```
+
+4. Start the worker from the repo root using the ecosystem file:
+
+   ```bash
+   pm2 start deploy/ecosystem.config.js
+   pm2 status
+   pm2 logs push-delivery-worker
+   ```
+
+5. Persist the process list across reboots:
+
+   ```bash
+   pm2 save
+   pm2 startup
+   ```
+
+   `pm2 startup` prints a `sudo` command to generate a boot-time init script (systemd under the hood on most VPS images) — run the command it prints once, then `pm2 save` again so the current process list is what gets restored on boot.
+
+`autorestart` in `deploy/ecosystem.config.js` recovers from crashes; `cron_restart` periodically recycles the process (safe — `notification_delivery_jobs` is durable, so the poll loop just resumes on the next claim cycle); `max_memory_restart` guards against a memory leak in a long-running iteration. Redeploy by pulling the new code and running `pm2 restart push-delivery-worker`.
 
 ## Offline Text Queue
 
@@ -491,8 +535,11 @@ Defined in `src/config/constants.ts`:
 - Office KOMUNIKACIJA feed is still fetched from its API after realtime invalidation; the realtime event is not used as the final enriched feed row.
 - Worker page still has lightweight polling for job assignment/notification badges. Chat messages themselves use realtime and reconciliation.
 - Offline queue is text-only. Voice is intentionally online-only for launch.
-- Push delivery requires a running dedicated worker process; Vercel alone will not process `notification_delivery_jobs`.
+- Push delivery requires a running dedicated worker process; Vercel alone will not process `notification_delivery_jobs`. See "Running the push worker in production" above — this must be running and monitored, or push silently stops working entirely.
 - Web Push depends on user/browser permission and active subscriptions, so delivery is best-effort even though the outbox is durable.
+- Brave disables Google's push service by default; subscribing there requires the user to enable it in `brave://settings/privacy` ("Use Google services for push messaging") or use a different browser. The app surfaces this via `pushServiceUnavailable`, but it cannot be fixed from application code.
+- A fully powered-off device cannot receive a push under any circumstances (Web Push, FCM, and APNs all require the device to be on and network-connected) — this is a hardware limit, not a delivery bug.
+- Push delivery job creation is still opt-in per call site (`createPushDeliveryJob` next to `notifyUser`), not automatic for every `NotificationType`. Currently wired: messages, voice messages, `job_assigned`. New notification types need the same explicit wiring if they should also push.
 
 ## Non-Goals
 
