@@ -80,6 +80,24 @@ describe("Phase 4 — Jobs Engine", () => {
     expect(res.status).toBe(201);
   });
 
+  it("rejects assigning a job to a Pisarna account with a friendly message", async () => {
+    const owner = await registerCompany();
+    createdCompanies.push(owner);
+    const manager = await createCompanyUser(owner.accessToken!, { role: "manager" });
+
+    const res = await api.post<{
+      error?: { message?: string };
+    }>("/api/jobs", {
+      token: owner.accessToken,
+      body: { title: "Wrong assignee", worker_id: manager.userId },
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error?.message).toBe(
+      "Delo lahko dodelite samo aktivnemu terenskemu delavcu."
+    );
+  });
+
   it("worker cannot create a job (403)", async () => {
     const { workerToken } = await setupCompanyWithWorker();
     const res = await api.post("/api/jobs", {

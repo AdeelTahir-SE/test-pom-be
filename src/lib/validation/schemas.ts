@@ -44,9 +44,11 @@ export async function parseJsonBody<T>(
   }
   const result = schema.safeParse(raw);
   if (!result.success) {
+    const firstIssue = result.error.issues[0];
+    const message = firstIssue?.message?.trim() || "Invalid request body.";
     throw new ApiError(
       "bad_request",
-      "Validation failed.",
+      message,
       result.error.flatten()
     );
   }

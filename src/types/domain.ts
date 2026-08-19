@@ -7,6 +7,8 @@ import type {
   AttachmentType,
   NotificationType,
   UserRole,
+  TranscriptionStatus,
+  DeliveryJobStatus,
 } from "@/config/constants";
 import type { TimelineEventType } from "@/lib/timeline/events";
 import type { BusinessModule } from "@/config/business-modules";
@@ -46,6 +48,10 @@ export interface CompanyRow {
   stripe_subscription_id: string | null;
   paypal_subscription_id: string | null;
   subscription_status: string | null;
+  subscription_current_period_end: string | null;
+  subscription_cancel_at_period_end: boolean;
+  subscription_cancel_at: string | null;
+  subscription_canceled_at: string | null;
   created_at: string;
 }
 
@@ -129,6 +135,10 @@ export interface JobMessageRow {
   attachment_id: string | null;
   is_urgent: boolean;
   read_at: string | null;
+  client_message_id: string | null;
+  transcription_status: TranscriptionStatus | null;
+  transcription_error: string | null;
+  transcribed_at: string | null;
   created_at: string;
 }
 
@@ -143,6 +153,37 @@ export interface NotificationRow {
   is_read: boolean;
   hidden_at: string | null;
   created_at: string;
+}
+
+export interface PushSubscriptionRow {
+  id: string;
+  company_id: string;
+  user_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  user_agent: string | null;
+  device_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotificationDeliveryJobRow {
+  id: string;
+  company_id: string;
+  user_id: string;
+  message_id: string | null;
+  notification_type: string;
+  channel: string;
+  payload: Record<string, unknown>;
+  status: DeliveryJobStatus;
+  attempts: number;
+  next_attempt_at: string | null;
+  last_error: string | null;
+  created_at: string;
+  processing_at: string | null;
+  delivered_at: string | null;
+  cancelled_at: string | null;
 }
 
 export interface TimelineEventRow {

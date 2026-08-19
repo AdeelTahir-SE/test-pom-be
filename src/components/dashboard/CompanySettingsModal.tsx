@@ -13,6 +13,9 @@ interface CompanySettingsModalProps {
   /** Owner-only billing actions. */
   canManageBilling?: boolean;
   subscriptionActive?: boolean;
+  subscriptionStatus?: string | null;
+  subscriptionCurrentPeriodEnd?: string | null;
+  subscriptionCancelAtPeriodEnd?: boolean;
   hasStripeCustomer?: boolean;
   onSaved?: (name: string) => void;
 }
@@ -23,6 +26,9 @@ export function CompanySettingsModal({
   companyName,
   canManageBilling = false,
   subscriptionActive = true,
+  subscriptionStatus = null,
+  subscriptionCurrentPeriodEnd = null,
+  subscriptionCancelAtPeriodEnd = false,
   hasStripeCustomer = false,
   onSaved,
 }: CompanySettingsModalProps) {
@@ -59,6 +65,10 @@ export function CompanySettingsModal({
     }
     alert(res.error?.message ?? t("billingError"));
   };
+  const cancelDate =
+    subscriptionCancelAtPeriodEnd && subscriptionCurrentPeriodEnd
+      ? new Date(subscriptionCurrentPeriodEnd).toLocaleDateString("sl-SI")
+      : null;
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -93,7 +103,13 @@ export function CompanySettingsModal({
               </p>
               <p className="text-xs text-slate-500">
                 {subscriptionActive ? t("billingStatusActive") : t("billingStatusInactive")}
+                {subscriptionStatus ? ` (${subscriptionStatus})` : ""}
               </p>
+              {cancelDate && (
+                <p className="text-xs font-medium text-amber-700">
+                  Naročnina se izteče {cancelDate}.
+                </p>
+              )}
               {!hasStripeCustomer || !subscriptionActive ? (
                 <button
                   type="button"

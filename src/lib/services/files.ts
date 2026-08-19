@@ -1,7 +1,7 @@
 import { detectImageFormat } from "@/lib/storage/image";
 import { ApiError } from "@/lib/http/responses";
 
-const OTHER_EXTENSIONS = ["doc", "docx", "txt"];
+const OTHER_EXTENSIONS = ["doc", "docx", "xls", "xlsx", "txt"];
 
 export interface ClassifiedUpload {
   attachmentType: "image" | "pdf" | "other";
@@ -24,11 +24,9 @@ function looksLikeImage(buffer: Buffer): boolean {
   return isJpeg || isPng;
 }
 
-// Backend-only classification (File Infrastructure §4: "Supported File
-// Types: Images, PDF documents, ... Basic document files"). Images are
-// verified from real binary headers via sharp; PDFs get a magic-byte check.
-// Generic docs (doc/docx/txt) are opaque attachments never parsed by this
-// backend, so they're trusted by extension.
+// Backend-only classification (File Infrastructure §4). Images verified from
+// binary headers; PDFs via magic bytes. Word/Excel/txt trusted by extension
+// and parsed for text separately (not via Mistral OCR — Mark).
 export async function classifyUpload(filename: string, buffer: Buffer): Promise<ClassifiedUpload> {
   const ext = extensionOf(filename);
 

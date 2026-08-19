@@ -10,4 +10,5 @@ export type Message = {
   time: string;
   type: OfficeMessageKind;
   targetTask?: string;
+  attachmentId?: string | null;
 };

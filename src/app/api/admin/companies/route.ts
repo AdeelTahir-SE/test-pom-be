@@ -14,7 +14,9 @@ export const GET = withPlatformAdmin(async () => {
   const db = getAdminClient();
   const { data: companies, error } = await db
     .from("companies")
-    .select("id, name, business_module, subscription_active, created_at")
+    .select(
+      "id, name, business_module, subscription_active, subscription_status, subscription_current_period_end, subscription_cancel_at_period_end, subscription_cancel_at, subscription_canceled_at, stripe_customer_id, stripe_subscription_id, created_at"
+    )
     .order("created_at", { ascending: false });
 
   if (error) {

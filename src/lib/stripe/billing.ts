@@ -1,5 +1,5 @@
 import { getAdminClient } from "@/lib/supabase/admin";
-import { subscriptionActiveFromStripeStatus } from "@/lib/stripe/subscription";
+import type { BillingEntitlementSnapshot } from "@/lib/stripe/subscription";
 
 export interface CompanyBillingRow {
   id: string;
@@ -8,6 +8,10 @@ export interface CompanyBillingRow {
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   subscription_status: string | null;
+  subscription_current_period_end: string | null;
+  subscription_cancel_at_period_end: boolean;
+  subscription_cancel_at: string | null;
+  subscription_canceled_at: string | null;
 }
 
 export async function loadCompanyBilling(companyId: string): Promise<CompanyBillingRow | null> {
@@ -15,7 +19,7 @@ export async function loadCompanyBilling(companyId: string): Promise<CompanyBill
   const { data, error } = await db
     .from("companies")
     .select(
-      "id, name, subscription_active, stripe_customer_id, stripe_subscription_id, subscription_status"
+      "id, name, subscription_active, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_current_period_end, subscription_cancel_at_period_end, subscription_cancel_at, subscription_canceled_at"
     )
     .eq("id", companyId)
     .maybeSingle();
@@ -30,13 +34,16 @@ export async function applyStripeSubscriptionState(input: {
   companyId: string;
   stripeCustomerId?: string | null;
   stripeSubscriptionId?: string | null;
-  status: string;
+  snapshot: BillingEntitlementSnapshot;
 }): Promise<void> {
   const db = getAdminClient();
-  const active = subscriptionActiveFromStripeStatus(input.status);
   const updates: Record<string, unknown> = {
-    subscription_status: input.status,
-    subscription_active: active,
+    subscription_status: input.snapshot.status,
+    subscription_active: input.snapshot.subscriptionActive,
+    subscription_current_period_end: input.snapshot.currentPeriodEnd,
+    subscription_cancel_at_period_end: input.snapshot.cancelAtPeriodEnd,
+    subscription_cancel_at: input.snapshot.cancelAt,
+    subscription_canceled_at: input.snapshot.canceledAt,
   };
   if (input.stripeCustomerId) updates.stripe_customer_id = input.stripeCustomerId;
   if (input.stripeSubscriptionId) updates.stripe_subscription_id = input.stripeSubscriptionId;

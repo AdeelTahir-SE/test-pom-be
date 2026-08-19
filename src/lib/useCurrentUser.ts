@@ -8,6 +8,7 @@ import {
   setSession,
   ensureFreshAccessToken,
 } from "./api-client";
+import { unsubscribeFromPush } from "@/lib/push/client/subscribe";
 
 export interface CurrentUser {
   id: string;
@@ -26,6 +27,10 @@ export interface CurrentCompany {
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
   subscription_status?: string | null;
+  subscription_current_period_end?: string | null;
+  subscription_cancel_at_period_end?: boolean;
+  subscription_cancel_at?: string | null;
+  subscription_canceled_at?: string | null;
   created_at: string;
 }
 
@@ -87,6 +92,9 @@ export function useCurrentUser() {
 
   const logout = useCallback(async () => {
     try {
+      await unsubscribeFromPush().catch((err) => {
+        console.warn("[push_logout_unsubscribe_failed]", err);
+      });
       await api.post("/api/auth/logout");
     } finally {
       setSession(null, null);

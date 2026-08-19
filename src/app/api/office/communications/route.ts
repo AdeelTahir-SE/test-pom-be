@@ -14,6 +14,8 @@ export type OfficeCommunicationDto = {
   message_type: string;
   is_urgent: boolean;
   created_at: string;
+  /** Present on voice messages — job_files id for playback (Mark a16 #3). */
+  attachment_id: string | null;
   job_title: string | null;
   worker_id: string | null;
   worker_name: string | null;
@@ -46,7 +48,7 @@ export const GET = withAuth(async (request, auth) => {
   const { data: messages, error } = await db
     .from("job_messages")
     .select(
-      "id, job_id, sender_id, recipient_id, content, message_type, created_at, is_urgent"
+      "id, job_id, sender_id, recipient_id, content, message_type, created_at, is_urgent, attachment_id"
     )
     .eq("company_id", auth.companyId)
     .is("office_hidden_at", null)
@@ -135,6 +137,7 @@ export const GET = withAuth(async (request, auth) => {
       message_type: m.message_type,
       is_urgent: m.is_urgent ?? false,
       created_at: m.created_at,
+      attachment_id: m.attachment_id ?? null,
       job_title: jobTitleById.get(m.job_id) ?? null,
       worker_id: workerId,
       worker_name: workerId ? workerNameById.get(workerId) ?? null : null,

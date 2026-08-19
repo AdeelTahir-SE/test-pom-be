@@ -3,7 +3,8 @@
 export const LIMITS = {
   // Files (Supabase Storage add-on §12 + Attachments §10)
   MAX_FILES_PER_REQUEST: 3,
-  MAX_FILES_PER_JOB: 6,
+  // Mark a13: required checklist attachments were blocked at 6; allow up to 15.
+  MAX_FILES_PER_JOB: 15,
   MAX_DOCUMENT_BYTES: 25 * 1024 * 1024, // 25 MB hard cap
   MAX_IMAGE_OUTPUT_BYTES: 500 * 1024, // compressed image target
   IMAGE_MAX_DIMENSION: 1920, // 1920 x 1920
@@ -40,6 +41,8 @@ export const NOTIFICATION_TYPES = [
   "job_assigned",
   "job_updated",
   "message_received",
+  "voice_message_received",
+  "urgent_message",
   "job_completed",
   "system_alert",
 ] as const;
@@ -48,6 +51,25 @@ export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 // Message types (Communication §7 — closed set)
 export const MESSAGE_TYPES = ["text", "voice", "system"] as const;
 export type MessageType = (typeof MESSAGE_TYPES)[number];
+
+export const TRANSCRIPTION_STATUSES = [
+  "not_applicable",
+  "pending",
+  "processing",
+  "completed",
+  "failed",
+] as const;
+export type TranscriptionStatus = (typeof TRANSCRIPTION_STATUSES)[number];
+
+export const DELIVERY_JOB_STATUSES = [
+  "pending",
+  "processing",
+  "delivered",
+  "retry",
+  "failed",
+  "cancelled",
+] as const;
+export type DeliveryJobStatus = (typeof DELIVERY_JOB_STATUSES)[number];
 
 // File attachment types (Attachments §8)
 export const ATTACHMENT_TYPES = ["image", "pdf", "audio", "other"] as const;

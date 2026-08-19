@@ -1,6 +1,7 @@
 import { env } from "@/lib/env";
 
 const MISTRAL_OCR_URL = "https://api.mistral.ai/v1/ocr";
+const MISTRAL_OCR_TIMEOUT_MS = 30_000;
 
 interface MistralOcrPage {
   markdown?: string;
@@ -29,13 +30,19 @@ export async function extractText(
   deps: OcrDeps = {}
 ): Promise<string | null> {
   const apiKey = env.mistralApiKey;
-  if (!apiKey) return null;
+  if (!apiKey) {
+    console.log("[ocr] Mistral OCR skipped: missing MISTRAL_API_KEY", { mimeType });
+    return null;
+  }
 
   const fetchImpl = deps.fetchImpl ?? fetch;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), MISTRAL_OCR_TIMEOUT_MS);
   try {
     const base64 = buffer.toString("base64");
     const res = await fetchImpl(MISTRAL_OCR_URL, {
       method: "POST",
+      signal: controller.signal,
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
@@ -48,7 +55,16 @@ export async function extractText(
         },
       }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const bodySnippet = await res.text().catch(() => "");
+      console.log("[ocr] Mistral OCR failed", {
+        status: res.status,
+        statusText: res.statusText,
+        mimeType,
+        bodySnippet: bodySnippet.slice(0, 500),
+      });
+      return null;
+    }
 
     const json = (await res.json()) as MistralOcrResponse;
     const fromPages = json.pages
@@ -56,9 +72,24 @@ export async function extractText(
       .join("\n")
       .trim();
     const text = fromPages || json.text?.trim() || "";
-    return text.length > 0 ? text : null;
-  } catch {
+    if (!text) {
+      console.log("[ocr] Mistral OCR returned empty text", {
+        mimeType,
+        pagesCount: json.pages?.length ?? 0,
+        hasTopLevelText: typeof json.text === "string",
+      });
+      return null;
+    }
+
+    return text;
+  } catch (error) {
+    console.log("[ocr] Mistral OCR error", {
+      mimeType,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

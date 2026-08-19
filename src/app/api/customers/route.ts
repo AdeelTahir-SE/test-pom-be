@@ -5,8 +5,9 @@ import { getAdminClient } from "@/lib/supabase/admin";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/customers — company customers for the DB / Stranke view.
- * Includes latest note text and related job titles (matched by customer name).
+ * GET /api/customers — company customers for DB / Stranke + Zaznamki (Mark a13).
+ * Each row includes all notes (oldest / first-added on top) so one customer
+ * line can show every remark without separate rows per note.
  */
 export const GET = withAuth(
   async (_request, auth) => {
@@ -34,21 +35,24 @@ export const GET = withAuth(
     }
 
     const customerIds = (customers ?? []).map((c) => c.id);
-    const latestNoteByCustomer = new Map<string, string>();
+    const notesByCustomer = new Map<
+      string,
+      { id: string; note: string; created_at: string }[]
+    >();
     if (customerIds.length > 0) {
       const { data: notes, error: notesError } = await db
         .from("customer_notes")
-        .select("customer_id, note, created_at")
+        .select("id, customer_id, note, created_at")
         .eq("company_id", auth.companyId)
         .in("customer_id", customerIds)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: true });
       if (notesError) {
         throw new ApiError("internal", "Failed to load customer notes.", notesError.message);
       }
       for (const n of notes ?? []) {
-        if (!latestNoteByCustomer.has(n.customer_id)) {
-          latestNoteByCustomer.set(n.customer_id, n.note);
-        }
+        const list = notesByCustomer.get(n.customer_id) ?? [];
+        list.push({ id: n.id, note: n.note, created_at: n.created_at });
+        notesByCustomer.set(n.customer_id, list);
       }
     }
 
@@ -63,11 +67,13 @@ export const GET = withAuth(
 
     const result = (customers ?? []).map((c) => {
       const related = jobsByCustomer.get(c.name.trim().toLowerCase()) ?? [];
+      const notes = notesByCustomer.get(c.id) ?? [];
       return {
         id: c.id,
         name: c.name,
         created_at: c.created_at,
-        latest_note: latestNoteByCustomer.get(c.id) ?? null,
+        latest_note: notes[notes.length - 1]?.note ?? null,
+        notes,
         jobs: related.slice(0, 5),
         job_count: related.length,
       };

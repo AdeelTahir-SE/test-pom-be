@@ -13,7 +13,9 @@ export const GET = withPlatformAdmin<{ id: string }>(async (_request, _auth, { p
 
   const { data: company, error: companyError } = await db
     .from("companies")
-    .select("id, name, business_module, subscription_active, created_at")
+    .select(
+      "id, name, business_module, subscription_active, subscription_status, subscription_current_period_end, subscription_cancel_at_period_end, subscription_cancel_at, subscription_canceled_at, stripe_customer_id, stripe_subscription_id, created_at"
+    )
     .eq("id", companyId)
     .maybeSingle();
   if (companyError) {
@@ -57,7 +59,9 @@ export const PATCH = withPlatformAdmin<{ id: string }>(async (request, _auth, { 
     .from("companies")
     .update({ subscription_active: input.subscription_active })
     .eq("id", params.id)
-    .select("id, name, business_module, subscription_active, created_at")
+    .select(
+      "id, name, business_module, subscription_active, subscription_status, subscription_current_period_end, subscription_cancel_at_period_end, subscription_cancel_at, subscription_canceled_at, stripe_customer_id, stripe_subscription_id, created_at"
+    )
     .maybeSingle();
 
   if (error) {

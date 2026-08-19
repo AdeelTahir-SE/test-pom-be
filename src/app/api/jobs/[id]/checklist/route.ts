@@ -4,6 +4,7 @@ import { created, ok, ApiError } from "@/lib/http/responses";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { parseJsonBody } from "@/lib/validation/schemas";
 import { loadJobWithAccess } from "@/lib/services/jobAccess";
+import { assertJobCardMutable } from "@/lib/services/jobCardFreeze";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +52,10 @@ export const POST = withAuth<{ id: string }>(
     const input = await parseJsonBody(request, createChecklistItemSchema);
     const db = getAdminClient();
     const { job } = await loadJobWithAccess(db, auth, params.id);
+    assertJobCardMutable({
+      scheduled_at: (job.scheduled_at as string | null) ?? null,
+      created_at: String(job.created_at),
+    });
 
     if (job.status === "completed") {
       throw new ApiError(

@@ -22,11 +22,14 @@ interface AddWorkerCardProps {
   existingUsers?: {
     full_name: string;
     role: string;
+    login_pin?: string | null;
+    /** Soft-deleted staff must be omitted from this list (Mark). */
+    is_active?: boolean;
   }[];
 }
 
 // Vloge, ki štejejo za "Pisarna" sekcijo (case-insensitive primerjava)
-const OFFICE_ROLES = ['manager', 'owner', 'director'];
+const OFFICE_ROLES = ['manager', 'owner'];
 const PASSWORD_REGEX = /^\d{4}$/;
 
 function normalizeRole(role?: string): string {
@@ -56,26 +59,28 @@ export function AddWorkerCard({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [prevCount, setPrevCount] = useState(existingUsers.length);
+  const prevCountRef = useRef(existingUsers.length);
 
-  useEffect(() => {
-    if (existingUsers.length > prevCount) {
-      if (scrollContainerRef.current) {
-        setTimeout(() => {
-          scrollContainerRef.current?.scrollTo({
-            top: scrollContainerRef.current.scrollHeight,
-            behavior: 'smooth',
-          });
-        }, 100);
-      }
-    }
-    setPrevCount(existingUsers.length);
-  }, [existingUsers.length, prevCount]);
+useEffect(() => {
+  if (existingUsers.length > prevCountRef.current) {
+    setTimeout(() => {
+      scrollContainerRef.current?.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
+    }, 100);
+  }
 
-  const officeUsers = existingUsers.filter((u) =>
+  prevCountRef.current = existingUsers.length;
+}, [existingUsers.length]);
+
+  // Soft-deleted staff stay in DB/history but must not appear in worker lists (Mark).
+  const activeUsers = existingUsers.filter((u) => u.is_active !== false);
+
+  const officeUsers = activeUsers.filter((u) =>
     OFFICE_ROLES.includes(normalizeRole(u.role))
   );
-  const fieldUsers = existingUsers.filter(
+  const fieldUsers = activeUsers.filter(
     (u) => normalizeRole(u.role) === 'worker'
   );
 
@@ -123,7 +128,7 @@ export function AddWorkerCard({
   };
 
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // dovolimo samo številke, max 4 znaki
+    // Pisarna + Teren: company-set 4-digit PIN (Mark). Owner self-register stays 8+ elsewhere.
     const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 4);
     setPassword(digitsOnly);
     if (passwordError) setPasswordError(null);
@@ -150,13 +155,17 @@ export function AddWorkerCard({
       valid = false;
     }
 
-    if (phone && !isValidPhone(phone)) {
+    // Mark: phone is required (with email + PIN) when adding staff.
+    if (!phone.trim()) {
+      setPhoneError('Mobilna številka je obvezna.');
+      valid = false;
+    } else if (!isValidPhone(phone)) {
       setPhoneError(t('modalPhoneInvalid') || 'Neveljavna številka');
       valid = false;
     }
 
     if (!PASSWORD_REGEX.test(password)) {
-      setPasswordError('Geslo mora vsebovati natanko 4 številke.');
+      setPasswordError('Geslo mora vsebovati natanko 4 številke (npr. 3845).');
       valid = false;
     }
 
@@ -240,8 +249,9 @@ export function AddWorkerCard({
               <div className="text-[10px] font-bold text-slate-700 uppercase tracking-widest mb-4">Profil</div>
 
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-[14px] bg-[#2b5493] text-white flex items-center justify-center shadow-md shadow-blue-900/20 shrink-0">
-                  <Building2 className="w-7 h-7" />
+                <div className="relative inline-flex items-center justify-center w-14 h-14 rounded-[14px] bg-gradient-to-b from-white to-slate-100 border border-white shadow-[0_16px_34px_-20px_rgba(15,23,42,0.55),inset_0_1px_0_white] shrink-0">
+                  <div className="absolute inset-1 rounded-[12px] bg-gradient-to-b from-blue-400 to-blue-600 border border-blue-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_22px_rgba(59,130,246,0.28)]" />
+                  <Building2 className="relative w-7 h-7 text-white" />
                 </div>
                 <div className="flex flex-col overflow-hidden">
                   <div className="font-semibold text-[#0f172a] text-[14px] truncate">{company?.name || 'Asd'}</div>
@@ -264,9 +274,16 @@ export function AddWorkerCard({
                   <div className="flex flex-col gap-1">
                     {officeUsers.length > 0 ? (
                       officeUsers.map((u, i) => (
-                        <div key={`office-${i}-${u.full_name}-${u.role}`} className="flex items-center gap-1.5 text-[12px] font-light text-[#19233B] leading-none py-0.5">
-                          <div className="w-[3px] h-[3px] rounded-full bg-[#19233B] shrink-0"></div>
-                          <span className="truncate">{u.full_name}</span>
+                        <div key={`office-${i}-${u.full_name}-${u.role}`} className="flex items-center justify-between gap-2 text-[12px] font-light text-[#19233B] leading-none py-0.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <div className="w-[3px] h-[3px] rounded-full bg-[#19233B] shrink-0"></div>
+                            <span className="truncate">{u.full_name}</span>
+                          </div>
+                          {u.role !== 'owner' && u.login_pin ? (
+                            <span className="shrink-0 font-inter text-[11px] text-slate-500">
+  {u.login_pin}
+</span>
+                          ) : null}
                         </div>
                       ))
                     ) : (
@@ -283,9 +300,16 @@ export function AddWorkerCard({
                   <div className="flex flex-col gap-1">
                     {fieldUsers.length > 0 ? (
                       fieldUsers.map((u, i) => (
-                        <div key={`field-${i}-${u.full_name}-${u.role}`} className="flex items-center gap-1.5 text-[12px] font-light text-[#19233B] leading-none py-0.5">
-                          <div className="w-[3px] h-[3px] rounded-full bg-[#19233B] shrink-0"></div>
-                          <span className="truncate">{u.full_name}</span>
+                        <div key={`field-${i}-${u.full_name}-${u.role}`} className="flex items-center justify-between gap-2 text-[12px] font-light text-[#19233B] leading-none py-0.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <div className="w-[3px] h-[3px] rounded-full bg-[#19233B] shrink-0"></div>
+                            <span className="truncate">{u.full_name}</span>
+                          </div>
+                          {u.role !== 'owner' && u.login_pin ? (
+                            <span className="shrink-0 font-inter text-[11px] text-slate-500">
+  {u.login_pin}
+</span>
+                          ) : null}
                         </div>
                       ))
                     ) : (
@@ -296,7 +320,7 @@ export function AddWorkerCard({
               </div>
 
               <div className="mt-auto pt-4 shrink-0">
-                <div className="text-right text-[11px] text-slate-700 font-bold">Dodano: {existingUsers.length}</div>
+                <div className="text-right text-[11px] text-slate-700 font-bold">Dodano: {activeUsers.length}</div>
               </div>
             </div>
           </div>
@@ -311,6 +335,7 @@ export function AddWorkerCard({
               <div>
                 <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-widest mb-1.5">Ime</label>
                 <input
+                  required
                   className={`w-full h-11 px-4 rounded-[8px] border ${nameError ? 'border-red-300 ring-1 ring-red-300 bg-red-50' : 'border-slate-300 bg-[#F1F5F9]'} text-[#0f172a] text-[13px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all placeholder:text-slate-400`}
                   value={name}
                   onChange={handleNameChange}
@@ -326,6 +351,7 @@ export function AddWorkerCard({
                   <input
                      type="tel"
                      inputMode="tel"
+                     required
                      className={`w-full h-11 px-4 rounded-[8px] border ${phoneError ? 'border-red-300 ring-1 ring-red-300 bg-red-50' : 'border-slate-300 bg-[#F1F5F9]'} text-[#0f172a] text-[13px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all placeholder:text-slate-400`}
                      value={phone}
                      onChange={handlePhoneChange}
@@ -337,6 +363,7 @@ export function AddWorkerCard({
                   <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-widest mb-1.5">Email</label>
                   <input
                      type="email"
+                     required
                      className={`w-full h-11 px-4 rounded-[8px] border ${emailError ? 'border-red-300 ring-1 ring-red-300 bg-red-50' : 'border-slate-300 bg-[#F1F5F9]'} text-[#0f172a] text-[13px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all placeholder:text-slate-400`}
                      value={email}
                      onChange={handleEmailChange}
@@ -356,14 +383,22 @@ export function AddWorkerCard({
                 <div className="flex p-1 bg-[#f1f5f9] rounded-[10px] w-full h-[44px]">
                   <button
                     type="button"
-                    onClick={() => setRole('manager')}
+                    onClick={() => {
+                      setRole('manager');
+                      setPassword('');
+                      setPasswordError(null);
+                    }}
                     className={`flex-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase transition-all ${role === 'manager' ? 'border-[1.5px] border-[#4A6FBF] bg-white text-[#1c305a] shadow-sm' : 'border-[1.5px] border-transparent text-slate-600 hover:text-slate-800'}`}
                   >
                     Pisarna
                   </button>
                   <button
                     type="button"
-                    onClick={() => setRole('worker')}
+                    onClick={() => {
+                      setRole('worker');
+                      setPassword('');
+                      setPasswordError(null);
+                    }}
                     className={`flex-1 rounded-[8px] text-[11px] font-bold tracking-widest uppercase transition-all ${role === 'worker' ? 'border-[1.5px] border-[#4A6FBF] bg-white text-[#1c305a] shadow-sm' : 'border-[1.5px] border-transparent text-slate-600 hover:text-slate-800'}`}
                   >
                     Teren
@@ -371,18 +406,21 @@ export function AddWorkerCard({
                 </div>
               </div>
 
-              {/* Začasno Geslo */}
+              {/* Geslo — 4-digit PIN = Auth password (login: email + this PIN). Mark */}
               <div>
-                <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-widest mb-1.5">Začasno Geslo (4 številke)</label>
+                <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-widest mb-1.5">
+                  Geslo (4 številke)
+                </label>
                 <div className="relative">
                   <input
                      type={showPassword ? 'text' : 'password'}
                      inputMode="numeric"
                      autoComplete="new-password"
+                     required
                      className={`w-full h-11 pl-4 pr-11 rounded-[8px] border ${passwordError ? 'border-red-300 ring-1 ring-red-300 bg-red-50' : 'border-slate-300 bg-[#F1F5F9]'} text-[#0f172a] text-[16px] tracking-[0.5em] text-center font-bold focus:outline-none focus:ring-1 focus:ring-[#1c305a]/20 focus:border-[#1c305a] transition-all placeholder:text-slate-400 placeholder:tracking-normal placeholder:font-light`}
                      value={password}
                      onChange={handlePasswordChange}
-                     placeholder="284"
+                     placeholder="3845"
                      maxLength={4}
                   />
                   <button
@@ -395,6 +433,9 @@ export function AddWorkerCard({
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                <p className="text-slate-500 text-[11px] font-medium mt-1.5 leading-relaxed">
+                  Prijava: email + ta PIN (4 številke).
+                </p>
                 {passwordError && <p className="text-red-600 text-[11px] font-medium mt-1">{passwordError}</p>}
               </div>
 

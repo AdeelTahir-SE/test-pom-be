@@ -149,6 +149,7 @@ export interface OfficeCommunicationDto {
   message_type: string;
   is_urgent: boolean;
   created_at: string;
+  attachment_id?: string | null;
   job_title: string | null;
   worker_id: string | null;
   worker_name: string | null;
@@ -169,7 +170,8 @@ export async function fetchOfficeCommunications(dayKey: string) {
 
 export async function fetchWorkers() {
   const data = await unwrapApi(api.get<{ users: ApiUser[] }>("/api/users"));
-  return data.users.filter((u) => u.role === "worker");
+  // Soft-deleted staff stay on historical cards but not in assign pickers (Mark).
+  return data.users.filter((u) => u.role === "worker" && u.is_active);
 }
 
 export async function fetchSummary(dayKey: string) {
@@ -249,6 +251,7 @@ export async function fetchJobFiles(jobId: string) {
         file_name: string;
         created_at: string;
         signed_url: string | null;
+        thumbnail_signed_url?: string | null;
         ocr_text: string | null;
         document_type: string | null;
         document_preview: string | null;

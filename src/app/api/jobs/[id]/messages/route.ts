@@ -7,24 +7,47 @@ import { loadJobWithAccess } from "@/lib/services/jobAccess";
 import { createTimelineEvent } from "@/lib/timeline/events";
 import { notifyMessageReceived } from "@/lib/services/notifications";
 import { requireOfficeContactUserId } from "@/lib/services/officeContact";
+import { assertJobCommunicationAllowed } from "@/lib/services/jobCommunication";
 import { LIMITS } from "@/config/constants";
+import {
+  buildNextMessageCursor,
+  clampMessageLimit,
+  decodeMessageCursor,
+} from "@/lib/communications/pagination";
+import { buildMessagePushPayload } from "@/lib/notifications/payloads";
+import { createPushDeliveryJob } from "@/lib/notifications/deliveryJobs";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/jobs/[id]/messages — default order created_at ASC, oldest first
 // (Internal Messages §10; Appendix A §7).
-export const GET = withAuth<{ id: string }>(async (_request, auth, { params }) => {
+export const GET = withAuth<{ id: string }>(async (request, auth, { params }) => {
   const db = getAdminClient();
   await loadJobWithAccess(db, auth, params.id);
+  const url = new URL(request.url);
+  const limit = clampMessageLimit(url.searchParams.get("limit"));
+  const cursor = decodeMessageCursor(url.searchParams.get("cursor"));
 
-  const { data, error } = await db
+  let query = db
     .from("job_messages")
     .select("*")
     .eq("job_id", params.id)
-    .order("created_at", { ascending: true });
+    .eq("company_id", auth.companyId)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(limit + 1);
+
+  if (cursor) {
+    query = query.or(
+      `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`
+    );
+  }
+
+  const { data, error } = await query;
   if (error) throw new ApiError("internal", "Failed to load messages.", error.message);
 
-  return ok({ messages: data ?? [] });
+  const { pageRows, nextCursor, hasMore } = buildNextMessageCursor(data ?? [], limit);
+  return ok({ messages: [...pageRows].reverse(), nextCursor, hasMore });
 });
 
 const sendMessageSchema = z.object({
@@ -34,6 +57,7 @@ const sendMessageSchema = z.object({
     .min(1, "Message cannot be empty.")
     .max(LIMITS.MESSAGE_MAX_LENGTH, "Maximum message length is 400 characters."),
   is_urgent: z.boolean().optional(),
+  client_message_id: z.string().uuid().optional(),
   // Office may still pass this for older clients; workers must never send it.
   recipient_id: z.string().uuid().optional(),
 });
@@ -45,6 +69,10 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
   const input = await parseJsonBody(request, sendMessageSchema);
   const db = getAdminClient();
   const { job, workerId } = await loadJobWithAccess(db, auth, params.id);
+  assertJobCommunicationAllowed({
+    scheduled_at: (job.scheduled_at as string | null) ?? null,
+    created_at: job.created_at as string,
+  });
 
   let recipientId: string;
 
@@ -66,6 +94,23 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     recipientId = workerId;
   }
 
+  if (input.client_message_id) {
+    const { data: existing, error: existingError } = await db
+      .from("job_messages")
+      .select("*")
+      .eq("company_id", auth.companyId)
+      .eq("job_id", params.id)
+      .eq("sender_id", auth.userId)
+      .eq("client_message_id", input.client_message_id)
+      .maybeSingle();
+    if (existingError) {
+      throw new ApiError("internal", "Failed to check message idempotency.", existingError.message);
+    }
+    if (existing) {
+      return ok({ message: existing });
+    }
+  }
+
   const { data: message, error: messageError } = await db
     .from("job_messages")
     .insert({
@@ -76,6 +121,8 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
       message_type: "text",
       content: input.content,
       is_urgent: input.is_urgent ?? false,
+      client_message_id: input.client_message_id ?? null,
+      transcription_status: "not_applicable",
     })
     .select()
     .single();
@@ -110,6 +157,32 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     title: "New message",
     body: input.content.slice(0, 100),
     jobId: params.id,
+  });
+
+  const payload = await buildMessagePushPayload(db, {
+    companyId: auth.companyId,
+    jobId: params.id,
+    messageId: message.id,
+    senderId: auth.userId,
+    messageType: "text",
+    content: input.content,
+    urgent: input.is_urgent ?? false,
+  });
+  const deliveryJobId = await createPushDeliveryJob(db, {
+    companyId: auth.companyId,
+    userId: recipientId,
+    messageId: message.id,
+    notificationType: payload.type,
+    payload,
+  });
+
+  console.log("[message_created]", {
+    message_id: message.id,
+    client_message_id: input.client_message_id ?? null,
+    sender_id: auth.userId,
+    recipient_id: recipientId,
+    job_id: params.id,
+    delivery_job_id: deliveryJobId,
   });
 
   return created({ message });

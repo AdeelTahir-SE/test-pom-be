@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useLanguage } from "@/lib/useLanguage";
+import { Logo } from "@/components/Logo";
 import { FloatingBubble } from "./FloatingBubble";
 
 // ── Shared text styles ────────────────────────────────────────────────────────
@@ -167,18 +168,27 @@ function MockPhoneScreen() {
         }}
         className="shrink-0"
       >
-        <h2
+        <div
           style={{
-            fontFamily: "'Source Sans 3', sans-serif",
-            fontWeight: 300,
-            fontSize: "24px",
-            lineHeight: "32px",
-            letterSpacing: "-0.5px",
-            color: "#0F172A"
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
           }}
         >
-          pomocnik.net
-        </h2>
+          <Logo className="h-7 w-7 rounded-[8px]" showText={false} />
+          <span
+            style={{
+              fontFamily: "'Source Sans 3', sans-serif",
+              fontWeight: 300,
+              fontSize: "24px",
+              lineHeight: "32px",
+              letterSpacing: "-0.5px",
+              color: "#0F172A"
+            }}
+          >
+            pomocnik.net
+          </span>
+        </div>
 
         {/* Settings button */}
         <div 

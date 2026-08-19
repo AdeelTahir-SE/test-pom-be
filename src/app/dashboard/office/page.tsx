@@ -29,9 +29,15 @@ import {
 } from "@/lib/uploadValidation";
 import {
   apiFailureMessage,
+  isPushServiceUnavailableError,
   logClientError,
   userFacingCatchMessage,
 } from "@/lib/clientError";
+import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
+import { useJobMessages } from '@/hooks/useJobMessages';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { getRealtimeClient } from '@/lib/realtime/client';
+import { queryKeys } from '@/lib/query/keys';
 import {
   LogOut,
   Send,
@@ -39,8 +45,10 @@ import {
   Users,
   Search as SearchIcon,
   Settings,
-  Database,
   Paperclip,
+  UserPlus,
+  Bell,
+  BellOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -52,18 +60,23 @@ import {
 import { DailySummaryPanel } from '@/components/dashboard/DailySummaryPanel';
 import { WorkerCard } from '@/components/dashboard/WorkerCard';
 import { OfficeCard } from '@/components/dashboard/OfficeCard';
+import { VoiceMessagePlayer } from '@/components/dashboard/VoiceMessagePlayer';
+import { BillingLockBanner } from '@/components/dashboard/BillingRequired';
 import { CommunicationCard } from '@/components/dashboard/CommunicationCard';
 import { WorkerDetailModal } from '@/components/dashboard/WorkerDetailModal';
 import { AddTaskModal } from '@/components/dashboard/AddTaskModal';
 import { AddReminderModal } from '@/components/dashboard/AddReminderModal';
 import { AttachmentDialog } from '@/components/dashboard/AttachmentDialog';
+import {
+  AttachmentLightbox,
+  type AttachmentLightboxItem,
+} from '@/components/dashboard/AttachmentLightbox';
 import { AddWorkerCard } from '@/components/dashboard/AddWorkerCard';
-import { TeamManagementModal } from '@/components/dashboard/TeamManagementModal';
 import { SearchModal } from '@/components/dashboard/SearchModal';
-import { CompanySettingsModal } from '@/components/dashboard/CompanySettingsModal';
 import { SortableItem } from '@/components/dashboard/SortableItem';
 import { OfficeDayHeader } from '@/components/dashboard/OfficeDayHeader';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import {
   SortableContext,
   verticalListSortingStrategy,
@@ -73,34 +86,32 @@ import {
   formatSiDate,
   formatSiDateFromDayKey,
   isoToLocalDayKey,
+  isCommunicationDayAllowed,
+  isJobCardMutable,
   jobBelongsToDay,
   localDayToScheduledAt,
   normalizeRemindTime,
   parseFlexibleDate,
+  remindTimeSortMinutes,
   reminderBelongsToDay,
   startOfLocalDay,
   toIsoDate,
 } from '@/lib/officeDate';
+import { JOB_COMMUNICATION_TODAY_ONLY_MESSAGE } from '@/lib/services/jobCommunication';
+import { playMessageBeep, unlockMessageBeep } from '@/lib/playMessageBeep';
+import { toTelHref } from '@/lib/phone';
 import { useOfficeBoard } from '@/hooks/useOfficeBoard';
 import { isOptimisticId, newOptimisticId } from '@/lib/optimisticId';
-
-interface ApiJobMessage {
-  id: string;
-  sender_id: string;
-  message_type: 'text' | 'voice';
-  content: string;
-  is_urgent: boolean;
-  read_at: string | null;
-  created_at: string;
-}
 
 interface ColumnHeaderProps {
   title: string;
   onAddClick?: () => void;
   addTitle?: string;
+  /** Visible but not actionable — click still fires onAddClick (toast) (Mark a16 #4). */
+  addLocked?: boolean;
 }
 
-function ColumnHeader({ title, onAddClick, addTitle }: ColumnHeaderProps) {
+function ColumnHeader({ title, onAddClick, addTitle, addLocked = false }: ColumnHeaderProps) {
   return (
     <div className="flex items-center justify-between pl-0 pr-6 mb-2">
       <span
@@ -129,7 +140,10 @@ function ColumnHeader({ title, onAddClick, addTitle }: ColumnHeaderProps) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer',
+              cursor: addLocked ? 'pointer' : 'pointer',
+              opacity: addLocked ? 0.55 : 1,
+              position: 'relative',
+              zIndex: 2,
             }}
             className="hover:bg-slate-50/50 transition-colors"
           >
@@ -157,8 +171,10 @@ function ColumnHeader({ title, onAddClick, addTitle }: ColumnHeaderProps) {
 
 export default function OfficeDashboard() {
   const { t } = useLanguage();
-  const { user, company, loading: authLoading, logout } = useCurrentUser();
+  const { user, company, officeContact, loading: authLoading, logout } = useCurrentUser();
   const router = useRouter();
+  const billingLocked = company?.subscription_active === false;
+  const billingLockedMessage = 'Aktivirajte naročnino za uporabo.';
 
   useEffect(() => {
     if (!authLoading && user && user.role === 'worker') {
@@ -183,7 +199,74 @@ export default function OfficeDashboard() {
     setChecklistsByJob,
     setWorkers,
     refreshBoard,
-  } = useOfficeBoard(selectedDayKey, !authLoading && !!user);
+    queryClient,
+  } = useOfficeBoard(
+    selectedDayKey,
+    !authLoading && !!user
+  );
+
+  // Unlock Web Audio after first tap so inbound beeps can play (Mark).
+  useEffect(() => {
+    const unlock = () => unlockMessageBeep();
+    window.addEventListener('pointerdown', unlock, { once: true });
+    return () => window.removeEventListener('pointerdown', unlock);
+  }, []);
+
+  // Beep when a new inbound communication arrives (not messages we sent).
+  const seenCommIdsRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    seenCommIdsRef.current = null;
+  }, [selectedDayKey]);
+
+  useEffect(() => {
+    if (!user || user.role === 'worker' || !company?.id) return;
+    let cancelled = false;
+    let channel: RealtimeChannel | null = null;
+
+    void getRealtimeClient()
+      .then((client) => {
+        if (cancelled) return;
+        channel = client
+          .channel(`office-communications:${company.id}`)
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'job_messages',
+              filter: `company_id=eq.${company.id}`,
+            },
+            () => {
+              void queryClient.invalidateQueries({
+                queryKey: queryKeys.office.communications(selectedDayKey),
+              });
+            },
+          )
+          .subscribe();
+      })
+      .catch((err) => {
+        logClientError('office.communicationsRealtime', err);
+      });
+
+    return () => {
+      cancelled = true;
+      if (channel) void channel.unsubscribe();
+    };
+  }, [company?.id, queryClient, selectedDayKey, user]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const ids = new Set(communications.map((m) => m.id));
+    if (seenCommIdsRef.current === null) {
+      seenCommIdsRef.current = ids;
+      return;
+    }
+    const hasInbound = communications.some(
+      (m) => !seenCommIdsRef.current!.has(m.id) && m.sender_id !== user.id,
+    );
+    for (const id of ids) seenCommIdsRef.current.add(id);
+    if (hasInbound) playMessageBeep();
+  }, [communications, user?.id]);
 
   // Optimistic checklist rows for jobs not yet confirmed by the API (temp ids).
   const [checklistOverrides, setChecklistOverrides] = useState<
@@ -201,20 +284,36 @@ export default function OfficeDashboard() {
   const [reminderEditTarget, setReminderEditTarget] = useState<string | null>(null);
   const [isAttachmentDialogOpen, setIsAttachmentDialogOpen] = useState(false);
   const [attachmentDialogReminderId, setAttachmentDialogReminderId] = useState<string | null>(null);
+  const [jobCardAttachTarget, setJobCardAttachTarget] = useState<{
+    jobId: string;
+    taskId: string;
+  } | null>(null);
+  const [reminderPreview, setReminderPreview] =
+    useState<AttachmentLightboxItem | null>(null);
   const [isAddWorkerOpen, setIsAddWorkerOpen] = useState(false);
-  const [isTeamOpen, setIsTeamOpen] = useState(false);
+  const [companyUsers, setCompanyUsers] = useState<ApiUser[]>([]);
+
+  // Full company roster (all roles + login_pin) for the add-worker left list.
+  useEffect(() => {
+    if (!isAddWorkerOpen) return;
+    let cancelled = false;
+    void (async () => {
+      const res = await api.get<{ users: ApiUser[] }>('/api/users');
+      if (!cancelled && res.status === 200 && res.data?.users) {
+        setCompanyUsers(res.data.users);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAddWorkerOpen]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isCompanySettingsOpen, setIsCompanySettingsOpen] = useState(false);
   const [companyNameOverride, setCompanyNameOverride] = useState<string | null>(
     null,
   );
 
   const [replyJobId, setReplyJobId] = useState<string | null>(null);
-  const [replyMessages, setReplyMessages] = useState<ApiJobMessage[]>([]);
   const [replyInput, setReplyInput] = useState('');
-  const [replyLoading, setReplyLoading] = useState(false);
-  const [isRecordingReply, setIsRecordingReply] = useState(false);
-  const [isSavingVoiceReply, setIsSavingVoiceReply] = useState(false);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeWorkerId, setComposeWorkerId] = useState('');
   const [pendingDeleteJobId, setPendingDeleteJobId] = useState<string | null>(
@@ -233,47 +332,60 @@ export default function OfficeDashboard() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showToast = useCallback((msg: string) => {
+  const showToast = useCallback((msg: string, durationMs = 2500) => {
     setToastMessage(msg);
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToastMessage(null), 2500);
+    toastTimerRef.current = setTimeout(() => setToastMessage(null), durationMs);
   }, []);
+  const showBillingLockedToast = useCallback(() => {
+    showToast(billingLockedMessage);
+  }, [showToast]);
+
+  const pushNotifications = usePushNotifications();
+  const handleTogglePushNotifications = useCallback(async () => {
+    try {
+      if (pushNotifications.subscribed) {
+        await pushNotifications.disable();
+        showToast(t('officePushDisabled'));
+      } else {
+        await pushNotifications.enable();
+        showToast(t('officePushEnabled'));
+      }
+    } catch (err) {
+      logClientError('office.pushNotifications', err);
+      if (isPushServiceUnavailableError(err)) {
+        showToast(t('pushServiceUnavailable'), 8000);
+        return;
+      }
+      showToast(userFacingCatchMessage(err, t('officePushFailed'), t('workerNetworkError')));
+    }
+  }, [pushNotifications, showToast, t]);
+  const requireBillingUnlocked = useCallback(() => {
+    if (!billingLocked) return true;
+    showBillingLockedToast();
+    return false;
+  }, [billingLocked, showBillingLockedToast]);
+
+  const {
+    messages: replyMessages,
+    setMessages: setReplyMessages,
+    loading: replyLoading,
+    loadingOlder: replyLoadingOlder,
+    hasMore: replyHasMore,
+    offline: replyMessagesOffline,
+    loadOlder: loadOlderReplyMessages,
+    sendText: sendReplyText,
+    mergeIncoming: mergeReplyIncoming,
+  } = useJobMessages({
+    jobId: replyJobId,
+    userId: user?.id,
+    enabled: !!user && !!replyJobId,
+  });
 
   const cardAttachInputRef = useRef<HTMLInputElement | null>(null);
   const cardAttachTargetRef = useRef<{ jobId: string; taskId: string } | null>(
     null,
   );
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const autoStopTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-
-  // Stop mic/timer if the page unmounts mid-recording (navigate away / logout).
-  useEffect(() => {
-    return () => {
-      if (autoStopTimerRef.current) {
-        clearTimeout(autoStopTimerRef.current);
-        autoStopTimerRef.current = null;
-      }
-      const recorder = mediaRecorderRef.current;
-      if (recorder) {
-        // Prevent onstop from uploading after unmount.
-        recorder.ondataavailable = null;
-        recorder.onstop = null;
-        if (recorder.state === 'recording') {
-          try {
-            recorder.stop();
-          } catch {
-            // ignore — recorder may already be stopping
-          }
-        }
-        mediaRecorderRef.current = null;
-      }
-      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
-      mediaStreamRef.current = null;
-    };
-  }, []);
-
   // Template/example cards shown in an otherwise-empty column so first-time
   // users see what a real card looks like, instead of a blank "no items" box.
   // Dummy cards only show on the company creation date.
@@ -306,15 +418,17 @@ export default function OfficeDashboard() {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const openParam = params.get('open');
-      if (openParam === 'settings') {
-        setIsCompanySettingsOpen(true);
-        window.history.replaceState({}, '', window.location.pathname);
-      } else if (openParam === 'team') {
-        setIsTeamOpen(true);
+      if (openParam === 'team') {
+        // Mark: Ekipa popup not shown — open Dodaj sodelavca instead.
+        if (billingLocked) {
+          showBillingLockedToast();
+        } else {
+          setIsAddWorkerOpen(true);
+        }
         window.history.replaceState({}, '', window.location.pathname);
       }
     }
-  }, [companyCreationDate]);
+  }, [billingLocked, companyCreationDate, showBillingLockedToast]);
 
   // Mobile/tablet: horizontal snap between the three columns
   const containerRef = useRef<HTMLDivElement>(null);
@@ -359,6 +473,12 @@ export default function OfficeDashboard() {
   // here or a drag-reorder would visually snap back on the next render.
   // Day filter uses scheduled_at from the task form; undated jobs stay on today.
   const boardTodayKey = toIsoDate(startOfLocalDay());
+  const communicationAllowed = isCommunicationDayAllowed(
+    selectedDayKey,
+    boardTodayKey,
+  );
+  const showCommunicationBlockedToast = () =>
+    showToast(JOB_COMMUNICATION_TODAY_ONLY_MESSAGE);
   const activeJobs = jobs.filter(
     (j) =>
       j.worker_id &&
@@ -373,6 +493,7 @@ export default function OfficeDashboard() {
     const seen = new Set<string>();
     const options: { id: string; name: string }[] = [];
     for (const j of activeJobs) {
+      if (isOptimisticId(j.id)) continue;
       if (!j.worker_id || seen.has(j.worker_id)) continue;
       seen.add(j.worker_id);
       options.push({
@@ -384,11 +505,18 @@ export default function OfficeDashboard() {
   })();
 
   // Same day-matching as column 1 / API — never show a reminder on the wrong day.
+  // Order by big remind time (earliest first); no-time cards last (Mark).
   const dayReminders = reminders
     .filter((r) =>
       reminderBelongsToDay(r, selectedDayKey, boardTodayKey),
     )
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    .slice()
+    .sort((a, b) => {
+      const byTime =
+        remindTimeSortMinutes(a.remind_time) - remindTimeSortMinutes(b.remind_time);
+      if (byTime !== 0) return byTime;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
   // Shared office channel (a6) — one conversation box per job for all office roles.
   const dayCommunications = communications;
   const communicationThreads = (() => {
@@ -444,6 +572,7 @@ export default function OfficeDashboard() {
     : null;
 
   const handleToggleTask = async (_workerId: string, taskId: string) => {
+    if (!requireBillingUnlocked()) return;
     const item = Object.values(mergedChecklistsByJob)
       .flat()
       .find((i) => i.id === taskId);
@@ -457,31 +586,8 @@ export default function OfficeDashboard() {
     const next = siblings.find((i) => !i.is_completed);
     if (!next || next.id !== item.id) return;
 
-    let attachmentName: string | null = null;
-    let attachmentUrl: string | null = null;
-    let hasAttachment = !!item.has_attachment;
-
-    if (item.requires_attachment || item.has_attachment) {
-      const filesRes = await api.get<{
-        files: Array<{
-          file_name: string;
-          signed_url: string | null;
-          checklist_item_id?: string | null;
-        }>;
-      }>(`/api/jobs/${item.job_id}/files`);
-      if (filesRes.status === 200 && filesRes.data?.files?.length) {
-        // Only a file linked to this exact step counts (Mark: no orphans / guessing).
-        const linked = filesRes.data.files.find(
-          (f) => f.checklist_item_id === item.id,
-        );
-        if (linked) {
-          attachmentName = linked.file_name;
-          attachmentUrl = linked.signed_url;
-          hasAttachment = true;
-        }
-      }
-    }
-
+    // Open confirm UI immediately — don't block on /files (was 4–10s).
+    const hasAttachment = !!item.has_attachment;
     setPendingConfirmTask({
       workerId: _workerId,
       taskId: item.id,
@@ -489,12 +595,44 @@ export default function OfficeDashboard() {
       label: item.label,
       requiresAttachment: !!item.requires_attachment,
       hasAttachment,
-      attachmentName,
-      attachmentUrl,
+      attachmentName: null,
+      attachmentUrl: null,
     });
+
+    if (!(item.requires_attachment || item.has_attachment)) return;
+
+    // Enrich with linked filename/url in the background (optional).
+    void (async () => {
+      const filesRes = await api.get<{
+        files: Array<{
+          file_name: string;
+          signed_url: string | null;
+          checklist_item_id?: string | null;
+        }>;
+      }>(`/api/jobs/${item.job_id}/files`);
+      if (filesRes.status !== 200 || !filesRes.data?.files?.length) return;
+      const linked = filesRes.data.files.find(
+        (f) => f.checklist_item_id === item.id,
+      );
+      if (!linked) return;
+      setPendingConfirmTask((prev) =>
+        prev && prev.taskId === item.id
+          ? {
+              ...prev,
+              hasAttachment: true,
+              attachmentName: linked.file_name,
+              attachmentUrl: linked.signed_url,
+            }
+          : prev,
+      );
+    })();
   };
 
   const completeConfirmedTask = async () => {
+    if (!requireBillingUnlocked()) {
+      setPendingConfirmTask(null);
+      return;
+    }
     const pending = pendingConfirmTask;
     if (!pending) return;
     setPendingConfirmTask(null);
@@ -505,6 +643,9 @@ export default function OfficeDashboard() {
     if (!item) return;
     // Attachment presence is enforced server-side (file linked to this step).
 
+    // Keep real attachment presence — do not invent a clip on complete.
+    const hadAttachment = !!pending.hasAttachment || !!item.has_attachment;
+
     const patchLocal = (list: ApiChecklistItem[]) =>
       list.map((i) =>
         i.id === pending.taskId
@@ -512,7 +653,7 @@ export default function OfficeDashboard() {
               ...i,
               is_completed: true,
               completed_at: new Date().toISOString(),
-              has_attachment: true,
+              has_attachment: hadAttachment,
             }
           : i,
       );
@@ -536,7 +677,7 @@ export default function OfficeDashboard() {
         ...prev,
         [item.job_id]: (prev[item.job_id] ?? []).map((i) =>
           i.id === pending.taskId
-            ? { ...res.data!.item, has_attachment: true }
+            ? { ...res.data!.item, has_attachment: hadAttachment }
             : i,
         ),
       }));
@@ -559,43 +700,48 @@ export default function OfficeDashboard() {
   };
 
   const handleCardAttachmentClick = (_workerId: string, taskId: string) => {
+    if (!requireBillingUnlocked()) return;
     const item = Object.values(mergedChecklistsByJob)
       .flat()
       .find((i) => i.id === taskId);
     if (!item || isOptimisticId(item.job_id)) return;
-    cardAttachTargetRef.current = { jobId: item.job_id, taskId: item.id };
-    cardAttachInputRef.current?.click();
+    // Incomplete steps: open Dodaj priponko (same popup as Details). Mark.
+    if (item.is_completed) return;
+    setJobCardAttachTarget({ jobId: item.job_id, taskId: item.id });
   };
 
   const handleReminderAttachmentClick = (reminderId: string) => {
+    if (!requireBillingUnlocked()) return;
     setReminderEditTarget(reminderId);
     setIsAddReminderOpen(true);
   };
 
   const handleReminderAttachmentDialog = (reminderId: string) => {
+    if (!requireBillingUnlocked()) return;
     setAttachmentDialogReminderId(reminderId);
     setIsAttachmentDialogOpen(true);
   };
 
   const handleOpenReminderAttachment = async (reminderId: string) => {
-    const reminder = reminders.find(r => r.id === reminderId);
-    if (!reminder) {
-      showToast('Opomnik ni najden.');
-      return;
-    }
-
-    if (!reminder.link) {
-      // No attachment yet - open the upload dialog
-      handleReminderAttachmentDialog(reminderId);
+    const reminder = reminders.find((r) => r.id === reminderId);
+    if (!reminder?.link) {
+      // Preview-only: no file stored → no paperclip should show; never open upload (Mark a16 #2).
+      showToast('Priponka ni na voljo.');
       return;
     }
 
     try {
-      const res = await api.get<{ url: string; fileName: string }>(
-        `/api/office-reminders/${reminderId}/attachment-url`
-      );
+      const res = await api.get<{
+        url: string;
+        fileName: string;
+        attachmentType?: string | null;
+      }>(`/api/office-reminders/${reminderId}/attachment-url`);
       if (res.status === 200 && res.data?.url) {
-        window.open(res.data.url, '_blank', 'noopener,noreferrer');
+        setReminderPreview({
+          url: res.data.url,
+          fileName: res.data.fileName || 'priponka',
+          attachmentType: res.data.attachmentType ?? null,
+        });
       } else {
         showToast(res.error?.message || 'Datoteke ni bilo mogoče odpreti.');
       }
@@ -606,6 +752,7 @@ export default function OfficeDashboard() {
   };
 
   const handleCardAttachmentFile = async (file: File | null) => {
+    if (!requireBillingUnlocked()) return;
     const target = cardAttachTargetRef.current;
     cardAttachTargetRef.current = null;
     if (!file || !target) return;
@@ -638,6 +785,7 @@ export default function OfficeDashboard() {
   };
 
   const handleChangeJobStatus = async (jobId: string, status: string) => {
+    if (!requireBillingUnlocked()) return;
     if (isOptimisticId(jobId)) return;
     setJobs((prev) =>
       prev.map((j) =>
@@ -664,6 +812,7 @@ export default function OfficeDashboard() {
     datum: string;
     steps: { text: string; requiresAttachment: boolean }[];
   }) => {
+    if (!requireBillingUnlocked()) return;
     const parsed = parseFlexibleDate(taskData.datum) ?? selectedDate;
     if (parsed.getTime() < startOfLocalDay().getTime()) {
       showToast('Datum ne sme biti v preteklosti.');
@@ -688,6 +837,8 @@ export default function OfficeDashboard() {
       completed_at: null,
       worker_id: taskData.workerId,
       created_at: now,
+      created_by: user?.id ?? null,
+      created_by_name: user?.full_name ?? null,
     };
 
     const optimisticChecklist: ApiChecklistItem[] = taskData.steps.map(
@@ -782,6 +933,7 @@ export default function OfficeDashboard() {
     hasConfirm: boolean;
     hasDecline: boolean;
   }) => {
+    if (!requireBillingUnlocked()) return;
     // If editing an existing reminder, call update instead
     if (reminderEditTarget) {
       handleUpdateReminder(reminderEditTarget, reminderData);
@@ -789,7 +941,10 @@ export default function OfficeDashboard() {
     }
 
     const actions: string[] = [];
-    if (reminderData.hasAttachment) actions.push('attachment');
+    // Only mark attachment when a file will actually be stored (Mark a16 #2).
+    if (reminderData.hasAttachment && reminderData.attachmentFile) {
+      actions.push('attachment');
+    }
     if (reminderData.hasEmail) actions.push('email');
     if (reminderData.phoneNumber) actions.push('phone');
     if (reminderData.hasConfirm) actions.push('confirm');
@@ -834,10 +989,36 @@ export default function OfficeDashboard() {
         },
       );
       if (res.status === 201 && res.data) {
+        const created = res.data.reminder;
         setReminders(
-          (prev) => prev.map((r) => (r.id === tempId ? res.data!.reminder : r)),
+          (prev) => prev.map((r) => (r.id === tempId ? created : r)),
           remindOnKey,
         );
+
+        // Store file on create so PISARNA paperclip can preview it (Mark a16 #2).
+        if (reminderData.attachmentFile) {
+          const formData = new FormData();
+          formData.append('files', reminderData.attachmentFile);
+          const uploadRes = await api.post<{ reminder: ApiOfficeReminder }>(
+            `/api/office-reminders/${created.id}/files`,
+            formData,
+          );
+          if (uploadRes.status === 201 && uploadRes.data?.reminder) {
+            setReminders(
+              (prev) =>
+                prev.map((r) =>
+                  r.id === created.id ? uploadRes.data!.reminder : r,
+                ),
+              remindOnKey,
+            );
+          } else {
+            showToast(
+              uploadRes.error?.message ??
+                'Opomnik ustvarjen, vendar priponke ni bilo mogoče naložiti.',
+            );
+          }
+        }
+
         void refreshBoard();
       } else {
         setReminders((prev) => prev.filter((r) => r.id !== tempId), remindOnKey);
@@ -859,6 +1040,7 @@ export default function OfficeDashboard() {
     hasConfirm: boolean;
     hasDecline: boolean;
   }) => {
+    if (!requireBillingUnlocked()) return;
     const actions: string[] = [];
     if (reminderData.hasAttachment) actions.push('attachment');
     if (reminderData.hasEmail) actions.push('email');
@@ -918,41 +1100,43 @@ export default function OfficeDashboard() {
     role: 'worker' | 'manager';
     password: string;
   }) => {
+    if (!requireBillingUnlocked()) {
+      throw new Error(billingLockedMessage);
+    }
     const res = await api.post<{ user: ApiUser; temporary_password?: string }>(
       '/api/users',
       {
         email: workerData.email,
         full_name: workerData.name,
         role: workerData.role,
-        phone: workerData.phone || undefined,
-        password: workerData.password || undefined,
+        phone: workerData.phone,
+        // PIN from the form = Auth password (login: email + PIN).
+        password: workerData.password,
       },
     );
-    if (res.status === 201) {
-      // Instantly update Add-task / board worker lists (workers query only).
-      if (res.data?.user?.role === 'worker') {
-        setWorkers((prev) => {
-          if (prev.some((w) => w.id === res.data!.user.id)) return prev;
-          return [...prev, res.data!.user];
-        });
-      }
-      if (res.data?.temporary_password) {
-        // Shown exactly once — the backend never returns it again.
-        const label =
-          workerData.role === 'worker' ? 'Koda za prijavo' : 'Začasno geslo';
-        alert(
-          `Račun ustvarjen za ${workerData.email}.\n${label}: ${res.data.temporary_password}\n\nZapišite si to geslo in jim ga posredujte; kasneje ne bo več prikazano.`,
-        );
-      }
-      void refreshBoard();
-    } else {
-      showToast(
+    if (res.status !== 201 || !res.data?.user) {
+      throw new Error(
         res.error?.message ?? 'Prišlo je do napake. Račun ni bil ustvarjen.',
       );
     }
+
+    const createdUser = res.data.user;
+    setCompanyUsers((prev) => {
+      if (prev.some((u) => u.id === createdUser.id)) return prev;
+      return [...prev, createdUser];
+    });
+    // Instantly update Add-task / board worker lists (workers query only).
+    if (createdUser.role === 'worker') {
+      setWorkers((prev) => {
+        if (prev.some((w) => w.id === createdUser.id)) return prev;
+        return [...prev, createdUser];
+      });
+    }
+    void refreshBoard();
   };
 
   const handleConfirmReminder = async (id: string) => {
+    if (!requireBillingUnlocked()) return;
     if (isOptimisticId(id)) return;
     setReminders((prev) =>
       prev.map((r) =>
@@ -974,6 +1158,7 @@ export default function OfficeDashboard() {
     }
   };
   const handleDeclineReminder = async (id: string) => {
+    if (!requireBillingUnlocked()) return;
     if (isOptimisticId(id)) return;
     setReminders((prev) =>
       prev.map((r) =>
@@ -995,6 +1180,7 @@ export default function OfficeDashboard() {
     }
   };
   const handleDismissReminder = async (id: string) => {
+    if (!requireBillingUnlocked()) return;
     if (isOptimisticId(id)) {
       setReminders((prev) => prev.filter((r) => r.id !== id));
       return;
@@ -1011,24 +1197,8 @@ export default function OfficeDashboard() {
       );
     }
   };
-  const handleReminderDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = dayReminders.findIndex((r) => r.id === active.id);
-    const newIndex = dayReminders.findIndex((r) => r.id === over.id);
-    const reordered = arrayMove(dayReminders, oldIndex, newIndex);
-    setReminders(reordered);
-    Promise.all(
-      reordered
-        .filter((r) => !isOptimisticId(r.id))
-        .map((r, index) =>
-          api
-            .patch(`/api/office-reminders/${r.id}`, { order_index: index })
-            .catch(() => {}),
-        ),
-    );
-  };
   const handleDismissConversation = async (messageIds: string[]) => {
+    if (!requireBillingUnlocked()) return;
     if (messageIds.length === 0) return;
     const idSet = new Set(messageIds);
     const snapshot = communications;
@@ -1041,6 +1211,7 @@ export default function OfficeDashboard() {
     if (results.some((r) => r.status !== 200)) setCommunications(snapshot);
   };
   const handleDismissJob = async (id: string) => {
+    if (!requireBillingUnlocked()) return;
     if (isOptimisticId(id)) {
       setJobs((prev) => prev.filter((j) => j.id !== id));
       if (selectedWorkerJobId === id) {
@@ -1063,9 +1234,11 @@ export default function OfficeDashboard() {
   };
 
   const requestDismissJob = (id: string) => {
+    if (!requireBillingUnlocked()) return;
     setPendingDeleteJobId(id);
   };
   const handleJobDragEnd = (event: DragEndEvent) => {
+    if (!requireBillingUnlocked()) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIndex = activeJobs.findIndex((j) => j.id === active.id);
@@ -1088,20 +1261,27 @@ export default function OfficeDashboard() {
   };
 
   const handleOpenReply = async (jobId: string) => {
+    if (isOptimisticId(jobId)) {
+      showToast('Kartica se še shranjuje. Poskusite znova čez trenutek.');
+      return;
+    }
+    if (!communicationAllowed) {
+      showCommunicationBlockedToast();
+      return;
+    }
     setReplyJobId(jobId);
-    setReplyLoading(true);
-    const res = await api.get<{ messages: ApiJobMessage[] }>(
-      `/api/jobs/${jobId}/messages`,
-    );
-    setReplyMessages(res.data?.messages ?? []);
-    setReplyLoading(false);
   };
 
   /** Compose only for workers with a TEREN card on the selected day (Mark). */
   const findComposeJobForWorker = (workerId: string) =>
-    activeJobs.find((j) => j.worker_id === workerId) ?? null;
+    activeJobs.find((j) => j.worker_id === workerId && !isOptimisticId(j.id)) ?? null;
 
   const handleComposeMessage = (workerId: string) => {
+    if (!requireBillingUnlocked()) return;
+    if (!communicationAllowed) {
+      showCommunicationBlockedToast();
+      return;
+    }
     const job = findComposeJobForWorker(workerId);
     if (!job) {
       showToast(
@@ -1114,104 +1294,131 @@ export default function OfficeDashboard() {
   };
 
   const handleSendReply = async () => {
-    if (!replyInput.trim() || !replyJobId) return;
-    const res = await api.post<{ message: ApiJobMessage }>(
-      `/api/jobs/${replyJobId}/messages`,
-      { content: replyInput },
-    );
-    if (res.status === 201 && res.data) {
-      setReplyMessages((prev) => [...prev, res.data!.message]);
+    if (!requireBillingUnlocked()) return;
+    if (!communicationAllowed) {
+      showCommunicationBlockedToast();
+      return;
+    }
+    const content = replyInput.trim();
+    if (!content || !replyJobId) return;
+    if (isOptimisticId(replyJobId)) {
+      setReplyJobId(null);
+      showToast('Kartica se še shranjuje. Poskusite znova čez trenutek.');
+      return;
+    }
+    setReplyInput('');
+    try {
+      await sendReplyText(content);
       setReplyInput('');
       void refreshBoard();
+    } catch (err) {
+      logClientError('office.sendReply', err, { jobId: replyJobId });
+      showToast(userFacingCatchMessage(err, t('workerMessageSendFailed'), t('workerNetworkError')));
+      setReplyInput(content);
     }
   };
+
+  const retryFailedReplyMessage = async (messageId: string) => {
+    const failed = replyMessages.find((m) => m.id === messageId);
+    if (!failed?.content || !failed.client_message_id) return;
+    setReplyMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, delivery_state: 'sending' } : m)),
+    );
+    try {
+      await sendReplyText(failed.content, { clientMessageId: failed.client_message_id });
+    } catch (err) {
+      logClientError('office.retryReply', err, { jobId: replyJobId, messageId });
+      setReplyMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, delivery_state: 'failed' } : m)),
+      );
+      showToast(userFacingCatchMessage(err, t('workerMessageSendFailed'), t('workerNetworkError')));
+    }
+  };
+
+  const handleVoiceReplyComplete = useCallback(
+    async (blob: Blob, mimeType: string) => {
+      if (!requireBillingUnlocked()) return;
+      if (!replyJobId) return;
+      const jobIdForUpload = replyJobId;
+      if (isOptimisticId(jobIdForUpload)) {
+        setReplyJobId(null);
+        showToast('Kartica se še shranjuje. Poskusite znova čez trenutek.');
+        return;
+      }
+      const formData = new FormData();
+      formData.append('audio', blob, 'voice-message.webm');
+      try {
+        const res = await api.post<{ message: typeof replyMessages[number] }>(
+          `/api/jobs/${jobIdForUpload}/voice-message`,
+          formData,
+        );
+        if ((res.status === 200 || res.status === 201) && res.data) {
+          mergeReplyIncoming(res.data.message);
+          void refreshBoard();
+        } else {
+          logClientError("office.voiceUpload", res.error, {
+            status: res.status,
+            jobId: jobIdForUpload,
+            mimeType,
+          });
+          showToast(
+            apiFailureMessage(res.error, res.status, t("workerVoiceSendFailed"))
+          );
+        }
+      } catch (err) {
+        logClientError("office.voiceUpload", err, { jobId: jobIdForUpload, mimeType });
+        showToast(
+          userFacingCatchMessage(
+            err,
+            t("workerVoiceSendFailed"),
+            t("workerNetworkError")
+          )
+        );
+      }
+    },
+    [mergeReplyIncoming, refreshBoard, replyJobId, replyMessages, requireBillingUnlocked, showToast, t]
+  );
+
+  const handleVoiceReplyError = useCallback(
+    (error: unknown) => {
+      logClientError("office.voiceRecorder", error);
+      const message =
+        error instanceof Error && error.message === "empty-audio"
+          ? t("workerVoiceSendFailed")
+          : userFacingCatchMessage(
+              error,
+              t("workerMicUnavailable"),
+              t("workerNetworkError"),
+              t("workerMicUnavailable")
+            );
+      showToast(message);
+    },
+    [showToast, t]
+  );
+
+  const replyVoiceRecorder = useVoiceRecorder({
+    maxSeconds: LIMITS.VOICE_MAX_SECONDS,
+    onComplete: handleVoiceReplyComplete,
+    onError: handleVoiceReplyError,
+  });
 
   const handleStartRecordReply = async () => {
-    if (!replyJobId) return;
-    const jobIdForUpload = replyJobId;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaStreamRef.current = stream;
-      const recorder = new MediaRecorder(stream);
-      audioChunksRef.current = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-      // Close recording UI only after the blob is finalized and upload finishes
-      // (Mark a11: stop() is async; don't setIsRecordingReply(false) in the click handler).
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        if (mediaStreamRef.current === stream) mediaStreamRef.current = null;
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        try {
-          if (blob.size === 0) {
-            showToast(t("workerVoiceSendFailed"));
-            return;
-          }
-          const formData = new FormData();
-          formData.append('audio', blob, 'voice-message.webm');
-          const res = await api.post<{ message: ApiJobMessage }>(
-            `/api/jobs/${jobIdForUpload}/voice-message`,
-            formData,
-          );
-          if ((res.status === 200 || res.status === 201) && res.data) {
-            setReplyMessages((prev) => [...prev, res.data!.message]);
-            void refreshBoard();
-          } else {
-            logClientError("office.voiceUpload", res.error, {
-              status: res.status,
-              jobId: jobIdForUpload,
-            });
-            showToast(
-              apiFailureMessage(res.error, res.status, t("workerVoiceSendFailed"))
-            );
-          }
-        } catch (err) {
-          logClientError("office.voiceUpload", err, { jobId: jobIdForUpload });
-          showToast(
-            userFacingCatchMessage(
-              err,
-              t("workerVoiceSendFailed"),
-              t("workerNetworkError")
-            )
-          );
-        } finally {
-          setIsSavingVoiceReply(false);
-          setIsRecordingReply(false);
-          mediaRecorderRef.current = null;
-        }
-      };
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setIsSavingVoiceReply(false);
-      setIsRecordingReply(true);
-      autoStopTimerRef.current = setTimeout(() => {
-        if (mediaRecorderRef.current?.state === 'recording') {
-          setIsSavingVoiceReply(true);
-          mediaRecorderRef.current.stop();
-        }
-      }, LIMITS.VOICE_MAX_SECONDS * 1000);
-    } catch (err) {
-      logClientError("office.startReplyRecording", err);
-      showToast(
-        userFacingCatchMessage(
-          err,
-          t("workerMicUnavailable"),
-          t("workerNetworkError"),
-          t("workerMicUnavailable")
-        )
-      );
+    if (!requireBillingUnlocked()) return;
+    if (!communicationAllowed) {
+      showCommunicationBlockedToast();
+      return;
     }
+    if (!replyJobId) return;
+    if (replyVoiceRecorder.isRecording) return;
+    await replyVoiceRecorder.start();
   };
 
-  const handleStopRecordReply = () => {
-    if (autoStopTimerRef.current) clearTimeout(autoStopTimerRef.current);
-    if (isSavingVoiceReply) return;
-    // Only stop capture here — UI stays open until onstop finishes upload.
-    if (mediaRecorderRef.current?.state === 'recording') {
-      setIsSavingVoiceReply(true);
-      mediaRecorderRef.current.stop();
-    }
+  const replyMessageDisplayText = (message: (typeof replyMessages)[number]) => {
+    if (message.message_type !== 'voice') return message.content ?? '';
+    if (message.transcription_status === 'pending') return 'Prepis se pripravlja...';
+    if (message.transcription_status === 'processing') return 'Prepisovanje...';
+    if (message.transcription_status === 'failed') return 'Prepis ni na voljo';
+    return message.content ?? 'Prepis ni na voljo';
   };
 
   if (authLoading || dataLoading) {
@@ -1224,6 +1431,11 @@ export default function OfficeDashboard() {
 
   return (
     <div className="min-h-screen flex flex-col text-slate-800 dark:text-slate-100 overflow-x-hidden selection:bg-[#1B3A6B]/10 selection:text-[#1B3A6B] relative bg-[#f3f5f8] dark:bg-[#0b0f19]">
+      {toastMessage && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-slate-900/90 text-white text-[13px] font-semibold py-2.5 px-5 rounded-full shadow-lg z-[100] animate-in fade-in duration-200 pointer-events-none">
+          {toastMessage}
+        </div>
+      )}
       <style>{`
         @media (max-width: 1023px) {
           .office-grid {
@@ -1264,8 +1476,8 @@ export default function OfficeDashboard() {
             className="relative overflow-hidden w-full max-w-[1232px] mx-auto flex flex-col justify-center"
             style={{
               boxSizing: 'border-box',
-              padding: '12px 16px',
-              height: '60px',
+              padding: '12px 18px',
+              height: '72px',
               background: 'rgba(255, 255, 255, 0.002)',
               border: '1px solid rgba(255, 255, 255, 0.9)',
               boxShadow:
@@ -1285,48 +1497,42 @@ export default function OfficeDashboard() {
               }}
             >
               <div className="flex items-center gap-3">
-                <Link
-                  href="/"
-                  className="flex items-center justify-center rounded-full hover:-translate-y-0.5 transition-all duration-300"
+                <Link 
+                  href="/" 
+                  className="flex items-center justify-center bg-white border border-[#E2E8F0] shadow-[0px_1px_2px_rgba(15,23,42,0.04),inset_0px_1px_0px_1px_#FFFFFF] rounded-[6px] hover:-translate-y-0.5 transition-all duration-300"
                   style={{
-                    boxSizing: 'border-box',
-                    padding: '8px 16px',
-                    width: '111px',
-                    height: '34px',
-                    background:
-                      'linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)',
-                    border: 'none',
-                    boxShadow: '0px 1px 2px rgba(15,23,42,0.04)',
+                    boxSizing: "border-box",
+                    padding: "6px 16px 6px 8px",
+                    width: "184px",
+                    height: "52px",
                   }}
                 >
-                  <span className="text-xs font-normal tracking-tight text-white" style={{ fontFamily: "'Inter', sans-serif" }}>
-                    pomocnik.net
-                  </span>
+                  <Logo className="h-10 w-10" textClassName="text-[18px]" />
                 </Link>
-              <span className="h-4 w-px bg-slate-200 hidden sm:inline" />
-              <div
-                className="hidden sm:inline-flex items-center px-4 py-2 rounded-full hover:-translate-y-0.5 transition-all duration-300"
-                style={{
-                  background: 'rgba(255, 255, 255, 0.002)',
-                  border: '1px solid #E2E8F0',
-                  boxShadow: '0px 1px 2px rgba(15, 23, 42, 0.04), inset 0px 1px 0px 1px #FFFFFF',
-                }}
-              >
-                <span className="text-xs font-normal text-slate-600">
-                  {companyNameOverride ?? company?.name}
-                </span>
+                <span className="h-4 w-px bg-slate-200 hidden sm:inline" />
+                <div
+                  className="hidden sm:inline-flex items-center px-4 py-2 rounded-full hover:-translate-y-0.5 transition-all duration-300"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.002)',
+                    border: '1px solid #E2E8F0',
+                    boxShadow: '0px 1px 2px rgba(15, 23, 42, 0.04), inset 0px 1px 0px 1px #FFFFFF',
+                  }}
+                >
+                  <span className="text-xs font-normal text-slate-600">
+                    {companyNameOverride ?? company?.name}
+                  </span>
+                </div>
               </div>
-            </div>
 
-            <div className="flex items-center gap-2">
-              <div className="hidden sm:flex items-center gap-2 mr-2 pr-2 border-r border-slate-200">
-                <div className="flex flex-col text-right">
-                  <span className="text-xs font-bold text-slate-700">
-                    {user?.full_name?.split(' ')[0] || 'Uporabnik'}
-                  </span>
-                  <span className="text-xs font-normal text-slate-500 capitalize">
-                    {user?.role === 'owner' ? 'Vodja' : user?.role === 'manager' ? 'Pisarna' : user?.role === 'worker' ? 'Teren' : ''}
-                  </span>
+              <div className="flex items-center gap-2">
+                <div className="hidden sm:flex items-center gap-2 mr-2 pr-2 border-r border-slate-200">
+                  <div className="flex flex-col text-right">
+                    <span className="text-xs font-bold text-slate-700">
+                      {user?.full_name?.split(' ')[0] || 'Uporabnik'}
+                    </span>
+                    <span className="text-xs font-normal text-slate-500 capitalize">
+                      {user?.role === 'owner' ? 'Vodja' : user?.role === 'manager' ? 'Pisarna' : user?.role === 'worker' ? 'Teren' : ''}
+                    </span>
                   </div>
                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-semibold">
                     {user?.full_name
@@ -1336,6 +1542,25 @@ export default function OfficeDashboard() {
                       .toUpperCase() || 'U'}
                   </div>
                 </div>
+                {pushNotifications.supported ? (
+                  <button
+                    type="button"
+                    onClick={handleTogglePushNotifications}
+                    disabled={pushNotifications.subscribing}
+                    title={
+                      pushNotifications.subscribed
+                        ? t('officePushDisableAction')
+                        : t('officePushEnableAction')
+                    }
+                    className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {pushNotifications.subscribed ? (
+                      <BellOff className="h-5 w-5" />
+                    ) : (
+                      <Bell className="h-5 w-5" />
+                    )}
+                  </button>
+                ) : null}
                 <button
                   onClick={() => setIsSearchOpen(true)}
                   title="Išči"
@@ -1344,9 +1569,13 @@ export default function OfficeDashboard() {
                   <SearchIcon className="h-5 w-5" />
                 </button>
                 <button
-                  onClick={() => setIsAddWorkerOpen(true)}
-                  title={t('teamTitle')}
-                  className="hidden sm:block p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  onClick={() => {
+                    if (!requireBillingUnlocked()) return;
+                    setIsAddWorkerOpen(true);
+                  }}
+                  title={billingLocked ? billingLockedMessage : "Dodaj sodelavca"}
+                  disabled={billingLocked}
+                  className="hidden sm:block p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   <img
                     src="/adduser.png"
@@ -1374,6 +1603,42 @@ export default function OfficeDashboard() {
       </header>
 
       <div className="w-full max-w-[1232px] mx-auto px-6 flex-1" style={{ paddingTop: '32px' }}>
+        {billingLocked && user && company && (
+          <div className="mb-5">
+            <BillingLockBanner
+              user={user}
+              company={company}
+              officeContact={officeContact}
+              onActivated={refreshBoard}
+            />
+          </div>
+        )}
+        {pushNotifications.supported &&
+        !pushNotifications.subscribed &&
+        pushNotifications.permission !== 'denied' ? (
+          <div className="mb-5 rounded-2xl border border-blue-100 bg-white/85 px-4 py-3 shadow-sm flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <Bell className="w-4 h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-slate-800">{t('officePushTitle')}</p>
+              <p className="text-xs text-slate-500 leading-5">{t('officePushDesc')}</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleTogglePushNotifications}
+              disabled={pushNotifications.subscribing}
+              className="rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {pushNotifications.subscribing ? t('officePushSaving') : t('officePushEnableAction')}
+            </button>
+          </div>
+        ) : null}
+        {pushNotifications.supported && pushNotifications.permission === 'denied' ? (
+          <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800">
+            {t('officePushBlocked')}
+          </div>
+        ) : null}
         <OfficeDayHeader
           title={t('officeHeading')}
           selectedDate={selectedDate}
@@ -1551,8 +1816,12 @@ export default function OfficeDashboard() {
           <div className="flex flex-col gap-3 office-column-cell">
             <ColumnHeader
               title={t('officeColField')}
-              onAddClick={() => setIsAddTaskOpen(true)}
-              addTitle={t('officeAddTask')}
+              onAddClick={() => {
+                if (!requireBillingUnlocked()) return;
+                setIsAddTaskOpen(true);
+              }}
+              addTitle={billingLocked ? billingLockedMessage : t('officeAddTask')}
+              addLocked={billingLocked}
             />
             <div
               style={{
@@ -1644,8 +1913,12 @@ export default function OfficeDashboard() {
           <div className="flex flex-col gap-3 office-column-cell">
             <ColumnHeader
               title={t('officeColOffice')}
-              onAddClick={() => setIsAddReminderOpen(true)}
-              addTitle={t('officeAddReminder')}
+              onAddClick={() => {
+                if (!requireBillingUnlocked()) return;
+                setIsAddReminderOpen(true);
+              }}
+              addTitle={billingLocked ? billingLockedMessage : t('officeAddReminder')}
+              addLocked={billingLocked}
             />
             <div
               style={{
@@ -1685,29 +1958,26 @@ export default function OfficeDashboard() {
                     onDismiss={() => dismissDummy('pisarna')}
                   />
                 ))}
-              <DndContext
-                collisionDetection={closestCenter}
-                onDragEnd={handleReminderDragEnd}
-              >
-                <SortableContext
-                  items={dayReminders.map((r) => r.id)}
-                  strategy={verticalListSortingStrategy}
-                >
                   {dayReminders.map((r) => (
-                    <SortableItem key={r.id} id={r.id}>
-                      <CommunicationCard
-                        order={reminderToCard(r, t)}
-                        buttonsConfig="dynamic"
-                        showRedButton={r.is_urgent}
-                        onResolve={() => handleConfirmReminder(r.id)}
-                        onDismiss={() => handleDismissReminder(r.id)}
-                        onArchive={() => handleDeclineReminder(r.id)}
-                        onAttachmentClick={() => handleOpenReminderAttachment(r.id)}
-                      />
-                    </SortableItem>
+                    <CommunicationCard
+                      key={r.id}
+                      order={reminderToCard(r, t)}
+                      buttonsConfig="dynamic"
+                      showRedButton={r.is_urgent}
+                      onResolve={() => handleConfirmReminder(r.id)}
+                      onDismiss={() => handleDismissReminder(r.id)}
+                      onArchive={() => handleDeclineReminder(r.id)}
+                      onAttachmentClick={() => handleOpenReminderAttachment(r.id)}
+                      onCall={(phone) => {
+                        const href = toTelHref(phone || r.phone || '');
+                        if (!href) {
+                          showToast('Telefonska številka ni na voljo.');
+                          return;
+                        }
+                        window.location.href = href;
+                      }}
+                    />
                   ))}
-                </SortableContext>
-              </DndContext>
             </div>
           </div>
 
@@ -1715,8 +1985,29 @@ export default function OfficeDashboard() {
           <div className="flex flex-col gap-3 office-column-cell">
             <ColumnHeader
               title={t('officeColComm')}
-              onAddClick={() => setIsComposeOpen(true)}
-              addTitle={t('officeAddMessage')}
+              onAddClick={() => {
+                if (!requireBillingUnlocked()) return;
+                // No TEREN card → nobody to message. No toast at all (Mark:
+                // the today-only toast must never appear in this state).
+                if (composeWorkerOptions.length === 0) return;
+                if (!communicationAllowed) {
+                  showCommunicationBlockedToast();
+                  return;
+                }
+                setIsComposeOpen(true);
+              }}
+              addTitle={
+                composeWorkerOptions.length === 0
+                  ? t('officeAddMessage')
+                  : billingLocked
+                    ? billingLockedMessage
+                    : !communicationAllowed
+                    ? JOB_COMMUNICATION_TODAY_ONLY_MESSAGE
+                    : t('officeAddMessage')
+              }
+              addLocked={
+                composeWorkerOptions.length === 0 || !communicationAllowed || billingLocked
+              }
             />
             <div
               style={{
@@ -1771,6 +2062,7 @@ export default function OfficeDashboard() {
                       text: m.content,
                       time: formatTime(m.created_at),
                       type: m.message_type === 'voice' ? 'glasovno' : 'tekst',
+                      attachmentId: m.attachment_id ?? null,
                     }))}
                     iconType="mic"
                     onDismiss={() =>
@@ -1781,6 +2073,8 @@ export default function OfficeDashboard() {
                     onReply={() => {
                       void handleOpenReply(thread.jobId);
                     }}
+                    replyLocked={!communicationAllowed}
+                    onReplyBlocked={showCommunicationBlockedToast}
                   />
                 );
               })}
@@ -1872,9 +2166,21 @@ export default function OfficeDashboard() {
         jobId={selectedWorkerJobId}
         cardNumber={selectedJob ? jobNumber(selectedJob) : null}
         customerName={selectedJob?.customer ?? null}
+        jobTitle={selectedJob?.title ?? null}
         scheduledAt={selectedJob?.scheduled_at ?? null}
+        cardMutable={
+          billingLocked
+            ? false
+            : selectedJob
+            ? isJobCardMutable({
+                scheduled_at: selectedJob.scheduled_at,
+                created_at: selectedJob.created_at,
+              })
+            : true
+        }
         onRefresh={() => void refreshBoard()}
         onChecklistReorder={(orderedIds) => {
+          if (billingLocked) return;
           if (!selectedWorkerJobId || isOptimisticId(selectedWorkerJobId))
             return;
           const jobId = selectedWorkerJobId;
@@ -1900,14 +2206,14 @@ export default function OfficeDashboard() {
         }}
         jobStatus={selectedJob?.status}
         onChangeJobStatus={
-          selectedWorkerJobId
+          !billingLocked && selectedWorkerJobId
             ? (status) => handleChangeJobStatus(selectedWorkerJobId, status)
             : undefined
         }
-        canCancelJob
-        canManageCustomerNotes
+        canCancelJob={!billingLocked}
+        canManageCustomerNotes={!billingLocked}
         onDeleteCard={
-          selectedWorkerJobId
+          !billingLocked && selectedWorkerJobId
             ? () => void handleDismissJob(selectedWorkerJobId)
             : undefined
         }
@@ -2028,11 +2334,10 @@ export default function OfficeDashboard() {
                       onClick={() => {
                         const p = pendingConfirmTask;
                         if (!p) return;
-                        cardAttachTargetRef.current = {
+                        setJobCardAttachTarget({
                           jobId: p.jobId,
                           taskId: p.taskId,
-                        };
-                        cardAttachInputRef.current?.click();
+                        });
                       }}
                       className="w-full h-11 rounded-[12px] bg-[#0A1128] text-white text-xs font-bold uppercase tracking-wider hover:bg-[#152042] transition-colors shadow-md shadow-[#0A1128]/10"
                     >
@@ -2040,8 +2345,10 @@ export default function OfficeDashboard() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => void completeConfirmedTask()}
-                      className="w-full h-11 rounded-[12px] border border-slate-300 text-xs font-bold text-slate-700 uppercase tracking-wider hover:bg-slate-50 transition-colors"
+                      disabled
+                      aria-disabled="true"
+                      className="w-full h-11 rounded-[12px] border border-slate-200 text-xs font-bold text-slate-300 uppercase tracking-wider cursor-not-allowed bg-slate-50"
+                      title="Najprej naložite priponko"
                     >
                       {t('modalConfirmStepSubmit')}
                     </button>
@@ -2078,15 +2385,19 @@ export default function OfficeDashboard() {
       </Dialog>
 
       <AddTaskModal
-        isOpen={isAddTaskOpen}
-        onOpenChange={setIsAddTaskOpen}
+        isOpen={isAddTaskOpen && !billingLocked}
+        onOpenChange={(open) => {
+          if (open && !requireBillingUnlocked()) return;
+          setIsAddTaskOpen(open);
+        }}
         workers={workers.map((w) => ({ id: w.id, name: w.full_name, phone: w.phone }))}
         defaultDate={selectedSiDate}
         onAddTask={handleAddTask}
       />
       <AddReminderModal
-        isOpen={isAddReminderOpen}
+        isOpen={isAddReminderOpen && !billingLocked}
         onOpenChange={(open) => {
+          if (open && !requireBillingUnlocked()) return;
           setIsAddReminderOpen(open);
           if (!open) setReminderEditTarget(null);
         }}
@@ -2112,29 +2423,49 @@ export default function OfficeDashboard() {
         onAddReminder={handleAddReminder}
       />
       <AttachmentDialog
-        isOpen={isAttachmentDialogOpen}
-        onOpenChange={setIsAttachmentDialogOpen}
+        isOpen={isAttachmentDialogOpen && !billingLocked}
+        onOpenChange={(open) => {
+          if (open && !requireBillingUnlocked()) return;
+          setIsAttachmentDialogOpen(open);
+        }}
         targetType="reminder"
         targetId={attachmentDialogReminderId || ""}
         onUploadSuccess={() => void refreshBoard()}
       />
-      <AddWorkerCard
-        isOpen={isAddWorkerOpen}
-        onOpenChange={setIsAddWorkerOpen}
-        onAddWorker={handleAddWorker}
-        existingUsers={workers}
-      />
-
-      <TeamManagementModal
-        isOpen={isTeamOpen}
-        onOpenChange={setIsTeamOpen}
-        currentUserId={user?.id}
-        onChanged={() => void refreshBoard()}
-        isOwner={user?.role === 'owner'}
-        onAddMember={() => {
-          setIsTeamOpen(false);
-          setIsAddWorkerOpen(true);
+      <AttachmentDialog
+        isOpen={!!jobCardAttachTarget && !billingLocked}
+        onOpenChange={(open) => {
+          if (!open) setJobCardAttachTarget(null);
         }}
+        targetType="job"
+        targetId={jobCardAttachTarget?.jobId || ""}
+        checklistItemId={jobCardAttachTarget?.taskId ?? null}
+        onUploadSuccess={() => {
+          const target = jobCardAttachTarget;
+          if (target) {
+            markChecklistHasAttachment(target.jobId, target.taskId);
+            setPendingConfirmTask((prev) =>
+              prev && prev.taskId === target.taskId
+                ? { ...prev, hasAttachment: true }
+                : prev,
+            );
+            showToast(t('modalAttachSuccess'));
+          }
+          void refreshBoard();
+        }}
+      />
+      <AttachmentLightbox
+        item={reminderPreview}
+        onClose={() => setReminderPreview(null)}
+      />
+      <AddWorkerCard
+        isOpen={isAddWorkerOpen && !billingLocked}
+        onOpenChange={(open) => {
+          if (open && !requireBillingUnlocked()) return;
+          setIsAddWorkerOpen(open);
+        }}
+        onAddWorker={handleAddWorker}
+        existingUsers={companyUsers.filter((u) => u.is_active)}
       />
 
       <SearchModal
@@ -2146,16 +2477,6 @@ export default function OfficeDashboard() {
           setIsWorkerDetailOpen(true);
           setDetailKey((k) => k + 1);
         }}
-      />
-
-      <CompanySettingsModal
-        isOpen={isCompanySettingsOpen}
-        onOpenChange={setIsCompanySettingsOpen}
-        companyName={companyNameOverride ?? company?.name ?? ''}
-        canManageBilling={user?.role === 'owner'}
-        subscriptionActive={company?.subscription_active ?? true}
-        hasStripeCustomer={!!company?.stripe_customer_id}
-        onSaved={setCompanyNameOverride}
       />
 
       <Dialog
@@ -2187,7 +2508,7 @@ export default function OfficeDashboard() {
                 Pošlji sporočilo
               </h2>
               <p className="text-slate-500 text-[13px] font-medium">
-                Izberite prejemnika in vrsto sporočila.
+                Imeti mora odprto kartico v prvem stolpcu.
               </p>
             </div>
 
@@ -2205,8 +2526,8 @@ export default function OfficeDashboard() {
                 >
                   <option value="" disabled>
                     {composeWorkerOptions.length === 0
-                      ? 'Ni delavcev z odprto kartico danes'
-                      : 'Izberite delavca'}
+                      ? 'Imeti mora odprto kartico v prvem stolpcu.'
+                      : 'Izberi terenca'}
                   </option>
                   {composeWorkerOptions.map((w) => (
                     <option key={w.id} value={w.id}>
@@ -2233,18 +2554,19 @@ export default function OfficeDashboard() {
               {/* GLASOVNO */}
               <button
                 type="button"
-                disabled={!composeWorkerId}
+                disabled={!composeWorkerId || billingLocked}
+                title={billingLocked ? billingLockedMessage : undefined}
                 onClick={() => {
-                  if (!composeWorkerId) return;
+                  if (!composeWorkerId || !requireBillingUnlocked()) return;
                   handleComposeMessage(composeWorkerId);
                 }}
-                className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-400 hover:border-blue-400 transition-all cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed group"
+                className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 transition-all cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed group"
               >
                 <div
                   className={`w-16 h-16 rounded-[20px] flex items-center justify-center border transition-all ${
                     composeWorkerId
-                      ? "bg-[#0A1128] border-[#0A1128] text-white shadow-lg shadow-[#0A1128]/20"
-                      : "bg-white border-slate-200 text-slate-400"
+                      ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-lg shadow-[#1B3A6B]/20"
+                      : "bg-white border-slate-400 text-slate-400"
                   }`}
                 >
                   <svg
@@ -2262,7 +2584,7 @@ export default function OfficeDashboard() {
                   </svg>
                 </div>
                 <span className={`text-[12px] font-bold uppercase tracking-wider transition-colors ${
-                  composeWorkerId ? "text-slate-700" : "text-slate-400"
+                  composeWorkerId && !billingLocked ? "text-slate-700" : "text-slate-400"
                 }`}>
                   GLASOVNO
                 </span>
@@ -2271,18 +2593,19 @@ export default function OfficeDashboard() {
               {/* TEKSTOVNO */}
               <button
                 type="button"
-                disabled={!composeWorkerId}
+                disabled={!composeWorkerId || billingLocked}
+                title={billingLocked ? billingLockedMessage : undefined}
                 onClick={() => {
-                  if (!composeWorkerId) return;
+                  if (!composeWorkerId || !requireBillingUnlocked()) return;
                   handleComposeMessage(composeWorkerId);
                 }}
-                className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-400 hover:border-blue-400 transition-all cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed group"
+                className="flex-1 flex flex-col items-center gap-3 py-4 rounded-[20px] bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 transition-all cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed group"
               >
                 <div
                   className={`w-16 h-16 rounded-[20px] flex items-center justify-center border transition-all ${
                     composeWorkerId
-                      ? "bg-[#0A1128] border-[#0A1128] text-white shadow-lg shadow-[#0A1128]/20"
-                      : "bg-white border-slate-200 text-slate-400"
+                      ? "bg-[#1B3A6B] border-[#1B3A6B] text-white shadow-lg shadow-[#1B3A6B]/20"
+                      : "bg-white border-slate-400 text-slate-400"
                   }`}
                 >
                   <svg
@@ -2300,7 +2623,7 @@ export default function OfficeDashboard() {
                   </svg>
                 </div>
                 <span className={`text-[12px] font-bold uppercase tracking-wider transition-colors ${
-                  composeWorkerId ? "text-slate-700" : "text-slate-400"
+                  composeWorkerId && !billingLocked ? "text-slate-700" : "text-slate-400"
                 }`}>
                   TEKSTOVNO
                 </span>
@@ -2322,6 +2645,21 @@ export default function OfficeDashboard() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-50/50">
+            {replyHasMore && (
+              <button
+                type="button"
+                onClick={loadOlderReplyMessages}
+                disabled={replyLoadingOlder}
+                className="mx-auto block rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {replyLoadingOlder ? 'Nalagam...' : 'Naloži starejša sporočila'}
+              </button>
+            )}
+            {replyMessagesOffline && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                Brez povezave. Besedilna sporočila bodo poslana, ko bo povezava znova na voljo.
+              </p>
+            )}
             {replyLoading && (
               <p className="text-xs text-slate-400 text-center">
                 {t('officeLoading')}
@@ -2330,6 +2668,14 @@ export default function OfficeDashboard() {
             {!replyLoading &&
               replyMessages.map((m) => {
                 const isMine = m.sender_id === user?.id;
+                const deliveryLabel =
+                  m.delivery_state === 'sending'
+                    ? 'Pošiljanje...'
+                    : m.delivery_state === 'queued'
+                      ? 'V čakalni vrsti'
+                      : m.delivery_state === 'failed'
+                        ? 'Ni poslano'
+                        : '';
                 return (
                   <div
                     key={m.id}
@@ -2342,16 +2688,38 @@ export default function OfficeDashboard() {
                           : 'bg-white border border-slate-200/60 rounded-tl-none text-slate-800'
                       }`}
                     >
+                      {m.message_type === 'voice' && m.attachment_id && (
+                        <VoiceMessagePlayer
+                          attachmentId={m.attachment_id}
+                          className="mb-2"
+                          audioClassName="h-9 w-full min-w-[180px]"
+                          errorClassName={`mt-1 text-[11px] font-medium ${
+                            isMine ? 'text-red-100' : 'text-red-600'
+                          }`}
+                        />
+                      )}
                       <p className={m.message_type === 'voice' ? 'italic' : ''}>
-                        {m.content}
+                        {replyMessageDisplayText(m)}
                       </p>
                     </div>
-                    <span className="text-[9px] text-slate-400 mt-1 px-1">
-                      {new Date(m.created_at).toLocaleTimeString('sl-SI', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
+                    <div className="mt-1 flex items-center gap-2 px-1 text-[9px] text-slate-400">
+                      <span>
+                        {new Date(m.created_at).toLocaleTimeString('sl-SI', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                      {deliveryLabel && <span>{deliveryLabel}</span>}
+                      {m.delivery_state === 'failed' && (
+                        <button
+                          type="button"
+                          onClick={() => retryFailedReplyMessage(m.id)}
+                          className="font-semibold text-red-500 hover:underline"
+                        >
+                          Ponovi
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -2366,18 +2734,27 @@ export default function OfficeDashboard() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleSendReply();
               }}
-              className="flex-1 h-10 text-xs px-3 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800"
+              disabled={billingLocked}
+              title={billingLocked ? billingLockedMessage : undefined}
+              className="flex-1 h-10 text-xs px-3 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             />
             <button
+              type="button"
               onClick={handleStartRecordReply}
-              title={t('workerVoice')}
-              className="w-10 h-10 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 flex items-center justify-center transition-colors shrink-0 cursor-pointer"
+              disabled={billingLocked || !communicationAllowed || replyVoiceRecorder.isRecording}
+              title={billingLocked ? billingLockedMessage : t('workerVoice')}
+              className={`w-10 h-10 rounded-xl border border-slate-200 text-slate-500 flex items-center justify-center transition-colors shrink-0 ${
+                !billingLocked && communicationAllowed && !replyVoiceRecorder.isRecording
+                  ? 'hover:bg-slate-50 cursor-pointer'
+                  : 'opacity-45 cursor-not-allowed'
+              }`}
             >
               <Mic className="w-4 h-4" />
             </button>
             <button
+              type="button"
               onClick={handleSendReply}
-              className="w-10 h-10 rounded-xl bg-[#0A1128] hover:bg-[#152042] text-white flex items-center justify-center transition-colors shrink-0 cursor-pointer"
+              className="w-10 h-10 rounded-xl bg-[#1B3A6B] hover:bg-[#142c52] text-white flex items-center justify-center transition-colors shrink-0 cursor-pointer"
             >
               <Send className="w-4 h-4" />
             </button>
@@ -2385,7 +2762,7 @@ export default function OfficeDashboard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isRecordingReply} onOpenChange={() => {}}>
+      <Dialog open={replyVoiceRecorder.isRecording} onOpenChange={() => {}}>
         <DialogContent
           showCloseButton={false}
           className="max-w-sm w-[90vw] bg-[#0F172A] text-white border-none"
@@ -2393,21 +2770,44 @@ export default function OfficeDashboard() {
           <div className="flex flex-col items-center text-center py-4">
             <div
               className={`w-16 h-16 rounded-full flex items-center justify-center mb-6 shadow-lg ${
-                isSavingVoiceReply ? "bg-slate-600" : "bg-red-600 animate-pulse"
+                replyVoiceRecorder.isSaving || replyVoiceRecorder.isPaused
+                  ? "bg-slate-600"
+                  : "bg-red-600 animate-pulse"
               }`}
             >
               <Mic className="w-8 h-8 text-white" />
             </div>
             <h3 className="font-bold text-base tracking-wide">
-              {isSavingVoiceReply ? t("workerVoiceSaving") : t("workerRecording")}
+              {replyVoiceRecorder.isSaving ? t("workerVoiceSaving") : t("workerRecording")}
             </h3>
-            {!isSavingVoiceReply && (
-              <Button
-                onClick={handleStopRecordReply}
-                className="mt-8 rounded-full h-11 px-6 bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs cursor-pointer"
-              >
-                {t("workerStopRecord")}
-              </Button>
+            <span className="mt-1 text-sm font-semibold text-slate-400">
+              00:{replyVoiceRecorder.seconds.toString().padStart(2, "0")}
+            </span>
+            {!replyVoiceRecorder.isSaving && (
+              <div className="mt-8 flex w-full justify-center gap-3">
+                {replyVoiceRecorder.isPaused ? (
+                  <Button
+                    onClick={replyVoiceRecorder.resume}
+                    className="h-11 rounded-full bg-white px-5 text-xs font-bold text-slate-800 hover:bg-slate-100"
+                  >
+                    {t("workerResumeRecord")}
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={replyVoiceRecorder.pause}
+                    disabled={!replyVoiceRecorder.canPause}
+                    className="h-11 rounded-full bg-white/10 px-5 text-xs font-bold text-white ring-1 ring-white/20 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {t("workerPauseRecord")}
+                  </Button>
+                )}
+                <Button
+                  onClick={replyVoiceRecorder.finish}
+                  className="h-11 rounded-full bg-white px-5 text-xs font-bold text-slate-800 hover:bg-slate-100"
+                >
+                  {t("workerStopRecord")}
+                </Button>
+              </div>
             )}
           </div>
         </DialogContent>

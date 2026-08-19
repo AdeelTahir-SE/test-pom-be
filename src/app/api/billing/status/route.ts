@@ -13,6 +13,10 @@ export const GET = withAuth(
     return ok({
       subscription_active: company.subscription_active,
       subscription_status: company.subscription_status,
+      subscription_current_period_end: company.subscription_current_period_end,
+      subscription_cancel_at_period_end: company.subscription_cancel_at_period_end,
+      subscription_cancel_at: company.subscription_cancel_at,
+      subscription_canceled_at: company.subscription_canceled_at,
       has_stripe_customer: !!company.stripe_customer_id,
       has_stripe_subscription: !!company.stripe_subscription_id,
     });

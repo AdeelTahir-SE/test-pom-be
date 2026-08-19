@@ -5,8 +5,11 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { parseJsonBody } from "@/lib/validation/schemas";
 import { createTimelineEvent } from "@/lib/timeline/events";
 import { notifyUser } from "@/lib/services/notifications";
+import { buildJobAssignedPushPayload } from "@/lib/notifications/payloads";
+import { createPushDeliveryJob } from "@/lib/notifications/deliveryJobs";
 import { JOB_STATUSES, type JobStatus } from "@/config/constants";
 import { assertValidWorker } from "@/lib/services/jobs";
+import { assertJobCardMutable } from "@/lib/services/jobCardFreeze";
 
 export const dynamic = "force-dynamic";
 
@@ -125,6 +128,12 @@ export const PATCH = withAuth<{ id: string }>(async (request, auth, { params }) 
     throw new ApiError("forbidden", "You do not have access to this job.");
   }
 
+  // Mark a16: freeze cards older than yesterday (all roles).
+  assertJobCardMutable({
+    scheduled_at: job.scheduled_at ?? null,
+    created_at: job.created_at,
+  });
+
   const input = isWorker
     ? await parseJsonBody(request, workerUpdateSchema)
     : await parseJsonBody(request, managerUpdateSchema);
@@ -212,6 +221,13 @@ export const PATCH = withAuth<{ id: string }>(async (request, auth, { params }) 
           title: "You have been assigned to a job",
           body: job.title,
           jobId: job.id,
+        });
+        await createPushDeliveryJob(db, {
+          companyId: auth.companyId,
+          userId: managerInput.worker_id,
+          messageId: null,
+          notificationType: "job_assigned",
+          payload: buildJobAssignedPushPayload({ jobId: job.id, jobTitle: job.title }),
         });
       }
     }

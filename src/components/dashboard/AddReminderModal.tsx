@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useLanguage } from "@/lib/useLanguage";
 import { normalizeRemindTime } from "@/lib/officeDate";
-import { isValidPhone, normalizePhone, toTelHref } from "@/lib/phone";
+import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { AuraPhoneInput } from "./PhoneInput";
 import { AttachmentDialog } from "./AttachmentDialog";
 import { Paperclip } from "lucide-react";
@@ -500,30 +500,21 @@ export function AddReminderModal({ isOpen, onOpenChange, defaultDate = "", onOpe
                     </span>
 
                     <div className="flex items-center gap-2.5 w-full">
-                      <a
-                        href={toTelHref(phoneNumber) ?? undefined}
-                        onClick={(e) => {
-                          if (!toTelHref(phoneNumber)) {
-                            e.preventDefault();
-                          }
-                        }}
-                        className="shrink-0"
+                      {/* Decorative only — secretary does not call from the form (Mark). */}
+                      <div
+                        className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center border transition-all ${
+                          phoneNumber && isValidPhone(phoneNumber)
+                            ? "bg-[#0A1128] border-[#0A1128] text-white shadow-md shadow-[#0A1128]/10"
+                            : "bg-white border-[#cbd5e1] text-slate-500"
+                        }`}
                         title={
-                          phoneNumber
-                            ? `${t("workerCall") || "Pokliči"} ${phoneNumber}`
-                            : t("modalPhoneEmptyTitle") || "Vnesite telefonsko številko"
+                          t("modalPhoneEmptyTitle") ||
+                          "Vnesite telefonsko številko"
                         }
+                        aria-hidden
                       >
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all ${
-                            phoneNumber && toTelHref(phoneNumber)
-                              ? "bg-[#0A1128] border-[#0A1128] text-white shadow-md shadow-[#0A1128]/10"
-                              : "bg-white border-[#cbd5e1] text-slate-500 hover:border-[#0A1128]/50"
-                          }`}
-                        >
-                          {phoneIcon}
-                        </div>
-                      </a>
+                        {phoneIcon}
+                      </div>
 
                       <div className="flex-1">
                         <AuraPhoneInput

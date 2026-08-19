@@ -133,7 +133,8 @@ export async function listNotesForCustomerName(
     .from("customer_notes")
     .select("*")
     .eq("customer_id", customer.id)
-    .order("created_at", { ascending: false });
+    // Mark: OPOMNIKI on card details — oldest first, newest at bottom.
+    .order("created_at", { ascending: true });
   if (notesError) {
     throw new ApiError("internal", "Failed to load customer notes.", notesError.message);
   }

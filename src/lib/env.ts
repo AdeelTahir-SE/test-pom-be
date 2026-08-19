@@ -38,6 +38,14 @@ export const env = {
   get mistralApiKey() {
     return optional("MISTRAL_API_KEY");
   },
+  get mistralDocumentExtractModel() {
+    return optional("MISTRAL_DOCUMENT_EXTRACT_MODEL") || "mistral-large-latest";
+  },
+  get documentLlmExtractTimeoutMs() {
+    const raw = optional("DOCUMENT_LLM_EXTRACT_TIMEOUT_MS");
+    const parsed = raw ? Number.parseInt(raw, 10) : 15_000;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 15_000;
+  },
   /** Optional — voice STT structuring after Deepgram (Mark: GPT-4o mini / 4.1). */
   get openaiApiKey() {
     return optional("OPENAI_API_KEY");
@@ -60,6 +68,9 @@ export const env = {
   get stripePriceIdMonthly() {
     return required("STRIPE_PRICE_ID_MONTHLY");
   },
+  get stripeAugust2026CouponId() {
+    return required("STRIPE_AUGUST_2026_COUPON_ID");
+  },
   /** Public site origin for Checkout success/cancel + Portal return URLs. */
   get appUrl() {
     return (
@@ -79,5 +90,17 @@ export const env = {
   /** Bearer token Vercel Cron sends to /api/cron/* routes. */
   get cronSecret() {
     return optional("CRON_SECRET");
+  },
+  get vapidPublicKey() {
+    return optional("NEXT_PUBLIC_VAPID_PUBLIC_KEY");
+  },
+  get vapidPrivateKey() {
+    return optional("VAPID_PRIVATE_KEY");
+  },
+  get vapidSubject() {
+    return optional("VAPID_SUBJECT") || "mailto:notifications@pomocnik.net";
+  },
+  get pushWorkerSecret() {
+    return optional("PUSH_WORKER_SECRET") || optional("CRON_SECRET");
   },
 };

@@ -5,6 +5,8 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { parseJsonBody } from "@/lib/validation/schemas";
 import { createTimelineEvent } from "@/lib/timeline/events";
 import { notifyUser } from "@/lib/services/notifications";
+import { buildJobAssignedPushPayload } from "@/lib/notifications/payloads";
+import { createPushDeliveryJob } from "@/lib/notifications/deliveryJobs";
 import { findOrCreateCustomer } from "@/lib/services/customers";
 import { JOB_STATUSES } from "@/config/constants";
 import { assertValidWorker } from "@/lib/services/jobs";
@@ -29,6 +31,8 @@ export const GET = withAuth(async (request, auth) => {
   const db = getAdminClient();
   const url = new URL(request.url);
   const statusFilter = url.searchParams.get("status");
+  const customerFilter = url.searchParams.get("customer")?.trim() ?? "";
+  const workerFilter = url.searchParams.get("worker_id")?.trim() ?? "";
 
   if (statusFilter && !(JOB_STATUSES as readonly string[]).includes(statusFilter)) {
     throw new ApiError("bad_request", "Invalid status filter.");
@@ -40,6 +44,19 @@ export const GET = withAuth(async (request, auth) => {
       .from("job_assignments")
       .select("job_id")
       .eq("worker_id", auth.userId);
+    if (assignError) {
+      throw new ApiError("internal", "Failed to load assignments.", assignError.message);
+    }
+    workerJobIds = (assignments ?? []).map((a) => a.job_id);
+    if (workerJobIds.length === 0) {
+      return ok({ jobs: [] });
+    }
+  } else if (workerFilter) {
+    // Office DB smart table: click Terenec → only that worker's jobs (Mark a13).
+    const { data: assignments, error: assignError } = await db
+      .from("job_assignments")
+      .select("job_id")
+      .eq("worker_id", workerFilter);
     if (assignError) {
       throw new ApiError("internal", "Failed to load assignments.", assignError.message);
     }
@@ -68,6 +85,10 @@ export const GET = withAuth(async (request, auth) => {
   if (!includeHidden) query = query.is("hidden_at", null);
   if (statusFilter) query = query.eq("status", statusFilter);
   if (workerJobIds) query = query.in("id", workerJobIds);
+  // Office DB smart table: click Stranka → that customer's job history.
+  if (customerFilter && (auth.role === "owner" || auth.role === "manager")) {
+    query = query.ilike("customer", customerFilter);
+  }
 
   const { data: jobs, error: jobsError } = await query;
   if (jobsError) {
@@ -84,7 +105,48 @@ export const GET = withAuth(async (request, auth) => {
   }
 
   const workerByJobId = new Map((assignments ?? []).map((a) => [a.job_id, a.worker_id]));
-  const result = (jobs ?? []).map((j) => ({ ...j, worker_id: workerByJobId.get(j.id) ?? null }));
+  const workerIds = [...new Set([...workerByJobId.values()])];
+  const creatorIds = [
+    ...new Set(
+      (jobs ?? [])
+        .map((j) => (typeof j.created_by === "string" ? j.created_by : null))
+        .filter((id): id is string => !!id)
+    ),
+  ];
+  const workerInfoById = new Map<string, { full_name: string; phone: string | null }>();
+  const userInfoById = new Map<string, { full_name: string; phone: string | null }>();
+  const userIds = [...new Set([...workerIds, ...creatorIds])];
+  if (userIds.length > 0) {
+    const { data: users, error: usersError } = await db
+      .from("users")
+      .select("id, full_name, phone")
+      .eq("company_id", auth.companyId)
+      .in("id", userIds);
+    if (usersError) {
+      throw new ApiError("internal", "Failed to load users for jobs.", usersError.message);
+    }
+    for (const u of users ?? []) {
+      userInfoById.set(u.id, { full_name: u.full_name, phone: u.phone });
+    }
+  }
+  for (const workerId of workerIds) {
+    const user = userInfoById.get(workerId);
+    if (user) workerInfoById.set(workerId, user);
+  }
+
+  const result = (jobs ?? []).map((j) => {
+    const workerId = workerByJobId.get(j.id) ?? null;
+    const worker = workerId ? workerInfoById.get(workerId) : undefined;
+    const creator =
+      typeof j.created_by === "string" ? userInfoById.get(j.created_by) : undefined;
+    return {
+      ...j,
+      worker_id: workerId,
+      worker_name: worker?.full_name ?? null,
+      worker_phone: worker?.phone ?? null,
+      created_by_name: creator?.full_name ?? null,
+    };
+  });
 
   return ok({ jobs: result });
 });
@@ -182,9 +244,22 @@ export const POST = withAuth(
         body: job.title,
         jobId: job.id,
       });
+      await createPushDeliveryJob(db, {
+        companyId: auth.companyId,
+        userId: input.worker_id,
+        messageId: null,
+        notificationType: "job_assigned",
+        payload: buildJobAssignedPushPayload({ jobId: job.id, jobTitle: job.title }),
+      });
     }
 
-    return created({ job: { ...job, worker_id: input.worker_id ?? null } });
+    return created({
+      job: {
+        ...job,
+        worker_id: input.worker_id ?? null,
+        created_by_name: creator?.full_name ?? null,
+      },
+    });
   },
   { roles: ["owner", "manager"] }
 );

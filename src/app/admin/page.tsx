@@ -14,6 +14,13 @@ interface AdminCompany {
   name: string;
   business_module: string;
   subscription_active: boolean;
+  subscription_status: string | null;
+  subscription_current_period_end: string | null;
+  subscription_cancel_at_period_end: boolean;
+  subscription_cancel_at: string | null;
+  subscription_canceled_at: string | null;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
   created_at: string;
   user_count: number;
   job_count: number;
@@ -117,6 +124,7 @@ export default function AdminDashboard() {
                 <th className="px-5 py-3">Company</th>
                 <th className="px-5 py-3">Module</th>
                 <th className="px-5 py-3">Status</th>
+                <th className="px-5 py-3">Stripe</th>
                 <th className="px-5 py-3 text-right">Users</th>
                 <th className="px-5 py-3 text-right">Jobs</th>
                 <th className="px-5 py-3">Created</th>
@@ -125,7 +133,7 @@ export default function AdminDashboard() {
             <tbody>
               {companies.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-5 py-10 text-center text-slate-400">
+                  <td colSpan={7} className="px-5 py-10 text-center text-slate-400">
                     No companies yet.
                   </td>
                 </tr>
@@ -150,6 +158,20 @@ export default function AdminDashboard() {
                       </Badge>
                     </button>
                   </td>
+                  <td className="px-5 py-3.5 text-xs text-slate-500">
+                    <div className="flex flex-col gap-1">
+                      <span>{c.subscription_status ?? "no status"}</span>
+                      <span className="text-[10px] text-slate-400">
+                        {c.stripe_customer_id ? "customer" : "no customer"} ·{" "}
+                        {c.stripe_subscription_id ? "subscription" : "no subscription"}
+                      </span>
+                      {c.subscription_cancel_at_period_end && c.subscription_current_period_end && (
+                        <span className="text-[10px] font-medium text-amber-600">
+                          cancels {new Date(c.subscription_current_period_end).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-5 py-3.5 text-right text-slate-600">{c.user_count}</td>
                   <td className="px-5 py-3.5 text-right text-slate-600">{c.job_count}</td>
                   <td className="px-5 py-3.5 text-slate-400">
@@ -173,6 +195,18 @@ export default function AdminDashboard() {
                 <p className="text-xs text-slate-500 capitalize">
                   {detail.company.business_module.replace(/_/g, " ")} · {detail.job_count} jobs
                 </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  Stripe: {detail.company.subscription_status ?? "no status"} ·{" "}
+                  {detail.company.stripe_customer_id ?? "no customer"} ·{" "}
+                  {detail.company.stripe_subscription_id ?? "no subscription"}
+                </p>
+                {detail.company.subscription_cancel_at_period_end &&
+                  detail.company.subscription_current_period_end && (
+                    <p className="mt-1 text-xs font-medium text-amber-700">
+                      Cancels on{" "}
+                      {new Date(detail.company.subscription_current_period_end).toLocaleDateString()}
+                    </p>
+                  )}
               </div>
 
               <div className="flex flex-col gap-2">

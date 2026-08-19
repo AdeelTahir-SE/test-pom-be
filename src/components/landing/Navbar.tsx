@@ -3,6 +3,8 @@
 import React from "react";
 import Link from "next/link";
 import { useLanguage } from "@/lib/useLanguage";
+import { Logo } from "@/components/Logo";
+import { useLandingSession } from "@/lib/useLandingSession";
 
 function scrollToSection(id: string) {
   const el = document.getElementById(id);
@@ -15,6 +17,9 @@ function scrollToSection(id: string) {
 
 export function Navbar() {
   const { t } = useLanguage();
+  const session = useLandingSession();
+  const loginHref = session.status === "authenticated" ? session.dashboardHref : "/login";
+  const loginLabel = session.status === "authenticated" ? t("navDashboard") : t("navLogin");
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50">
@@ -23,8 +28,8 @@ export function Navbar() {
           className="relative overflow-hidden w-full max-w-[1232px] mx-auto flex flex-col justify-center"
           style={{
             boxSizing: "border-box",
-            padding: "12px 16px",
-            height: "60px",
+            padding: "10px 18px",
+            height: "72px",
             background: "rgba(255, 255, 255, 0.002)",
             border: "1px solid rgba(255, 255, 255, 0.9)",
             boxShadow: "0px 14px 38px -22px rgba(15, 23, 42, 0.42), inset 0px 1px 0px 1px #FFFFFF",
@@ -39,39 +44,22 @@ export function Navbar() {
           <div 
             className="relative z-10 flex flex-row justify-between items-center w-full"
             style={{
-              height: "34px",
+              height: "52px",
               alignSelf: "stretch",
             }}
           >
             {/* Brand Logo */}
             <Link 
               href="/" 
-              className="flex items-center justify-center bg-white border border-[#E2E8F0] shadow-[0px_1px_2px_rgba(15,23,42,0.04),inset_0px_1px_0px_1px_#FFFFFF] rounded-full hover:-translate-y-0.5 transition-all duration-300"
+              className="flex items-center justify-center bg-white border border-[#E2E8F0] shadow-[0px_1px_2px_rgba(15,23,42,0.04),inset_0px_1px_0px_1px_#FFFFFF] rounded-[6px] hover:-translate-y-0.5 transition-all duration-300"
               style={{
                 boxSizing: "border-box",
-                padding: "8px 16px",
-                width: "111px",
-                height: "34px",
+                padding: "6px 16px 6px 8px",
+                width: "184px",
+                height: "52px",
               }}
             >
-              <span 
-                style={{
-                  width: "77px",
-                  height: "16px",
-                  fontFamily: "'Inter', sans-serif",
-                  fontStyle: "normal",
-                  fontWeight: 400,
-                  fontSize: "12px",
-                  lineHeight: "16px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  textAlign: "center",
-                  color: "#334155",
-                }}
-              >
-                pomocnik.net
-              </span>
+              <Logo className="h-10 w-10" textClassName="text-[18px]" />
             </Link>
 
             {/* Desktop Navigation Links */}
@@ -198,8 +186,8 @@ export function Navbar() {
                   {t("navSupport")}
                 </span>
               </Link>
-              <Link 
-                href="/login" 
+              <Link
+                href={loginHref}
                 className="hover:-translate-y-0.5 transition-all duration-300"
                 style={{
                   boxSizing: "border-box",
@@ -208,7 +196,8 @@ export function Navbar() {
                   justifyContent: "center",
                   alignItems: "center",
                   padding: "8px 16px",
-                  width: "72px",
+                  width: "auto",
+                  minWidth: "72px",
                   height: "34px",
                   background: "linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)",
                   border: "1px solid #1D4ED8",
@@ -218,7 +207,6 @@ export function Navbar() {
               >
                 <span
                   style={{
-                    width: "38px",
                     height: "16px",
                     fontFamily: "'Inter', sans-serif",
                     fontStyle: "normal",
@@ -230,9 +218,10 @@ export function Navbar() {
                     justifyContent: "center",
                     textAlign: "center",
                     color: "#FFFFFF",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  {t("navLogin")}
+                  {loginLabel}
                 </span>
               </Link>
             </div>

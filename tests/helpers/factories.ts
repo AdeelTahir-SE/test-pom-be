@@ -75,14 +75,25 @@ export interface CreatedCompanyUser {
 // (POST /api/users) — exercises the real endpoint rather than inserting directly.
 export async function createCompanyUser(
   ownerToken: string,
-  overrides: Partial<{ email: string; password: string; full_name: string; role: string }> = {}
+  overrides: Partial<{
+    email: string;
+    password: string;
+    full_name: string;
+    role: string;
+    phone: string;
+  }> = {}
 ): Promise<CreatedCompanyUser> {
   const email = overrides.email ?? uniqueEmail("member");
-  const password = overrides.password ?? "MemberPass123!";
   const role = overrides.role ?? "worker";
+  // Company-set 4-digit PIN for both Pisarna (manager) and Teren (worker).
+  const password = overrides.password ?? "1111";
+  const phone = overrides.phone ?? "051-111-111";
 
   const res = await api.post<{
-    data?: { user: { id: string; role: string }; temporary_password?: string };
+    data?: {
+      user: { id: string; role: string; login_pin?: string | null };
+      temporary_password?: string;
+    };
   }>("/api/users", {
     token: ownerToken,
     body: {
@@ -90,12 +101,14 @@ export async function createCompanyUser(
       password,
       full_name: overrides.full_name ?? "Test Member",
       role,
+      phone,
     },
   });
 
-  // Workers always get an auto-generated login code; managers may get a
-  // temporary password when none was supplied. Prefer that over the request body.
-  const actualPassword = res.body.data?.temporary_password ?? password;
+  const actualPassword =
+    res.body.data?.temporary_password ??
+    res.body.data?.user?.login_pin ??
+    password;
 
   return {
     status: res.status,
@@ -199,18 +212,20 @@ export async function setFileOcrText(fileId: string, text: string): Promise<void
   const db = getAdminClient();
   const { data: file, error: readError } = await db
     .from("job_files")
-    .select("file_name")
+    .select("file_name, attachment_type")
     .eq("id", fileId)
     .maybeSingle();
   if (readError) throw new Error(`Failed to read file for OCR: ${readError.message}`);
 
   const { enrichDocumentFromOcr } = await import("@/lib/documents/preview");
-  const enrichment = enrichDocumentFromOcr(text, file?.file_name ?? "");
+  const enrichment = enrichDocumentFromOcr(text, file?.file_name ?? "", {
+    attachmentType: file?.attachment_type ?? null,
+  });
 
   const { error } = await db
     .from("job_files")
     .update({
-      ocr_text: text,
+      ocr_text: enrichment.should_store_ocr_text ? text : null,
       document_type: enrichment.document_type,
       document_preview: enrichment.document_preview,
     })

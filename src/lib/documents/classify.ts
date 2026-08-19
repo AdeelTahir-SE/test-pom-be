@@ -2,26 +2,31 @@ import { DOCUMENT_TYPES, type DocumentType } from "@/config/constants";
 
 export type { DocumentType };
 
+type EmittedDocumentType = Exclude<DocumentType, "other" | "receipt">;
+
 interface TypeRule {
-  type: Exclude<DocumentType, "other">;
-  /** Whole-phrase / strong signals — worth 3 points each. */
+  type: EmittedDocumentType;
   strong: RegExp[];
-  /** Weaker keywords — 1 point each. */
   weak: RegExp[];
+  negative?: RegExp[];
 }
 
-// Deterministic MVP rules (Add-on 1 §2). No AI. EN + SI/HR.
 const RULES: TypeRule[] = [
   {
     type: "invoice",
     strong: [
       /\binvoice\s*(no\.?|number|#|nr\.?)?\b/i,
-      /\bra[cč]un\b/i,
+      /\bra[cč]un(?!al)/i,              // vse oblike računa, ne pa računalnik
+      /\bfaktur[ae]?\b/i,
+      /\brechnung\b/i,
+      /\bfattur[ae]\b/i,
+      /\bricevuta\b/i,
+      /\breceipt\b/i,
       /\bbroj\s+ra[cč]una\b/i,
       /\bšt\.?\s*ra[cč]una\b/i,
       /\binvoice\s*date\b/i,
       /\bdatum\s+ra[cč]una\b/i,
-      /\bprodavatelj\b/i,
+      /\bprodavatelj\w*\b/i,
     ],
     weak: [
       /\bvat\b/i,
@@ -29,45 +34,149 @@ const RULES: TypeRule[] = [
       /\bpdv\b/i,
       /\btotal\b/i,
       /\bamount\s*due\b/i,
-      /\bznesek\b/i,
+      /\bznesek\w*\b/i,
       /\bukupan\s+iznos\b/i,
-      /\bkupac\b/i,
+      /\bkupc\w*\b/i,
+    ],
+    negative: [
+      /\bpogodb\w*\b/i,
+      /\bcontract\b/i,
+      /\bdobavnic\w*\b/i,
+      /\bdelivery\s*note\b/i,
+      /\bservisn\w*\s*(list|poro[cč]ilo)\b/i,
+      /\bservice\s*report\b/i,
     ],
   },
   {
     type: "delivery_note",
-    strong: [/\bdelivery\s*note\b/i, /\bdobavnica\b/i, /\bpacking\s*list\b/i],
-    weak: [/\bdelivered\b/i, /\bdostavljeno\b/i, /\bitems?\s*delivered\b/i],
+    strong: [
+      /\bdelivery\s*note\b/i,
+      /\bdobavnic\w*\b/i,
+      /\bspremnic\w*\b/i,
+      /\btovorni\s+list\b/i,
+      /\bCMR\b/,
+      /\bprevozni\s+nalog\b/i,
+      /\bodpremnic\w*\b/i,
+      /\blieferschein\b/i,
+      /\bbegleitpapier\b/i,
+      /\bfrachtbrief\b/i,
+      /\btransportauftrag\b/i,
+      /\bversandschein\b/i,
+      /\botpremnic\w*\b/i,
+      /\bdostavnic\w*\b/i,
+      /\bteretnic\w*\b/i,
+      /\bprijevozni\s+nalog\b/i,
+      /\bbolla\s+di\s+consegna\b/i,
+      /\bdocumento\s+di\s+trasporto\b/i,
+      /\blettera\s+di\s+vettura\b/i,
+      /\bordine\s+di\s+trasporto\b/i,
+      /\bpacking\s*list\b/i,
+    ],
+    weak: [/\bdeliver\w*\b/i, /\bdostavljen\w*\b/i, /\bitems?\s*delivered\b/i],
+    negative: [
+      /\bšt\.?\s*ra[cč]una\b/i,
+      /\bbroj\s+ra[cč]una\b/i,
+      /\bznesek\w*\b/i,
+      /\bamount\s*due\b/i,
+      /\bukupan\s+iznos\b/i,
+    ],
   },
   {
     type: "contract",
     strong: [
       /\bcontract\b/i,
-      /\bpogodb[aeio]\b/i,
+      /\bpogodb\w*\b/i,
+      /\bdogovor\w*\b/i,
+      /\bkoncesij\w*\b/i,
+      /\baneks\w*\b/i,
+      /\bvertrag\b/i,
+      /\bugovor\w*\b/i,
+      /\bcontratto\b/i,
+      /\baccordo\b/i,
+      /\bconvenzione\b/i,
+      /\bappendice\b/i,
       /\bvzorec\s+pogodbe\b/i,
       /\bagreement\b/i,
     ],
-    weak: [/\bparties\b/i, /\bstrank[aei]\b/i, /\bduration\b/i, /\btrajanje\b/i, /\bsofinanc/i],
+    weak: [/\bparties\b/i, /\bstrank\w*\b/i, /\btrajan\w*\b/i, /\bsofinanc/i],
+    negative: [
+      /\bšt\.?\s*ra[cč]una\b/i,
+      /\bbroj\s+ra[cč]una\b/i,
+      /\binvoice\s*(no\.?|number|#|nr\.?)?\b/i,
+    ],
   },
   {
     type: "service_report",
     strong: [
       /\bservice\s*report\b/i,
-      /\bservisn[ia]\s*(list|poro[cč]ilo)\b/i,
+      /\bservis\b/i,
+      /\bservisn\w*\s*(list|poro[cč]ilo)\b/i,
+      /\bdelovni\s+nalog\b/i,
+      /\bnalog\b/i,
+      /\bporo[cč]il\w*\b/i,
+      /\bprevzemni\s+zapisnik\b/i,
+      /\bzapisnik(?:\s+o\s+pregledu)?\b/i,
+      /\bobra[cč]un(?:\s+stro[sš]kov)?\b/i,
+      /\bprotokoll\b/i,
+      /\barbeitsauftrag\b/i,
+      /\bauftrag\b/i,
+      /\bbericht\b/i,
+      /\bübergabeprotokoll\b/i,
+      /\binspektionsbericht\b/i,
+      /\babrechnung\b/i,
+      /\bkostenabrechnung\b/i,
+      /\bnebenkostenabrechnung\b/i,
+      /\bradni\s+nalog\b/i,
+      /\bizvje[sš]taj\b/i,
+      /\bzapisnik\s+primopredaje\b/i,
+      /\bzapisnik\s+pregleda\b/i,
+      /\bobra[cč]un\s+tro[sš]kova\b/i,
+      /\bverbale\b/i,
+      /\bservizio\b/i,
+      /\bordine\s+di\s+lavoro\b/i,
+      /\brapporto\b/i,
+      /\bverbale\s+di\s+consegna\b/i,
+      /\brapporto\s+di\s+ispezione\b/i,
+      /\brendiconto\b/i,
+      /\briparto\s+spese\b/i,
       /\bperformed\s*work\b/i,
-      /\bopravljeno\s*delo\b/i,
+      /\bopravljen\w*\s*del\w*\b/i,
     ],
-    weak: [/\btechnician\b/i, /\btehnik\b/i, /\bmaintenance\b/i, /\bvzdrževanje\b/i],
+    weak: [/\btechnician\w*\b/i, /\btehnik\w*\b/i, /\bmaintenance\b/i, /\bvzdrževanj\w*\b/i],
+    negative: [
+      /\bšt\.?\s*ra[cč]una\b/i,
+      /\bbroj\s+ra[cč]una\b/i,
+      /\bznesek\w*\b/i,
+      /\bamount\s*due\b/i,
+    ],
   },
   {
     type: "offer",
-    strong: [/\bquotation\b/i, /\bquote\b/i, /\bponudba\b/i, /\boffer\s*(no\.?|number|#)?\b/i],
-    weak: [/\bvalid\s*until\b/i, /\bvelja\s*do\b/i, /\bestimated\s*cost\b/i],
-  },
-  {
-    type: "receipt",
-    strong: [/\breceipt\b/i, /\bpotrdilo\b/i, /\bfiskaln/i, /\bcash\s*receipt\b/i],
-    weak: [/\bpaid\b/i, /\bpla[cč]ano\b/i, /\bthank\s*you\s*for\s*your\s*purchase\b/i],
+    strong: [
+      /\bponudb\w*\b/i,        // ponudba, ponudbe, ponudbi, ponudbo...
+      /\bponud[aeiou]\b/i,     // ponuda, ponude, ponudi, ponudo (HR)
+      /\bangebot\w*\b/i,
+      /\bofferte\b/i,
+      /\bofferta\b/i,
+      /\bpreventivo\b/i,
+      /\bproforma\b/i,
+      /\bquotazione\b/i,
+      /\bPREDRACUN_OFFER\b/,
+    ],
+    weak: [
+      /\boffer\s*(?:no\.?|number|#)?\b/i,
+      /\bquotation\b/i,
+      /\bquote\b/i,
+      /\bvalid\s*until\b/i,
+      /\bvelja\s*do\b/i,
+      /\bestimated\s*cost\b/i,
+    ],
+    negative: [
+      /\bšt\.?\s*ra[cč]una\b/i,
+      /\bbroj\s+ra[cč]una\b/i,
+      /\binvoice\s*date\b/i,
+      /\bdatum\s+ra[cč]una\b/i,
+    ],
   },
 ];
 
@@ -81,19 +190,36 @@ function scoreText(text: string, rule: TypeRule): number {
   for (const re of rule.weak) {
     if (re.test(text)) score += 1;
   }
+  if (rule.negative) {
+    for (const re of rule.negative) {
+      if (re.test(text)) score -= 3;
+    }
+  }
   return score;
 }
 
-/**
- * Classify OCR text into one document category (Add-on 1 §1–§2).
- * Returns `other` when confidence is too low.
- */
 export function classifyDocument(ocrText: string): DocumentType {
-  // "transakcijski račun" = bank account, not an invoice title.
-  const text = ocrText
+  // Bank-account "račun" / IBAN must not score as invoice; predračun → offer.
+  const original = ocrText.trim();
+  const hasClearInvoiceHeading =
+    /^\s*(?:#\s*)?ra[cč]un\s*(?:št\.?|st\.?|številka|stevilka|nr\.?|no\.?|:|$)/im.test(original) ||
+    /^\s*(?:#\s*)?invoice\s*(?:no\.?|number|#|nr\.?|:|$)/im.test(original);
+  const text = original
     .trim()
-    .replace(/transakcijsk[iaei]?\s+ra[cč]un\w*/gi, "BANK_ACCOUNT");
+    .replace(
+      /\b(?:žiro|tekoči|transakcijski|osnovni|varčevalni|devizni|poslovni|osebni|gospodinjski)\s*ra[cč]un\w*\b/gi,
+      "BANK_ACCOUNT"
+    )
+    .replace(/\b(?:IBAN|SWIFT|BIC)\b/gi, "BANK_CODE")
+    .replace(/\bpredra[cč]un\w*\b/gi, "PREDRACUN_OFFER");
+
   if (!text) return "other";
+
+  // Predračun usually means offer, unless the document itself is clearly an invoice
+  // and predračun only appears as payment/context text.
+  if (text.includes("PREDRACUN_OFFER") && !hasClearInvoiceHeading) {
+    return "offer";
+  }
 
   let best: DocumentType = "other";
   let bestScore = 0;

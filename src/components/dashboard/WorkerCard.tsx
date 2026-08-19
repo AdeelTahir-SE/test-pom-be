@@ -4,12 +4,15 @@ import React from "react";
 import { Worker, TaskItem } from "@/lib/mockData";
 import { useLanguage } from "@/lib/useLanguage";
 
-// ── Attachment icon — COMPLETED tasks (lighter, 13×15) ───────────────────────
+const CLIP_PATH =
+  "M0.5 7.54918L6.15229 1.78552C7.83319 0.0714946 10.5585 0.0714946 12.2394 1.78552C13.9203 3.49954 13.9201 6.27867 12.2392 7.99269L5.71734 14.6431C4.59674 15.7858 2.7802 15.7856 1.6596 14.6429C0.538995 13.5002 0.53872 11.6478 1.65932 10.5051L8.1812 3.85471C8.7415 3.28337 9.65041 3.28337 10.2107 3.85471C10.771 4.42605 10.7706 5.35216 10.2103 5.9235L4.55802 11.6872";
+
+/** Completed + file: tiny, barely visible. */
 function AttachmentIconCompleted() {
   return (
     <svg width="13" height="15" viewBox="0 0 14 16" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path
-        d="M0.5 7.54918L6.15229 1.78552C7.83319 0.0714946 10.5585 0.0714946 12.2394 1.78552C13.9203 3.49954 13.9201 6.27867 12.2392 7.99269L5.71734 14.6431C4.59674 15.7858 2.7802 15.7856 1.6596 14.6429C0.538995 13.5002 0.53872 11.6478 1.65932 10.5051L8.1812 3.85471C8.7415 3.28337 9.65041 3.28337 10.2107 3.85471C10.771 4.42605 10.7706 5.35216 10.2103 5.9235L4.55802 11.6872"
+        d={CLIP_PATH}
         stroke="#151E23"
         strokeOpacity="0.15"
         strokeLinecap="round"
@@ -19,14 +22,29 @@ function AttachmentIconCompleted() {
   );
 }
 
-// ── Attachment icon — INCOMPLETE tasks (darker, 14×16) ───────────────────────
-function AttachmentIconIncomplete() {
+/** Upcoming, attachment still needed: larger / darker. */
+function AttachmentIconNeeded() {
   return (
     <svg width="14" height="16" viewBox="0 0 14 16" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path
-        d="M0.5 7.54918L6.15229 1.78552C7.83319 0.0714946 10.5585 0.0714946 12.2394 1.78552C13.9203 3.49954 13.9201 6.27867 12.2392 7.99269L5.71734 14.6431C4.59674 15.7858 2.7802 15.7856 1.6596 14.6429C0.538995 13.5002 0.53872 11.6478 1.65932 10.5051L8.1812 3.85471C8.7415 3.28337 9.65041 3.28337 10.2107 3.85471C10.771 4.42605 10.7706 5.35216 10.2103 5.9235L4.55802 11.6872"
+        d={CLIP_PATH}
         stroke="#151E23"
-        strokeOpacity="0.3"
+        strokeOpacity="0.45"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Upcoming, file already uploaded: green so it’s obvious. */
+function AttachmentIconAdded() {
+  return (
+    <svg width="14" height="16" viewBox="0 0 14 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d={CLIP_PATH}
+        stroke="#41C46D"
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -42,9 +60,19 @@ interface TaskRowProps {
   disabled?: boolean;
 }
 
-/** Show clip only when a file actually exists. */
+/**
+ * Completed: clip only if a file was actually added.
+ * Upcoming: clip if attachment is required (or a file already exists).
+ */
 function showsAttachmentIcon(task: TaskItem): boolean {
-  return !!task.hasAttachment;
+  if (task.completed) return !!task.hasAttachment;
+  return !!task.requiresAttachment || !!task.hasAttachment;
+}
+
+function attachmentClipFor(task: TaskItem) {
+  if (task.completed) return <AttachmentIconCompleted />;
+  if (task.hasAttachment) return <AttachmentIconAdded />;
+  return <AttachmentIconNeeded />;
 }
 
 function TaskRowTrailing({
@@ -55,10 +83,12 @@ function TaskRowTrailing({
   onAttachmentClick?: () => void;
 }) {
   const showClip = showsAttachmentIcon(task);
-  const clip = task.completed ? <AttachmentIconCompleted /> : <AttachmentIconIncomplete />;
+  const clip = attachmentClipFor(task);
+  // Mark: incomplete clip opens "Dodaj priponko". Completed tiny clip is display-only.
+  const canOpenAttach = !task.completed && !!onAttachmentClick;
 
   const clipNode = showClip ? (
-    onAttachmentClick ? (
+    canOpenAttach ? (
       <button
         type="button"
         className="shrink-0 inline-flex bg-transparent border-none p-0 outline-none cursor-pointer"
@@ -66,8 +96,8 @@ function TaskRowTrailing({
           e.stopPropagation();
           onAttachmentClick();
         }}
-        title="Priponka"
-        aria-label="Priponka"
+        title="Dodaj priponko"
+        aria-label="Dodaj priponko"
       >
         {clip}
       </button>

@@ -6,6 +6,7 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { parseJsonBody } from "@/lib/validation/schemas";
 import { createTimelineEvent } from "@/lib/timeline/events";
 import type { CompanyUserContext } from "@/types/domain";
+import { assertJobCardMutable } from "@/lib/services/jobCardFreeze";
 
 export const dynamic = "force-dynamic";
 
@@ -24,12 +25,17 @@ async function loadForMutation(db: SupabaseClient, auth: CompanyUserContext, ite
 
   const { data: job, error: jobError } = await db
     .from("jobs")
-    .select("id, status, company_seq")
+    .select("id, status, company_seq, scheduled_at, created_at")
     .eq("id", item.job_id)
     .maybeSingle();
   if (jobError || !job) {
     throw new ApiError("internal", "Failed to load parent job.", jobError?.message);
   }
+
+  assertJobCardMutable({
+    scheduled_at: job.scheduled_at ?? null,
+    created_at: job.created_at,
+  });
 
   // Immutability Rule §60: completed Jobs forbid "changing checklist completion".
   if (job.status === "completed") {

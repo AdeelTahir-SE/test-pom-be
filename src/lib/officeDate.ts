@@ -17,6 +17,12 @@ export function formatSiDate(d: Date): string {
   return `${day}.${m}.${d.getFullYear()}`;
 }
 
+export function formatSiDateShort(d: Date): string {
+  const day = String(d.getDate()).padStart(2, "0");
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  return `${day}.${m}`;
+}
+
 export function formatSiTime(d: Date): string {
   return d.toLocaleTimeString("sl-SI", { hour: "2-digit", minute: "2-digit" });
 }
@@ -31,6 +37,22 @@ export function normalizeRemindTime(raw: string | null | undefined): string | nu
   const minute = Number(match[2]);
   if (hour > 23 || minute > 59) return null;
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+/**
+ * Minutes from midnight for PISARNA schedule sort (Mark: big remind time).
+ * Missing/invalid time → +Infinity so those cards sort last.
+ */
+export function remindTimeSortMinutes(raw: string | null | undefined): number {
+  const normalized = normalizeRemindTime(raw);
+  if (!normalized) return Number.POSITIVE_INFINITY;
+  const [h, m] = normalized.split(":").map(Number);
+
+if (h === undefined || m === undefined) {
+  return Number.POSITIVE_INFINITY;
+}
+
+return h * 60 + m;
 }
 
 /** `YYYY-MM-DD` → `DD.MM.YYYY` for display. */
@@ -138,6 +160,60 @@ export function localDayToScheduledAt(d: Date): string {
 
 export function boardTodayKey(): string {
   return toIsoDate(startOfLocalDay());
+}
+
+/**
+ * Mark a16 #4: new communication (send/reply) only on the current calendar day.
+ * History stays visible; listening stays allowed.
+ */
+export function isCommunicationDayAllowed(
+  dayKey: string,
+  todayKey: string = boardTodayKey()
+): boolean {
+  return dayKey === todayKey;
+}
+
+/** True when this job's board day is today — worker/office may send messages. */
+export function isJobCommunicationAllowed(
+  job: { scheduled_at: string | null; created_at: string },
+  todayKey: string = boardTodayKey()
+): boolean {
+  return isCommunicationDayAllowed(jobBoardDayKey(job), todayKey);
+}
+
+/** Shift a `YYYY-MM-DD` key by N calendar days (local date arithmetic). */
+export function shiftDayKey(dayKey: string, deltaDays: number): string {
+  const parsed = parseFlexibleDate(dayKey);
+  if (!parsed) return dayKey;
+  return toIsoDate(addDays(parsed, deltaDays));
+}
+
+/**
+ * Board day for a job card: scheduled day, else created day (Mark a16 freeze).
+ */
+export function jobBoardDayKey(job: {
+  scheduled_at: string | null;
+  created_at: string;
+}): string {
+  return (
+    isoToLocalDayKey(job.scheduled_at) ??
+    isoToLocalDayKey(job.created_at) ??
+    boardTodayKey()
+  );
+}
+
+/**
+ * Mark a16: cards for today + yesterday stay mutable for everyone;
+ * cards from 2+ calendar days ago are frozen (anti-falsification).
+ * Based on board day vs current day — not created_at + 48h wall clock.
+ */
+export function isJobCardMutable(
+  job: { scheduled_at: string | null; created_at: string },
+  todayKey: string = boardTodayKey()
+): boolean {
+  const cardDay = jobBoardDayKey(job);
+  const earliestEditable = shiftDayKey(todayKey, -1);
+  return cardDay >= earliestEditable;
 }
 
 const CALENDAR_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;

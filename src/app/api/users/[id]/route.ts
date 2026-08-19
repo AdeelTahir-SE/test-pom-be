@@ -13,7 +13,7 @@ export const GET = withAuth<{ id: string }>(
     const db = getAdminClient();
     const { data: userRow, error } = await db
       .from("users")
-      .select("id, email, full_name, role, phone, is_active, created_at")
+      .select("id, email, full_name, role, phone, is_active, created_at, login_pin")
       .eq("id", params.id)
       .eq("company_id", auth.companyId)
       .maybeSingle();
@@ -24,7 +24,9 @@ export const GET = withAuth<{ id: string }>(
     if (!userRow) {
       throw new ApiError("not_found", "User not found.");
     }
-    return ok({ user: userRow });
+    const user =
+      userRow.role === "owner" ? { ...userRow, login_pin: null } : userRow;
+    return ok({ user });
   },
   { roles: ["owner", "manager"] }
 );
@@ -94,14 +96,16 @@ export const PATCH = withAuth<{ id: string }>(
       .update(updates)
       .eq("id", params.id)
       .eq("company_id", auth.companyId)
-      .select("id, email, full_name, role, phone, is_active, created_at")
+      .select("id, email, full_name, role, phone, is_active, created_at, login_pin")
       .single();
 
     if (updateError || !updated) {
       throw new ApiError("internal", "Failed to update user.", updateError?.message);
     }
 
-    return ok({ user: updated });
+    const user =
+      updated.role === "owner" ? { ...updated, login_pin: null } : updated;
+    return ok({ user });
   },
   { roles: ["owner"] }
 );

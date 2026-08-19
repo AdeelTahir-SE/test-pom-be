@@ -1,4 +1,3 @@
-import { randomBytes, randomInt } from "node:crypto";
 import { withAuth } from "@/lib/http/handler";
 import { created, ok, ApiError } from "@/lib/http/responses";
 import { getAdminClient } from "@/lib/supabase/admin";
@@ -8,56 +7,61 @@ import { USER_ROLES } from "@/config/constants";
 import { sendWelcomeEmail } from "@/lib/integrations/resend";
 import { normalizePhone } from "@/lib/phone";
 
-// Base64url, no padding — safe to display/copy, no ambiguous characters lost.
-// Used for managers/owners only — a real credential worth 8+ characters.
-function generateTemporaryPassword(): string {
-  return randomBytes(12).toString("base64url");
-}
-
-// Workers get a short login code instead of a real password (1 letter + 2
-// digits, e.g. "K42") — this is an internal, low-sensitivity comms tool, so
-// ease of remembering beats password strength for this role. Emailed to the
-// worker on account creation.
-const CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ"; // no I/O — avoid 1/0 confusion
-function generateWorkerLoginCode(): string {
-  const letter = CODE_LETTERS[randomInt(0, CODE_LETTERS.length)]!;
-  const digits = String(randomInt(0, 100)).padStart(2, "0");
-  return `${letter}${digits}`;
-}
+const USER_LIST_SELECT =
+  "id, email, full_name, role, phone, is_active, created_at, login_pin";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/users — list all users in the caller's company (owner + manager per matrix §12).
+// login_pin is intentionally returned: staff PINs are a shared office channel
+// (Mark), not private accounts — the company must always see them.
 export const GET = withAuth(
   async (_request, auth) => {
     const db = getAdminClient();
     const { data, error } = await db
       .from("users")
-      .select("id, email, full_name, role, phone, is_active, created_at")
+      .select(USER_LIST_SELECT)
       .eq("company_id", auth.companyId)
       .order("created_at", { ascending: true });
 
     if (error) {
       throw new ApiError("internal", "Failed to load users.", error.message);
     }
-    return ok({ users: data ?? [] });
+    // Never expose the company/owner credential. login_pin is only for
+    // staff (Pisarna/Teren) that the company set — Mark.
+    const users = (data ?? []).map((u) =>
+      u.role === "owner" ? { ...u, login_pin: null } : u
+    );
+    return ok({ users });
   },
   { roles: ["owner", "manager"] }
 );
 
-const createUserSchema = z.object({
-  email: z.string().trim().toLowerCase().email(),
-  // Optional: if omitted, the backend generates one and returns it once
-  // (data.temporary_password) so the office admin can share it with the
-  // manager. Ignored entirely for workers — see generateWorkerLoginCode().
-  password: z.string().min(8, "Password must be at least 8 characters.").optional().or(z.literal("")),
-  full_name: z.string().trim().min(1, "Full name is required."),
-  role: z.enum(USER_ROLES as unknown as [string, ...string[]]),
-  phone: z.string().trim().min(1).optional(),
-});
+const createUserSchema = z
+  .object({
+    email: z.string().trim().toLowerCase().email(),
+    // Company-set 4-digit PIN = Auth password (login: email + PIN). Mark.
+    // Owner self-registration stays 8+ elsewhere — this form is staff only.
+    password: z
+      .string()
+      .regex(/^\d{4}$/, "Staff password must be exactly 4 digits."),
+    full_name: z.string().trim().min(1, "Full name is required."),
+    role: z.enum(USER_ROLES as unknown as [string, ...string[]]),
+    // Phone required for Pisarna/Teren (Mark).
+    phone: z.string().trim().min(1, "Phone is required."),
+  })
+  .superRefine((data, ctx) => {
+    if (data.role === "owner") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["role"],
+        message: "Cannot create an additional owner account.",
+      });
+    }
+  });
 
-// POST /api/users — owner creates a manager or worker (spec §12: User Management = Owner only).
-// Managers may NOT create users — only Owner has this permission in the matrix.
+// POST /api/users — owner creates a manager (Pisarna) or worker (Teren).
+// Cannot create another owner (only one company account).
 export const POST = withAuth(
   async (request, auth) => {
     const input = await parseJsonBody(request, createUserSchema);
@@ -68,19 +72,17 @@ export const POST = withAuth(
 
     const db = getAdminClient();
 
-    // Workers always get an auto-generated short login code — the manual
-    // password field doesn't apply to this role, even if one was somehow
-    // submitted. Managers/owners keep the existing real-password flow.
-    const generatedPassword =
-      input.role === "worker"
-        ? generateWorkerLoginCode()
-        : input.password
-          ? null
-          : generateTemporaryPassword();
+    // PIN is the real Auth password — staff login = email + this PIN (Mark).
+    const authPassword = input.password.trim();
+    const loginPin = authPassword;
+    const phone = normalizePhone(input.phone);
+    if (!phone) {
+      throw new ApiError("bad_request", "Phone is required.");
+    }
 
     const { data: createdAuthUser, error: createUserError } = await db.auth.admin.createUser({
       email: input.email,
-      password: input.role === "worker" ? generatedPassword! : (input.password || generatedPassword!),
+      password: authPassword,
       email_confirm: true,
     });
 
@@ -102,10 +104,11 @@ export const POST = withAuth(
         email: input.email,
         full_name: input.full_name,
         role: input.role,
-        phone: normalizePhone(input.phone) ?? null,
+        phone,
         is_active: true,
+        login_pin: loginPin,
       })
-      .select("id, email, full_name, role, phone, is_active, created_at")
+      .select(USER_LIST_SELECT)
       .single();
 
     if (userError || !userRow) {
@@ -113,11 +116,8 @@ export const POST = withAuth(
       throw new ApiError("internal", "Failed to create user.", userError?.message);
     }
 
-    // Best-effort welcome email carrying the credential — never blocks or
-    // fails account creation if this doesn't send (no API key configured
-    // yet, delivery failure, etc.); the credential is still returned below
-    // and shown once in the UI as a fallback.
-    if (generatedPassword) {
+    // Best-effort welcome email — never blocks account creation.
+    {
       const { data: companyRow } = await db
         .from("companies")
         .select("name")
@@ -126,18 +126,13 @@ export const POST = withAuth(
       await sendWelcomeEmail({
         to: input.email,
         fullName: input.full_name,
-        credential: generatedPassword,
+        credential: authPassword,
         role: input.role as "worker" | "manager",
         companyName: companyRow?.name ?? "pomocnik.net",
       });
     }
 
-    return created({
-      user: userRow,
-      // Only present when the caller didn't supply a password — shown exactly
-      // once so the office admin can hand it to the new worker/manager.
-      ...(generatedPassword ? { temporary_password: generatedPassword } : {}),
-    });
+    return created({ user: userRow });
   },
   { roles: ["owner"] }
 );

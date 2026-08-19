@@ -83,6 +83,7 @@ describe("Local smoke — 02-01 remaining gaps", () => {
         full_name: "Call Me Worker",
         role: "worker",
         phone: "+386 41 555 666",
+        password: "1111",
       },
     });
     expect(create.status).toBe(201);

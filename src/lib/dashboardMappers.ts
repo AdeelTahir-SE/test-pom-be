@@ -22,9 +22,14 @@ export interface ApiJob {
   started_at: string | null;
   completed_at: string | null;
   worker_id: string | null;
+  /** Present on list responses for office DB (Mark a13 Terenec column). */
+  worker_name?: string | null;
+  worker_phone?: string | null;
   created_at: string;
   hidden_at?: string | null;
   hidden_by?: string | null;
+  created_by?: string | null;
+  created_by_name?: string | null;
 }
 
 export function jobNumber(job: Pick<ApiJob, "company_seq">): string {
@@ -49,6 +54,8 @@ export interface ApiUser {
   role: "owner" | "manager" | "worker";
   phone: string | null;
   is_active: boolean;
+  /** Company-set login PIN (workers: 4 chars). Visible to owner/manager only. */
+  login_pin?: string | null;
 }
 
 export interface ApiOfficeReminder {
@@ -65,6 +72,8 @@ export interface ApiOfficeReminder {
   link: string | null;
   order_index: number;
   hidden_at: string | null;
+  created_by?: string | null;
+  created_by_name?: string | null;
   created_at: string;
 }
 
@@ -161,9 +170,18 @@ export function reminderToCard(
         ? "zavrnjeno"
         : "caka_potrditev",
     workerId: "",
-    workerName: t("cardSenderOffice"),
+    workerName: r.created_by_name?.trim() || t("cardSenderOffice"),
     hasEmail: r.actions.includes("email"),
-    hasAttachment: r.actions.includes("attachment"),
+    // Paperclip only when a file is actually stored (Mark a16 #2).
+    hasAttachment: (() => {
+      if (!r.link) return false;
+      try {
+        const linkData = JSON.parse(r.link) as { storagePath?: string };
+        return !!linkData.storagePath;
+      } catch {
+        return false;
+      }
+    })(),
     attachmentName: (() => {
       if (!r.link) return "";
       try {
@@ -220,6 +238,7 @@ export function communicationToMessage(
     worker_name: string | null;
     sender_name?: string | null;
     recipient_name?: string | null;
+    attachment_id?: string | null;
   },
   t: Translate
 ): Message {
@@ -235,5 +254,6 @@ export function communicationToMessage(
     type: m.message_type === "voice" ? "glasovno" : "tekst",
     // Inner bold title = job name on the TEREN card (Mark).
     targetTask: m.job_title?.trim() || undefined,
+    attachmentId: m.attachment_id ?? null,
   };
 }

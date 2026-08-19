@@ -191,11 +191,12 @@ describe("Phase 7 — Files & Storage", () => {
   });
 
   it(
-    "rejects uploads that would exceed 6 files total on a job",
+    "rejects uploads that would exceed 15 files total on a job",
     async () => {
       const { owner, jobId } = await setupCompanyWithWorkerAndJob();
 
-      for (let batch = 0; batch < 2; batch++) {
+      // 5 batches × 3 = 15 (MAX_FILES_PER_JOB); next upload must fail.
+      for (let batch = 0; batch < 5; batch++) {
         const files = await Promise.all([0, 1, 2].map((i) => makeJpeg(100 + batch * 10 + i, 120)));
         const res = await api.post(`/api/jobs/${jobId}/files`, {
           token: owner.accessToken,
@@ -206,14 +207,15 @@ describe("Phase 7 — Files & Storage", () => {
         expect(res.status).toBe(201);
       }
 
-      const seventh = await makeJpeg(150, 150);
-      const res = await api.post(`/api/jobs/${jobId}/files`, {
+      const sixteenth = await makeJpeg(150, 150);
+      const res = await api.post<{ error?: { message?: string } }>(`/api/jobs/${jobId}/files`, {
         token: owner.accessToken,
-        body: uploadForm([{ buffer: seventh, name: "seventh.jpg", type: "image/jpeg" }]),
+        body: uploadForm([{ buffer: sixteenth, name: "sixteenth.jpg", type: "image/jpeg" }]),
       });
       expect(res.status).toBe(400);
+      expect(res.body.error?.message).toMatch(/15/);
     },
-    60_000
+    120_000
   );
 
   it("hiding a file removes it from the default list but the record and signed URL still work", async () => {

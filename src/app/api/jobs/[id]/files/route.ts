@@ -2,12 +2,20 @@ import { withAuth } from "@/lib/http/handler";
 import { created, ok, ApiError } from "@/lib/http/responses";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { loadJobWithAccess } from "@/lib/services/jobAccess";
+import { assertJobCardMutable } from "@/lib/services/jobCardFreeze";
 import { createTimelineEvent } from "@/lib/timeline/events";
-import { sha256Hex, buildStoragePath, uploadToStorage, getSignedUrl } from "@/lib/storage/upload";
+import {
+  sha256Hex,
+  buildStoragePath,
+  uploadToStorage,
+  deleteFromStorage,
+  getSignedUrl,
+} from "@/lib/storage/upload";
 import { processImage } from "@/lib/storage/image";
 import { classifyUpload } from "@/lib/services/files";
 import { extractText } from "@/lib/integrations/mistral";
-import { enrichDocumentFromOcr } from "@/lib/documents/preview";
+import { enrichDocumentFromText } from "@/lib/documents/preview";
+import { extractOfficeText, isOfficeDocument } from "@/lib/documents/officeParse";
 import { LIMITS } from "@/config/constants";
 
 export const dynamic = "force-dynamic";
@@ -59,10 +67,12 @@ interface PreparedUpload {
   fileSize: number;
   fileHash: string;
   upload: { path: string; buffer: Buffer; contentType: string }[];
-  // OCR runs on whatever we actually stored (Document OCR add-on §4): the
-  // processed main image for images, the untouched bytes for PDFs. Docs
-  // (doc/docx/txt) aren't in the OCR-supported input list, so null for those.
-  ocrInput: { buffer: Buffer; contentType: string } | null;
+  // Text for classification/preview. Images and PDFs use Mistral OCR; Office/TXT
+  // documents use direct text extraction.
+  textExtract:
+    | { kind: "ocr"; buffer: Buffer; contentType: string }
+    | { kind: "office"; buffer: Buffer; fileName: string }
+    | null;
 }
 
 // POST /api/jobs/[id]/files — multipart upload (field name "files", repeatable).
@@ -73,6 +83,10 @@ interface PreparedUpload {
 export const POST = withAuth<{ id: string }>(async (request, auth, { params }) => {
   const db = getAdminClient();
   const { job } = await loadJobWithAccess(db, auth, params.id);
+  assertJobCardMutable({
+    scheduled_at: (job.scheduled_at as string | null) ?? null,
+    created_at: String(job.created_at),
+  });
 
   const formData = await request.formData();
   const files = formData.getAll("files").filter((f): f is File => f instanceof File);
@@ -112,10 +126,12 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     }
   }
 
+  // Soft-hidden files do not count toward the job cap (Mark a13).
   const { count: existingCount, error: countError } = await db
     .from("job_files")
     .select("id", { count: "exact", head: true })
-    .eq("job_id", params.id);
+    .eq("job_id", params.id)
+    .is("hidden_at", null);
   if (countError) {
     throw new ApiError("internal", "Failed to check job file count.", countError.message);
   }
@@ -164,7 +180,7 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
             { path: storagePath, buffer: main.buffer, contentType: main.contentType },
             { path: thumbnailPath, buffer: thumbnail.buffer, contentType: thumbnail.contentType },
           ],
-          ocrInput: { buffer: main.buffer, contentType: main.contentType },
+          textExtract: { kind: "ocr", buffer: main.buffer, contentType: main.contentType },
         };
       }
 
@@ -179,20 +195,48 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
         fileSize: originalBuffer.length,
         fileHash,
         upload: [{ path: storagePath, buffer: originalBuffer, contentType }],
-        ocrInput:
-          classification.attachmentType === "pdf" ? { buffer: originalBuffer, contentType } : null,
+        textExtract: isOfficeDocument(file.name)
+          ? { kind: "office", buffer: originalBuffer, fileName: file.name }
+          : classification.attachmentType === "pdf"
+            ? { kind: "ocr", buffer: originalBuffer, contentType }
+            : null,
       };
     })
   );
 
-  // Upload everything to storage first (valid only if storage succeeds AND
-  // the DB insert succeeds — Supabase Storage add-on §6). Independent writes,
-  // so run them concurrently too.
-  await Promise.all(
-    prepared.flatMap((item) =>
-      item.upload.map((target) => uploadToStorage(db, target.path, target.buffer, target.contentType))
-    )
-  );
+  // Upload everything to storage first. If any storage upload fails, remove
+  // all objects uploaded by this batch. If the DB insert fails, the same
+  // cleanup runs below.
+  const uploadedStoragePaths: string[] = [];
+
+  try {
+    await Promise.all(
+      prepared.flatMap((item) =>
+        item.upload.map(async (target) => {
+          await uploadToStorage(
+            db,
+            target.path,
+            target.buffer,
+            target.contentType
+          );
+
+          uploadedStoragePaths.push(target.path);
+        })
+      )
+    );
+  } catch (error) {
+    await Promise.all(
+      uploadedStoragePaths.map((storagePath) =>
+        deleteFromStorage(db, storagePath)
+      )
+    );
+
+    throw new ApiError(
+      "internal",
+      "Failed to upload files.",
+      error instanceof Error ? error.message : undefined
+    );
+  }
 
   const { data: inserted, error: insertError } = await db
     .from("job_files")
@@ -213,8 +257,12 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     .select();
 
   if (insertError || !inserted) {
-    // Storage objects for this batch are now orphaned — spec explicitly
-    // tolerates this: "orphan files ignored; no cleanup system in MVP."
+    await Promise.all(
+      uploadedStoragePaths.map((storagePath) =>
+        deleteFromStorage(db, storagePath)
+      )
+    );
+
     throw new ApiError(
       "internal",
       "Files were uploaded but could not be recorded.",
@@ -237,50 +285,67 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
     });
   }
 
-  // OCR + Add-on 1 classification must never block the upload response
+  // Text extract + Add-on 1 classification must never block the upload response
   // (Failure Rule §9 + Mark: card updates were waiting 15–30s on Mistral).
   // Files are returned immediately; enrichment runs in the background.
-  const ocrInputByHash = new Map(prepared.map((item) => [item.fileHash, item.ocrInput]));
+  const textExtractByHash = new Map(prepared.map((item) => [item.fileHash, item.textExtract]));
   const companyId = auth.companyId;
   const jobId = params.id;
   const jobSeq = job.company_seq;
 
   void Promise.all(
     inserted.map(async (record) => {
-      const ocrInput = ocrInputByHash.get(record.file_hash);
-      if (!ocrInput) return;
+      const textExtract = textExtractByHash.get(record.file_hash);
+      if (!textExtract) {
+        return;
+      }
 
       try {
-        const text = await extractText(ocrInput.buffer, ocrInput.contentType);
-        if (!text) return;
+        let text: string | null = null;
+        if (textExtract.kind === "office") {
+          text = await extractOfficeText(textExtract.buffer, textExtract.fileName);
+        } else {
+          text = await extractText(textExtract.buffer, textExtract.contentType);
+        }
+        if (!text) {
+          return;
+        }
 
-        const enrichment = enrichDocumentFromOcr(text, record.file_name);
         const isImage = record.attachment_type === "image";
-        // Photos often OCR into noise → "Dokument". Only publish typed docs
-        // (invoice/contract/…) or any PDF enrichment. Images with type "other"
-        // keep ocr_text only — no fake label, no second timeline row (Mark a9).
-        const publishClassification = !isImage || enrichment.document_type !== "other";
+        const enrichment = await enrichDocumentFromText(text, record.file_name, {
+          attachmentType: record.attachment_type,
+        });
+        // Photos often OCR into noise. For untyped images, keep only document
+        // metadata/thumbnail and discard OCR text so search and previews stay clean.
+        const publishTyped = !isImage || enrichment.document_type !== "other";
 
         const { data: updated, error: updateError } = await db
           .from("job_files")
           .update({
-            ocr_text: text,
-            ...(publishClassification
-              ? {
-                  document_type: enrichment.document_type,
-                  document_preview: enrichment.document_preview,
-                }
-              : {}),
+            ocr_text: enrichment.should_store_ocr_text ? text : null,
+            document_preview: enrichment.document_preview,
+            ...(publishTyped
+              ? { document_type: enrichment.document_type }
+              : { document_type: "other" }),
           })
           .eq("id", record.id)
           .select()
           .single();
         if (updateError || !updated) {
-          console.error("[ocr_update_failed]", record.id, updateError?.message);
+          console.log("[ocr] Failed to update enriched file", {
+            companyId,
+            jobId,
+            fileId: record.id,
+            fileName: record.file_name,
+            documentType: enrichment.document_type,
+            error: updateError?.message ?? "No updated row returned.",
+          });
           return;
         }
 
-        if (!publishClassification) return;
+        if (!publishTyped) {
+          return;
+        }
 
         await createTimelineEvent(db, {
           companyId,
@@ -294,10 +359,18 @@ export const POST = withAuth<{ id: string }>(async (request, auth, { params }) =
             file_name: record.file_name,
             document_type: enrichment.document_type,
             document_preview: enrichment.document_preview,
+            extract_kind: textExtract.kind,
           },
         });
       } catch (err) {
-        console.error("[ocr_background_failed]", record.id, err);
+        console.log("[ocr] Background enrichment failed", {
+          companyId,
+          jobId,
+          fileId: record.id,
+          fileName: record.file_name,
+          extractKind: textExtract.kind,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     })
   );

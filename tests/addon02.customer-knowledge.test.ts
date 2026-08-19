@@ -83,7 +83,7 @@ describe("Add-on 2 — Customer Knowledge (API)", () => {
     expect(res.status).toBe(400);
   });
 
-  it("creates a note, finds it by normalized name, newest first", async () => {
+  it("creates a note, finds it by normalized name, oldest first", async () => {
     const { owner } = await setupOwnerAndWorker();
     const customerName = "Novak Servis d.o.o.";
 
@@ -112,8 +112,8 @@ describe("Add-on 2 — Customer Knowledge (API)", () => {
     );
     expect(list.status).toBe(200);
     expect(list.body.data?.notes).toHaveLength(2);
-    expect(list.body.data?.notes[0]!.note).toBe("Dog is friendly.");
-    expect(list.body.data?.notes[1]!.note).toBe("Always use the side entrance.");
+    expect(list.body.data?.notes[0]!.note).toBe("Always use the side entrance.");
+    expect(list.body.data?.notes[1]!.note).toBe("Dog is friendly.");
   });
 
   it("soft-blocks duplicate notes unless force=true", async () => {

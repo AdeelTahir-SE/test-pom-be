@@ -7,6 +7,7 @@ import { api } from "@/lib/api-client";
 import { useLanguage } from "@/lib/useLanguage";
 import type { JobStatus } from "@/config/constants";
 import { Paperclip, GripVertical, X } from "lucide-react";
+import { toTelHref } from "@/lib/phone";
 import {
   DndContext,
   closestCenter,
@@ -34,13 +35,19 @@ import {
   AuraTextarea,
   auraCard,
 } from "./AuraForm";
-import { describeTimelineEvent, attachmentDisplayTitle, shouldShowTimelineEvent } from "@/lib/timeline/describe";
+import { describeTimelineEvent, shouldShowTimelineEvent } from "@/lib/timeline/describe";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
 import { fetchJobFiles, fetchJobTimeline } from "@/lib/query/office";
 import { parseNoteText } from "./CustomerNotesBanner";
+import { AddCustomerNoteDialog } from "./AddCustomerNoteDialog";
+import {
+  AttachmentLightbox,
+  type AttachmentLightboxItem,
+} from "./AttachmentLightbox";
 import { formatSiDateFromIso, formatSiTimeFromIso } from "@/lib/officeDate";
 import { isOptimisticId } from "@/lib/optimisticId";
+import { JOB_CARD_FROZEN_MESSAGE } from "@/lib/services/jobCardFreeze";
 
 interface CustomerNoteDto {
   id: string;
@@ -55,6 +62,7 @@ interface WorkerDetailModalProps {
   jobId: string | null;
   cardNumber?: string | null;
   customerName?: string | null;
+  jobTitle?: string | null;
   scheduledAt?: string | null;
   inlineDrawer?: boolean;
   onRefresh?: () => void;
@@ -64,6 +72,8 @@ interface WorkerDetailModalProps {
   onDeleteCard?: () => void;
   canManageCustomerNotes?: boolean;
   onChecklistReorder?: (orderedIds: string[]) => void;
+  /** Mark a16: false when card board-day is 2+ days before today. */
+  cardMutable?: boolean;
 }
 
 interface TaskItem {
@@ -81,12 +91,17 @@ interface AttachmentItem {
   time: string;
   date: string;
   url: string | null;
+  thumbnailUrl: string | null;
   ocrText: string | null;
   documentType: string | null;
   documentPreview: string | null;
   checklistItemId: string | null;
   attachmentType: string | null;
 }
+
+type WorkerPreviewAttachment = AttachmentLightboxItem & {
+  id: string;
+};
 
 interface TimelineItem {
   id: string;
@@ -285,6 +300,7 @@ export function WorkerDetailModal({
   jobId,
   cardNumber = null,
   customerName = null,
+  jobTitle = null,
   scheduledAt = null,
   inlineDrawer = false,
   onRefresh,
@@ -293,6 +309,7 @@ export function WorkerDetailModal({
   onDeleteCard,
   canManageCustomerNotes = false,
   onChecklistReorder,
+  cardMutable = true,
 }: WorkerDetailModalProps) {
   const { t, lang } = useLanguage();
   const [addStepOpen, setAddStepOpen] = React.useState(false);
@@ -302,7 +319,7 @@ export function WorkerDetailModal({
   const [confirmUploading, setConfirmUploading] = React.useState(false);
   const [confirmStepFile, setConfirmStepFile] = React.useState<File | null>(null);
   const [deleteStepId, setDeleteStepId] = React.useState<string | null>(null);
-  const [previewAttachment, setPreviewAttachment] = React.useState<AttachmentItem | null>(null);
+  const [previewAttachment, setPreviewAttachment] = React.useState<WorkerPreviewAttachment | null>(null);
   const [attachOnlyOpen, setAttachOnlyOpen] = React.useState(false);
   const [attachOnlyFile, setAttachOnlyFile] = React.useState<File | null>(null);
   const [attachOnlyUploading, setAttachOnlyUploading] = React.useState(false);
@@ -328,6 +345,16 @@ export function WorkerDetailModal({
     }, 2500);
   }, []);
 
+  const showFrozenToast = React.useCallback(() => {
+    showToast(JOB_CARD_FROZEN_MESSAGE);
+  }, [showToast]);
+
+  const guardMutable = React.useCallback((): boolean => {
+    if (cardMutable) return true;
+    showFrozenToast();
+    return false;
+  }, [cardMutable, showFrozenToast]);
+
   React.useEffect(() => {
     return () => {
       if (toastTimeoutRef.current) {
@@ -347,9 +374,6 @@ export function WorkerDetailModal({
   const completeAfterSaveRef = React.useRef(false);
   const ocrTimeoutRef = React.useRef<number | null>(null);
   const [isAddNoteOpen, setIsAddNoteOpen] = React.useState(false);
-  const [newNoteText, setNewNoteText] = React.useState("");
-  const [newNoteType, setNewNoteType] = React.useState<"once" | "always">("once");
-  const [newNoteSaving, setNewNoteSaving] = React.useState(false);
   const [tasksSyncNonce, setTasksSyncNonce] = React.useState(0);
 
   const fromWorkerTasks = (workerTasks: Worker["tasks"]): TaskItem[] => {
@@ -403,6 +427,7 @@ export function WorkerDetailModal({
         time: formatSiTimeFromIso(f.created_at),
         date: formatSiDateFromIso(f.created_at),
         url: f.signed_url,
+        thumbnailUrl: f.thumbnail_signed_url ?? null,
         ocrText: f.ocr_text,
         documentType: f.document_type,
         documentPreview: f.document_preview,
@@ -525,52 +550,6 @@ export function WorkerDetailModal({
     }
   }
 
-  const submitNote = React.useCallback(async (force: boolean, isRetry = false): Promise<boolean> => {
-    const noteText = newNoteText.trim();
-    if (!noteText) return false;
-    if (!resolvedCustomerName) {
-      showToast("Naročnik je obvezen za dodajanje opombe.");
-      return false;
-    }
-    const result = await postCustomerNote(noteText, newNoteType, resolvedCustomerName, force, isRetry);
-    if (result.shouldRetry) {
-      const okAnyway = window.confirm(t("customerNotesDuplicateConfirm"));
-      if (okAnyway) {
-        return submitNote(true, true);
-      }
-      return false;
-    }
-    if (result.success) {
-      setNewNoteText("");
-      setIsAddNoteOpen(false);
-      if (mountedRef.current) {
-        void loadCustomerNotes(resolvedCustomerName);
-        // .catch dodan: gre za "fire and forget" klic, ki brez tega ne bi bil
-        // ujet nikjer navzgor po klicni verigi (unhandled promise rejection).
-        void refreshFilesAndTimeline().catch((err) => {
-          if (mountedRef.current) showToast(getErrorMessage(err));
-        });
-      }
-    }
-    return result.success;
-  }, [newNoteText, newNoteType, resolvedCustomerName, jobId, t, showToast, loadCustomerNotes, refreshFilesAndTimeline]);
-
-  const handleAddNote = async (force = false): Promise<void> => {
-    if (newNoteSaving) return;
-    setNewNoteSaving(true);
-    try {
-      await submitNote(force);
-    } catch (err) {
-      if (mountedRef.current) {
-        showToast(getErrorMessage(err));
-      }
-    } finally {
-      if (mountedRef.current) {
-        setNewNoteSaving(false);
-      }
-    }
-  };
-
   React.useEffect(() => {
     if (!isOpen) {
       setCustomerNotes([]);
@@ -646,7 +625,7 @@ export function WorkerDetailModal({
         if (mountedRef.current) {
           setCustomerNotes((prev) => {
             const newNote: CustomerNoteDto = { id: `temp-${Date.now()}`, note, created_at: new Date().toISOString() };
-            return [newNote, ...prev];
+            return [...prev, newNote];
           });
           void loadCustomerNotes(customer);
         }
@@ -687,6 +666,7 @@ export function WorkerDetailModal({
   );
 
   const handleTaskDragEnd = async (event: DragEndEvent): Promise<void> => {
+    if (!guardMutable()) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     if (!jobReady || tasks.some((t) => isOptimisticId(t.id))) {
@@ -741,6 +721,7 @@ export function WorkerDetailModal({
   };
 
   const handleToggleComplete = async (task: TaskItem): Promise<void> => {
+    if (!guardMutable()) return;
     try {
       const res = await api.patch<{ item: { id: string; is_completed: boolean; completed_at: string | null } }>(
         `/api/checklist-items/${task.id}`,
@@ -761,6 +742,13 @@ export function WorkerDetailModal({
           const todo = updated.filter((t) => !t.completed);
           return [...done, ...todo];
         });
+        // Mark a13: each completed step must appear on timeline immediately
+        // (same invalidate path as file upload/hide).
+        if (jobId) {
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.job.timeline(jobId),
+          });
+        }
         onRefresh?.();
       } else {
         showToast(res.error?.message ?? t("modalConfirmStepMissingTitle"));
@@ -773,6 +761,7 @@ export function WorkerDetailModal({
   };
 
   const handleDeleteTask = async (taskId: string): Promise<void> => {
+    if (!guardMutable()) return;
     try {
       const res = await api.delete(`/api/checklist-items/${taskId}`);
       if (!mountedRef.current) return;
@@ -790,6 +779,7 @@ export function WorkerDetailModal({
   };
 
   const handleAddStep = async (e: React.FormEvent): Promise<void> => {
+    if (!guardMutable()) return;
     e.preventDefault();
     if (!stepText.trim() || !jobId) return;
     if (!jobReady) {
@@ -869,12 +859,14 @@ export function WorkerDetailModal({
   };
 
   const openAttachDialog = (stepId?: string | null) => {
+    if (!guardMutable()) return;
     setAttachForStepId(stepId ?? null);
     setAttachOnlyFile(null);
     setAttachOnlyOpen(true);
   };
 
   const handleHideAttachment = async (fileId: string): Promise<void> => {
+    if (!guardMutable()) return;
     try {
       const res = await api.patch(`/api/files/${fileId}`, { hidden: true });
       if (!mountedRef.current) return;
@@ -896,31 +888,13 @@ export function WorkerDetailModal({
       }
     }
   };
-  const handleForceDownload = async (urlStr: string, fileName: string): Promise<void> => {
-    try {
-      const res = await fetch(urlStr);
-      const blob = await res.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(blobUrl);
-    } catch {
-      const a = document.createElement("a");
-      a.href = urlStr;
-      a.download = fileName;
-      a.target = "_blank";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    }
-  };
-
   const handleOpenPreview = async (att: AttachmentItem) => {
-    setPreviewAttachment(att);
+    setPreviewAttachment({
+      id: att.id,
+      url: att.url ?? "",
+      fileName: att.name,
+      attachmentType: att.attachmentType,
+    });
     try {
       const res = await api.get<{ file: { signed_url: string } }>(`/api/files/${att.id}`);
       if (res.status >= 200 && res.status < 300 && res.data?.file?.signed_url) {
@@ -928,7 +902,7 @@ export function WorkerDetailModal({
           if (!prev || prev.id !== att.id) return prev;
           return {
             ...prev,
-            url: res?.data?.file?.signed_url ?? null,
+            url: res?.data?.file?.signed_url ?? "",
           };
         });
       }
@@ -939,8 +913,6 @@ export function WorkerDetailModal({
 
   const firstIncompleteId = tasks.find((t) => !t.completed)?.id ?? null;
   const taskIds = React.useMemo(() => tasks.map((t) => t.id), [tasks]);
-  const canPreviewAttachment = (att: AttachmentItem): boolean =>
-    !!att.documentPreview && !!att.documentType && att.documentType !== "other";
 
   if (!worker) {
     if (!isOpen) return null;
@@ -977,7 +949,8 @@ export function WorkerDetailModal({
 
     return (
       <div className="w-full text-slate-800">
-        {/* Desktop Layout: Split Column */}
+        {/* Desktop Layout: Split Column (used on office dashboard) */}
+        {!inlineDrawer && (
         <div className="hidden min-[820px]:flex flex-row items-stretch gap-3 w-full">
           {/* Left Column (Desktop) */}
           <div className="flex w-[260px] flex-col shrink-0 min-h-[581px]" style={{ gap: '12px' }}>
@@ -987,18 +960,25 @@ export function WorkerDetailModal({
                 TEREN
               </div>
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-[14px] bg-[#2b5493] text-white flex items-center justify-center text-[18px] font-bold shadow-md shadow-blue-900/20 shrink-0">
-                  {worker ? getInitials(worker.name) : 'AH'}
+                <div className="relative inline-flex items-center justify-center w-14 h-14 rounded-[14px] bg-gradient-to-b from-white to-slate-100 border border-white shadow-[0_16px_34px_-20px_rgba(15,23,42,0.55),inset_0_1px_0_white shrink-0">
+                  <div className="absolute inset-1 rounded-[12px] bg-gradient-to-b from-blue-400 to-blue-600 border border-blue-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_22px_rgba(59,130,246,0.28)]" />
+                  <span className="relative font-['Inter',sans-serif] text-[18px] font-semibold text-white">
+                    {worker ? getInitials(worker.name) : 'AH'}
+                  </span>
                 </div>
                 <div className="flex flex-col overflow-hidden">
                   <div className="font-bold text-[#0f172a] text-[16px] truncate">
                     {worker?.name || 'Anthony Hopkins'}
                   </div>
-                  {details && (
-                    <div className="text-[#64748b] text-[12px] font-medium mt-1 leading-snug">
-                      {details}
-                    </div>
-                  )}
+                  {worker?.phone?.trim() ? (
+                    <a
+                      href={toTelHref(worker.phone) ?? undefined}
+                      className="text-[#2b5493] text-[12px] font-medium mt-1 truncate hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {worker.phone}
+                    </a>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1031,10 +1011,10 @@ export function WorkerDetailModal({
                     OPOMNIKI
                   </span>
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setNewNoteText("");
-                      setNewNoteType("once");
+                      if (!guardMutable()) return;
                       setIsAddNoteOpen(true);
                     }}
                     className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
@@ -1109,7 +1089,7 @@ export function WorkerDetailModal({
                     {t("customerNotesSaveBtn")}
                   </button>
                 )}
-                {onDeleteCard && (
+                {onDeleteCard && cardMutable && (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -1135,6 +1115,12 @@ export function WorkerDetailModal({
             )}
             {!(onDeleteCard || jobStatus === "completed") && <div className="mb-10" />}
 
+            {!cardMutable && (
+              <p className="text-xs text-amber-800/90 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mb-2">
+                {JOB_CARD_FROZEN_MESSAGE}
+              </p>
+            )}
+
             <div className="flex flex-col gap-6">
               {/* PREDVIDENA DELA (Tasks) */}
               <div className="flex flex-col gap-3">
@@ -1143,8 +1129,10 @@ export function WorkerDetailModal({
                     {t("modalSectionTasks")}
                   </span>
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (!guardMutable()) return;
                       setAddStepOpen(true);
                     }}
                     className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
@@ -1195,6 +1183,7 @@ export function WorkerDetailModal({
                     {t("modalSectionAttachments")}
                   </span>
                   <button
+                    type="button"
                     onClick={() => openAttachDialog(null)}
                     className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
                   >
@@ -1211,15 +1200,10 @@ export function WorkerDetailModal({
                     </span>
                   )}
                   {attachments.map((att) => {
-                    const { title, showFileNameSub } = attachmentDisplayTitle(
-                      {
-                        fileName: att.name,
-                        attachmentType: att.attachmentType,
-                        documentType: att.documentType,
-                      },
-                      t
-                    );
-                    const showPreview = canPreviewAttachment(att);
+                    const showImageThumbnail =
+                      att.attachmentType === "image" &&
+                      (!att.documentType || att.documentType === "other") &&
+                      att.thumbnailUrl;
                     return (
                       <button
                         key={att.id}
@@ -1233,24 +1217,20 @@ export function WorkerDetailModal({
                               fontFamily: "'PT Sans', sans-serif",
                               fontSize: "12px",
                               fontWeight: 400,
-                              color: "#0F172A",
+                              color: "#2563EB",
                             }}
-                            className="group-hover:text-[#1B3A6B] transition-colors"
+                            className="underline underline-offset-2 transition-colors truncate"
                           >
-                            {title}
+                            {att.name}
                           </span>
-                          {showFileNameSub && (
-                            <span className="text-[10px] text-slate-400 truncate font-light">{att.name}</span>
-                          )}
-                          {showPreview && (
-                            <span className="text-[10px] text-slate-500 line-clamp-2 whitespace-pre-line leading-relaxed font-light">
-                              {att.documentPreview}
-                            </span>
-                          )}
+                          {showImageThumbnail ? (
+                            <img
+                              src={att.thumbnailUrl!}
+                              alt={att.name}
+                              className="mt-1 h-16 w-16 rounded object-cover border border-slate-200"
+                            />
+                          ) : null}
                         </div>
-                        <span className="text-[12px] text-[#64748B] font-light shrink-0 text-right whitespace-nowrap">
-                          {att.date ? `${att.date} · ${att.time}` : att.time}
-                        </span>
                       </button>
                     );
                   })}
@@ -1306,6 +1286,278 @@ export function WorkerDetailModal({
             </div>
           </div>
         </div>
+        )}
+
+        {/* Desktop Layout: Single Column (used on worker dashboard / inlineDrawer) */}
+        {inlineDrawer && (
+        <div className="hidden min-[820px]:flex flex-row items-stretch gap-3 w-full">
+          <div className="relative flex-1 bg-white rounded-[24px] p-6 sm:p-8 shadow-sm border border-slate-100 flex flex-col min-h-[581px] max-h-[581px] overflow-y-auto custom-ios-scrollbar">
+
+            {(onDeleteCard || jobStatus === "completed") && (
+              <div className="flex justify-end gap-4 mb-10 pr-9">
+                {jobStatus === "completed" && (
+                  <button
+                    type="button"
+                    onClick={() => openSaveNoteDialog(false)}
+                    className="text-xs text-amber-700/80 hover:text-amber-800 bg-transparent border-none p-0 outline-none cursor-pointer font-bold"
+                  >
+                    {t("customerNotesSaveBtn")}
+                  </button>
+                )}
+                {onDeleteCard && cardMutable && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteCardOpen(true);
+                    }}
+                    style={{
+                      fontFamily: "'PT Sans', sans-serif",
+                      fontSize: "12px",
+                      color: "#6D778E",
+                      background: "transparent",
+                      border: "none",
+                      padding: 0,
+                      outline: "none",
+                      cursor: "pointer",
+                    }}
+                    className="hover:text-slate-600 font-normal uppercase tracking-wider font-semibold"
+                  >
+                    Izbriši kartico
+                  </button>
+                )}
+              </div>
+            )}
+            {!(onDeleteCard || jobStatus === "completed") && <div className="mb-10" />}
+
+            {!cardMutable && (
+              <p className="text-xs text-amber-800/90 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mb-2">
+                {JOB_CARD_FROZEN_MESSAGE}
+              </p>
+            )}
+
+            <div className="flex flex-col gap-6">
+              {/* PREDVIDENA DELA (Tasks) */}
+              <div className="order-2 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
+                    {t("modalSectionTasks")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!guardMutable()) return;
+                      setAddStepOpen(true);
+                    }}
+                    className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
+                  >
+                    <svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M17.9705 9.48535H9.48528M9.48528 9.48535H1M9.48528 9.48535V1.00007M9.48528 9.48535V17.9706" stroke="#6D778E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleTaskDragEnd}
+                >
+                  <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
+                    <div className="flex flex-col gap-2">
+                      {tasks.map((task) => (
+                        <SortableTaskItem
+                          key={task.id}
+                          task={task}
+                          onClick={() => {
+                            if (task.completed) return;
+                            if (task.id !== firstIncompleteId) return;
+                            setConfirmStepId(task.id);
+                          }}
+                          onOpenAttachment={() => {
+                            const att = attachments.find((a) => a.checklistItemId === task.id);
+                             if (att) {
+                               handleOpenPreview(att);
+                               return;
+                             }
+                            openAttachDialog(task.id);
+                          }}
+                          onDelete={() => setDeleteStepId(task.id)}
+                          deleteLabel={t("modalDeleteStep")}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              </div>
+
+              {/* PRIPONKE (Attachments) */}
+              <div className="order-3 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
+                    {t("modalSectionAttachments")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => openAttachDialog(null)}
+                    className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
+                  >
+                    <svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M17.9705 9.48535H9.48528M9.48528 9.48535H1M9.48528 9.48535V1.00007M9.48528 9.48535V17.9706" stroke="#6D778E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  {attachments.length === 0 && (
+                    <span className="text-xs text-slate-400 font-light">
+                      {filesLoading ? t("officeLoading") : t("modalEmptyAttachments")}
+                    </span>
+                  )}
+                  {attachments.map((att) => {
+                    const showImageThumbnail =
+                      att.attachmentType === "image" &&
+                      (!att.documentType || att.documentType === "other") &&
+                      att.thumbnailUrl;
+                    return (
+                      <button
+                        key={att.id}
+                        type="button"
+                        onClick={() => handleOpenPreview(att)}
+                        className="flex items-start justify-between w-full text-left bg-transparent border-none p-0 outline-none group gap-3 py-1"
+                      >
+                        <div className="flex flex-col gap-0.5 min-w-0">
+                          <span
+                            style={{
+                              fontFamily: "'PT Sans', sans-serif",
+                              fontSize: "12px",
+                              fontWeight: 400,
+                              color: "#2563EB",
+                            }}
+                            className="underline underline-offset-2 transition-colors truncate"
+                          >
+                            {att.name}
+                          </span>
+                          {showImageThumbnail ? (
+                            <img
+                              src={att.thumbnailUrl!}
+                              alt={att.name}
+                              className="mt-1 h-16 w-16 rounded object-cover border border-slate-200"
+                            />
+                          ) : null}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ČASOVNICA (Timeline) */}
+              <div className="order-4 flex flex-col gap-3">
+                <span className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
+                  {t("modalSectionTimeline")}
+                </span>
+
+                <div className="flex flex-col gap-0.75">
+                  {timeline.length === 0 && (
+                    <span className="text-xs text-slate-400 font-light">
+                      {timelineLoading ? t("officeLoading") : t("modalEmptyTimeline")}
+                    </span>
+                  )}
+                  {timeline.map((event) => (
+                    <div key={event.id} className="flex items-baseline justify-between gap-3 py-[2px] leading-tight">
+                      <div className="flex gap-2 items-baseline">
+                        <span className="text-[12px] text-[#0F172A] font-normal shrink-0">
+                          {event.time}
+                        </span>
+                        <span
+                          style={{
+                            fontFamily: "'PT Sans', sans-serif",
+                            fontSize: "12px",
+                            fontWeight: 400,
+                            color: "#0F172A",
+                          }}
+                        >
+                          {event.text}
+                        </span>
+                      </div>
+                      {event.type === "attachment" && event.fileId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const att = attachments.find((a) => a.id === event.fileId);
+                            if (att) handleOpenPreview(att);
+                          }}
+                          className="shrink-0 bg-transparent border-none p-0 outline-none cursor-pointer hover:text-slate-400 transition-colors self-baseline"
+                        >
+                          <TimelineIcon type={event.type} />
+                        </button>
+                      )}
+                      {event.type !== "attachment" && <TimelineIcon type={event.type} />}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* OPOMNIKI section */}
+              <div className="order-1 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
+                    OPOMNIKI
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!guardMutable()) return;
+                      setIsAddNoteOpen(true);
+                    }}
+                    className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
+                  >
+                    <svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M17.9705 9.48535H9.48528M9.48528 9.48535H1M9.48528 9.48535V1.00007M9.48528 9.48535V17.9706" stroke="#6D778E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  {displayedNotes.length === 0 ? (
+                    <span className="text-xs text-slate-400 font-light">
+                      Ni opomnikov za tega naročnika.
+                    </span>
+                  ) : (
+                    displayedNotes.map((n, idx) => (
+                      <div key={n.id} className="flex items-start gap-2.5 group">
+                        <div className="bg-slate-200 text-slate-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 font-mono">
+                          {idx + 1}
+                        </div>
+                        <span className="text-xs text-[#0F172A] flex-1 min-w-0 font-normal leading-relaxed">
+                          {n.noteText}
+                        </span>
+                        {canManageCustomerNotes && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCustomerNote(n.id)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500 bg-transparent border-none cursor-pointer p-0.5 shrink-0"
+                            title={t("customerNotesDelete") || "Izbriši"}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6"></polyline>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                              <line x1="10" y1="11" x2="10" y2="17"></line>
+                              <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        )}
 
         {/* Mobile Layout: Combined single white box */}
         <div className="flex min-[820px]:hidden w-full flex-col bg-white rounded-[20px] p-6 shadow-sm border border-slate-100 relative gap-6">
@@ -1322,7 +1574,7 @@ export function WorkerDetailModal({
                     {t("customerNotesSaveBtn")}
                   </button>
                 )}
-                {onDeleteCard && (
+                {onDeleteCard && cardMutable && (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -1350,6 +1602,7 @@ export function WorkerDetailModal({
             )}
 
             {/* Close Button on mobile */}
+            {!inlineDrawer && (
             <button 
               type="button" 
               onClick={() => onOpenChange(false)} 
@@ -1359,12 +1612,13 @@ export function WorkerDetailModal({
                 <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
+            )}
           </div>
 
 
 
           {/* NAPREDEK section */}
-          <div className="flex flex-col">
+          <div className="order-5 flex flex-col">
             <div className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-3">
               NAPREDEK
             </div>
@@ -1380,69 +1634,134 @@ export function WorkerDetailModal({
           </div>
 
           {/* Divider */}
-          <div className="border-t border-slate-100" />
+          <div className="order-5 border-t border-slate-100" />
 
-          {/* OPOMNIKI section */}
-          <div className="flex flex-col">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
-                OPOMNIKI
-              </span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setNewNoteText("");
-                  setNewNoteType("once");
-                  setIsAddNoteOpen(true);
-                }}
-                className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
-              >
-                <svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M17.9705 9.48535H9.48528M9.48528 9.48535H1M9.48528 9.48535V1.00007M9.48528 9.48535V17.9706" stroke="#6D778E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </button>
-            </div>
-            
-            <div className="flex flex-col gap-2 max-h-[180px] overflow-y-auto custom-ios-scrollbar pr-1">
-              {displayedNotes.length === 0 ? (
-                <span className="text-xs text-slate-400 font-light">
-                  Ni opomnikov za tega naročnika.
-                </span>
-              ) : (
-                displayedNotes.map((n, idx) => (
-                  <div key={n.id} className="flex items-start gap-2.5 group">
-                    <div className="bg-slate-200 text-slate-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 font-mono">
-                      {idx + 1}
-                    </div>
-                    <span className="text-xs text-[#0F172A] flex-1 min-w-0 font-normal leading-relaxed">
-                      {n.noteText}
+          {inlineDrawer && (
+            <>
+              {/* OPOMNIKI section */}
+              <div className="order-1 flex flex-col">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
+                    OPOMNIKI
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!guardMutable()) return;
+                      setIsAddNoteOpen(true);
+                    }}
+                    className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
+                  >
+                    <svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M17.9705 9.48535H9.48528M9.48528 9.48535H1M9.48528 9.48535V1.00007M9.48528 9.48535V17.9706" stroke="#6D778E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-2 max-h-[180px] overflow-y-auto custom-ios-scrollbar pr-1">
+                  {displayedNotes.length === 0 ? (
+                    <span className="text-xs text-slate-400 font-light">
+                      Ni opomnikov za tega naročnika.
                     </span>
-                    {canManageCustomerNotes && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCustomerNote(n.id)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500 bg-transparent border-none cursor-pointer p-0.5 shrink-0"
-                        title={t("customerNotesDelete") || "Izbriši"}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="3 6 5 6 21 6"></polyline>
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                          <line x1="10" y1="11" x2="10" y2="17"></line>
-                          <line x1="14" y1="11" x2="14" y2="17"></line>
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+                  ) : (
+                    displayedNotes.map((n, idx) => (
+                      <div key={n.id} className="flex items-start gap-2.5 group">
+                        <div className="bg-slate-200 text-slate-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 font-mono">
+                          {idx + 1}
+                        </div>
+                        <span className="text-xs text-[#0F172A] flex-1 min-w-0 font-normal leading-relaxed">
+                          {n.noteText}
+                        </span>
+                        {canManageCustomerNotes && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCustomerNote(n.id)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500 bg-transparent border-none cursor-pointer p-0.5 shrink-0"
+                            title={t("customerNotesDelete") || "Izbriši"}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6"></polyline>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                              <line x1="10" y1="11" x2="10" y2="17"></line>
+                              <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
 
-          {/* Divider */}
-          <div className="border-t border-slate-100" />
+              <div className="order-1 border-t border-slate-100" />
+            </>
+          )}
+
+          {inlineDrawer && (
+            <>
+              {/* OPOMNIKI section */}
+              <div className="flex flex-col">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
+                    OPOMNIKI
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!guardMutable()) return;
+                      setIsAddNoteOpen(true);
+                    }}
+                    className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
+                  >
+                    <svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M17.9705 9.48535H9.48528M9.48528 9.48535H1M9.48528 9.48535V1.00007M9.48528 9.48535V17.9706" stroke="#6D778E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-2 max-h-[180px] overflow-y-auto custom-ios-scrollbar pr-1">
+                  {displayedNotes.length === 0 ? (
+                    <span className="text-xs text-slate-400 font-light">
+                      Ni opomnikov za tega naročnika.
+                    </span>
+                  ) : (
+                    displayedNotes.map((n, idx) => (
+                      <div key={n.id} className="flex items-start gap-2.5 group">
+                        <div className="bg-slate-200 text-slate-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 font-mono">
+                          {idx + 1}
+                        </div>
+                        <span className="text-xs text-[#0F172A] flex-1 min-w-0 font-normal leading-relaxed">
+                          {n.noteText}
+                        </span>
+                        {canManageCustomerNotes && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCustomerNote(n.id)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500 bg-transparent border-none cursor-pointer p-0.5 shrink-0"
+                            title={t("customerNotesDelete") || "Izbriši"}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6"></polyline>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                              <line x1="10" y1="11" x2="10" y2="17"></line>
+                              <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100" />
+            </>
+          )}
 
           {/* PREDVIDENA DELA (Tasks) */}
-          <div className="flex flex-col gap-3">
+          <div className="order-2 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
                 {t("modalSectionTasks")}
@@ -1450,6 +1769,7 @@ export function WorkerDetailModal({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (!guardMutable()) return;
                   setAddStepOpen(true);
                 }}
                 className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
@@ -1494,10 +1814,10 @@ export function WorkerDetailModal({
           </div>
 
           {/* Divider */}
-          <div className="border-t border-slate-100" />
+          <div className="order-3 border-t border-slate-100" />
 
           {/* Group of Attachments and Timeline */}
-          <div className="flex flex-col gap-5">
+          <div className="order-4 flex flex-col gap-5">
             {/* PRIPONKE (Attachments) */}
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
@@ -1521,15 +1841,10 @@ export function WorkerDetailModal({
                   </span>
                 )}
                 {attachments.map((att) => {
-                  const { title, showFileNameSub } = attachmentDisplayTitle(
-                    {
-                      fileName: att.name,
-                      attachmentType: att.attachmentType,
-                      documentType: att.documentType,
-                    },
-                    t
-                  );
-                  const showPreview = canPreviewAttachment(att);
+                  const showImageThumbnail =
+                    att.attachmentType === "image" &&
+                    (!att.documentType || att.documentType === "other") &&
+                    att.thumbnailUrl;
                   return (
                     <button
                       key={att.id}
@@ -1543,24 +1858,20 @@ export function WorkerDetailModal({
                             fontFamily: "'PT Sans', sans-serif",
                             fontSize: "12px",
                             fontWeight: 400,
-                            color: "#0F172A",
+                            color: "#2563EB",
                           }}
-                          className="group-hover:text-[#1B3A6B] transition-colors"
+                          className="underline underline-offset-2 transition-colors truncate"
                         >
-                          {title}
+                          {att.name}
                         </span>
-                        {showFileNameSub && (
-                          <span className="text-[10px] text-slate-400 truncate font-light">{att.name}</span>
-                        )}
-                        {showPreview && (
-                          <span className="text-[10px] text-slate-500 line-clamp-2 whitespace-pre-line leading-relaxed font-light">
-                            {att.documentPreview}
-                          </span>
-                        )}
+                        {showImageThumbnail ? (
+                          <img
+                            src={att.thumbnailUrl!}
+                            alt={att.name}
+                            className="mt-1 h-16 w-16 rounded object-cover border border-slate-200"
+                          />
+                        ) : null}
                       </div>
-                      <span className="text-[12px] text-[#64748B] font-light shrink-0 text-right whitespace-nowrap">
-                        {att.date ? `${att.date} · ${att.time}` : att.time}
-                      </span>
                     </button>
                   );
                 })}
@@ -1614,6 +1925,69 @@ export function WorkerDetailModal({
               </div>
             </div>
           </div>
+
+          {!inlineDrawer && (
+          <>
+          {/* Divider */}
+          <div className="border-t border-slate-100" />
+
+          {/* OPOMNIKI section */}
+          <div className="flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
+                OPOMNIKI
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!guardMutable()) return;
+                  setIsAddNoteOpen(true);
+                }}
+                className="w-5 h-5 flex items-center justify-center hover:scale-[1.05] transition-all bg-transparent border-none p-0 outline-none cursor-pointer"
+              >
+                <svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M17.9705 9.48535H9.48528M9.48528 9.48535H1M9.48528 9.48535V1.00007M9.48528 9.48535V17.9706" stroke="#6D778E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </div>
+            
+            <div className="flex flex-col gap-2 max-h-[180px] overflow-y-auto custom-ios-scrollbar pr-1">
+              {displayedNotes.length === 0 ? (
+                <span className="text-xs text-slate-400 font-light">
+                  Ni opomnikov za tega naročnika.
+                </span>
+              ) : (
+                displayedNotes.map((n, idx) => (
+                  <div key={n.id} className="flex items-start gap-2.5 group">
+                    <div className="bg-slate-200 text-slate-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 font-mono">
+                      {idx + 1}
+                    </div>
+                    <span className="text-xs text-[#0F172A] flex-1 min-w-0 font-normal leading-relaxed">
+                      {n.noteText}
+                    </span>
+                    {canManageCustomerNotes && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCustomerNote(n.id)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500 bg-transparent border-none cursor-pointer p-0.5 shrink-0"
+                        title={t("customerNotesDelete") || "Izbriši"}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6"></polyline>
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                          <line x1="10" y1="11" x2="10" y2="17"></line>
+                          <line x1="14" y1="11" x2="14" y2="17"></line>
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          </>
+          )}
         </div>
       </div>
     );
@@ -1682,39 +2056,35 @@ export function WorkerDetailModal({
       )}
 
       {}
-      <Dialog open={addStepOpen} onOpenChange={(open) => {
-        setAddStepOpen(open);
-        if (open) setStepPosition(tasks.length + 1);
-        if (!open) resetAddStep();
-      }}>
-        <DialogContent
-          showCloseButton={false}
-          className="w-full max-w-[calc(100%-2rem)] min-[450px]:w-[450px] min-[820px]:w-[760px] sm:max-w-[calc(100%-2rem)] outline-none mx-auto p-3 bg-[#f1f5f9] rounded-[24px] min-[820px]:rounded-[32px] border-none shadow-2xl flex flex-col gap-0"
-        >
+      {(() => {
+        const addStepBody = (
           <div className="flex flex-col min-[820px]:flex-row items-stretch w-full" style={{ gap: "12px" }}>
-            {/* Left Column (Hidden on mobile, visible on desktop) */}
-            <div className="hidden min-[820px]:flex flex-col w-[260px] shrink-0 min-[820px]:min-h-[581px]" style={{ gap: "12px" }}>
+            <div className={`flex-col w-[260px] shrink-0 min-[820px]:min-h-[581px] ${inlineDrawer ? 'hidden' : 'hidden min-[820px]:flex'}`} style={{ gap: "12px" }}>
               {/* Teren Card */}
               <div className="relative bg-white rounded-[20px] p-6 shadow-sm border border-slate-100 flex flex-col">
                 <div className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-4">
                   TEREN
                 </div>
                 <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-[14px] bg-[#2b5493] text-white flex items-center justify-center text-[18px] font-bold shadow-md shadow-blue-900/20 shrink-0">
-                    {worker ? getInitials(worker.name) : "AH"}
+                  <div className="relative inline-flex items-center justify-center w-14 h-14 rounded-[14px] bg-gradient-to-b from-white to-slate-100 border border-white shadow-[0_16px_34px_-20px_rgba(15,23,42,0.55),inset_0_1px_0_white shrink-0">
+                    <div className="absolute inset-1 rounded-[12px] bg-gradient-to-b from-blue-400 to-blue-600 border border-blue-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_22px_rgba(59,130,246,0.28)]" />
+                    <span className="relative font-['Inter',sans-serif] text-[18px] font-semibold text-white">
+                      {worker ? getInitials(worker.name) : "AH"}
+                    </span>
                   </div>
                   <div className="flex flex-col overflow-hidden">
                     <div className="font-bold text-[#0f172a] text-[16px] truncate">
                       {worker?.name || "Anthony Hopkins"}
                     </div>
-                    {(() => {
-                      const workerDetailsStr = customerName || worker?.role || "";
-                      return workerDetailsStr && (
-                        <div className="text-[#64748b] text-[12px] font-medium mt-1 leading-snug">
-                          {workerDetailsStr}
-                        </div>
-                      );
-                    })()}
+                    {worker?.phone?.trim() ? (
+                      <a
+                        href={toTelHref(worker.phone) ?? undefined}
+                        className="text-[#2b5493] text-[12px] font-medium mt-1 truncate hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {worker.phone}
+                      </a>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -1825,6 +2195,26 @@ export function WorkerDetailModal({
                 </div>
               </div>
 
+              <div className={`${inlineDrawer ? 'flex' : 'hidden'} flex-col gap-3 mt-4 pt-4 border-t border-slate-100`}>
+                <div className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
+                  OBSTOJEČA DELA
+                </div>
+                <div className="flex flex-col gap-2 overflow-y-auto max-h-[160px] custom-ios-scrollbar pr-1">
+                  {tasks.length === 0 ? (
+                    <span className="text-xs text-slate-400 font-light">
+                      Ni predvidenih del.
+                    </span>
+                  ) : (
+                    tasks.map((task) => (
+                      <div key={task.id} className="flex items-center gap-2 text-slate-700 font-medium">
+                        <div className="w-1.5 h-1.5 rounded-full bg-slate-700 shrink-0"></div>
+                        <span className="text-[12px] truncate">{task.text}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
               {/* Submit Button */}
               <div className="flex mt-8 sm:mt-4">
                 <button
@@ -1836,8 +2226,34 @@ export function WorkerDetailModal({
               </div>
             </form>
           </div>
-        </DialogContent>
-      </Dialog>
+        );
+
+        if (inlineDrawer) {
+          return addStepOpen ? (
+            <div
+              className="absolute inset-x-0 bottom-0 top-[100px] rounded-t-[32px] border-t border-slate-200/50 shadow-2xl z-40 flex flex-col overflow-hidden overflow-y-auto custom-ios-scrollbar animate-in slide-in-from-bottom duration-300 p-3"
+              style={{ background: "rgba(241, 245, 249, 1)" }}
+            >
+              {addStepBody}
+            </div>
+          ) : null;
+        }
+
+        return (
+          <Dialog open={addStepOpen} onOpenChange={(open) => {
+            setAddStepOpen(open);
+            if (open) setStepPosition(tasks.length + 1);
+            if (!open) resetAddStep();
+          }}>
+            <DialogContent
+              showCloseButton={false}
+              className="w-full max-w-[calc(100%-2rem)] min-[450px]:w-[450px] min-[820px]:w-[760px] sm:max-w-[calc(100%-2rem)] outline-none mx-auto p-3 bg-[#f1f5f9] rounded-[24px] min-[820px]:rounded-[32px] border-none shadow-2xl flex flex-col gap-0"
+            >
+              {addStepBody}
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
 
       {}
       <Dialog open={attachOnlyOpen} onOpenChange={(open) => {
@@ -2122,199 +2538,46 @@ export function WorkerDetailModal({
       {}
       <Dialog open={deleteCardOpen} onOpenChange={setDeleteCardOpen}>
         <DialogContent
-          style={{
-            background: "transparent",
-            border: "none",
-            boxShadow: "none",
-            padding: 0,
-            maxWidth: "380px",
-            width: "90%",
-          }}
-          className="outline-none"
+          showCloseButton={false}
+          className="w-full max-w-[calc(100%-2rem)] sm:max-w-[400px] outline-none mx-auto p-3 bg-[#f1f5f9] rounded-[28px] border-none shadow-2xl flex flex-col gap-0 animate-in fade-in zoom-in-95 duration-200"
         >
-          <div className={auraCard}>
-            <div className="flex flex-col gap-4 text-slate-800">
-              <div className="text-center">
-                <h3 className="text-xl font-semibold tracking-tight text-slate-900">
-                  {t("modalDeleteCardConfirmTitle")}
-                </h3>
-              </div>
-              <p className="text-sm text-slate-600 text-center">
-                {t("modalDeleteCardConfirmBody")}
+          <div className="relative bg-white rounded-[20px] p-6 sm:p-8 shadow-sm border border-slate-100 flex flex-col gap-5">
+            <div className="text-center">
+              <h2 className="text-[22px] font-bold text-[#0f172a] mb-1">
+                Izbriši kartico
+              </h2>
+              <p className="text-slate-500 text-[13px] font-medium leading-relaxed mt-2">
+                {jobTitle || cardNumber || ""}
               </p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDeleteCardOpen(false)}
-                  className="flex-1 h-10 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors"
-                >
-                  {t("modalCancel")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeleteCardOpen(false);
-                    onDeleteCard?.();
-                  }}
-                  className="flex-1 h-10 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition-colors"
-                >
-                  {t("modalDeleteCardSubmit")}
-                </button>
-              </div>
+            </div>
+
+            <div className="flex gap-3 mt-4 pt-2 border-t border-slate-100/55">
+              <button
+                type="button"
+                onClick={() => setDeleteCardOpen(false)}
+                className="flex-1 h-12 rounded-[12px] border border-slate-300 text-slate-700 font-bold text-[13px] uppercase tracking-wider hover:bg-slate-50 transition-colors"
+              >
+                Prekliči
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteCardOpen(false);
+                  onDeleteCard?.();
+                }}
+                className="flex-1 h-12 rounded-[12px] bg-[#0A1128] text-white font-bold text-[13px] uppercase tracking-wider hover:bg-[#152042] transition-colors shadow-lg shadow-[#0A1128]/10"
+              >
+                Izbriši
+              </button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {}
-      <Dialog open={!!previewAttachment} onOpenChange={(open) => {
-        if (!open) setPreviewAttachment(null);
-      }}>
-        <DialogContent
-          showCloseButton={false}
-          className="w-full max-w-[95vw] md:max-w-[85vw] h-[85vh] outline-none mx-auto p-0 bg-transparent border-none shadow-none flex flex-col items-center justify-center animate-in fade-in zoom-in-95 duration-200"
-        >
-          {previewAttachment && (
-            <div className="relative w-full h-full flex items-center justify-center">
-              {/* Close Button */}
-              <button
-                type="button"
-                onClick={() => setPreviewAttachment(null)}
-                className="absolute top-4 right-4 z-50 w-8 h-8 flex items-center justify-center rounded-full bg-white text-slate-800 hover:bg-slate-100 transition-colors border border-slate-200 cursor-pointer shadow-lg"
-                title="Zapri"
-              >
-                <svg width="10" height="10" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </button>
-
-              {(() => {
-                const url = previewAttachment.url;
-                const isLocalUrl = (urlStr: string) => {
-                  try {
-                    const parsed = new URL(urlStr);
-                    return (
-                      parsed.hostname === "localhost" ||
-                      parsed.hostname === "127.0.0.1" ||
-                      parsed.hostname.startsWith("192.168.") ||
-                      parsed.hostname.startsWith("10.") ||
-                      parsed.hostname.startsWith("172.16.")
-                    );
-                  } catch {
-                    return true;
-                  }
-                };
-
-                const isImage =
-                  previewAttachment.attachmentType === "image" ||
-                  /\.(jpe?g|png|gif|webp|heic|bmp)$/i.test(previewAttachment.name);
-                const isPdf =
-                  previewAttachment.attachmentType === "pdf" ||
-                  /\.pdf$/i.test(previewAttachment.name);
-                const isDocxOrOffice =
-                  /\.(docx?|xlsx?|pptx?)$/i.test(previewAttachment.name);
-                const isAudio =
-                  previewAttachment.attachmentType === "audio" ||
-                  /\.(mp3|wav|ogg|m4a|aac|flac|webm)$/i.test(previewAttachment.name);
-                const isVideo =
-                  previewAttachment.attachmentType === "video" ||
-                  /\.(mp4|webm|ogv|mov|avi|mkv|3gp)$/i.test(previewAttachment.name);
-
-                if (url && isImage) {
-                  return (
-                    <img
-                      src={url}
-                      alt={previewAttachment.name}
-                      className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl cursor-pointer"
-                      onClick={() => setPreviewAttachment(null)}
-                    />
-                  );
-                }
-
-                if (url && isPdf) {
-                  return (
-                    <iframe
-                      src={url}
-                      title={previewAttachment.name}
-                      className="w-full h-[85vh] rounded-lg border-none shadow-2xl bg-white"
-                    />
-                  );
-                }
-
-                if (url && isDocxOrOffice) {
-                  if (isLocalUrl(url)) {
-                    return (
-                      <div
-                        onClick={() => handleForceDownload(url, previewAttachment.name)}
-                        className="w-full max-w-md p-8 rounded-2xl bg-white border border-slate-200 flex flex-col items-center justify-center gap-4 text-center cursor-pointer shadow-2xl"
-                      >
-                        <Paperclip className="w-16 h-16 text-slate-400" />
-                        <span className="text-sm text-slate-800 font-semibold truncate max-w-[80%]">
-                          {previewAttachment.name}
-                        </span>
-                        <span className="text-xs text-slate-500 font-light">
-                          Lokalni predogled Word/Excel dokumentov ni na voljo. Kliknite za prenos.
-                        </span>
-                      </div>
-                    );
-                  }
-                  return (
-                    <iframe
-                      src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`}
-                      title={previewAttachment.name}
-                      className="w-full h-[85vh] rounded-lg border-none shadow-2xl bg-white"
-                    />
-                  );
-                }
-
-                if (url && isAudio) {
-                  return (
-                    <div className="w-full max-w-md p-6 rounded-2xl bg-white border border-slate-100 flex flex-col items-center justify-center gap-4 shadow-2xl">
-                      <div className="w-16 h-16 rounded-full bg-[#EFF6FF] flex items-center justify-center text-[#1B3A6B]">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                          <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-                        </svg>
-                      </div>
-                      <audio controls className="w-full mt-2" src={url} autoPlay>
-                        Your browser does not support the audio element.
-                      </audio>
-                    </div>
-                  );
-                }
-
-                if (url && isVideo) {
-                  return (
-                    <video controls className="max-w-full max-h-[85vh] rounded-lg bg-black shadow-2xl" src={url} autoPlay>
-                      Your browser does not support the video tag.
-                    </video>
-                  );
-                }
-
-                if (url) {
-                  return (
-                    <div
-                      onClick={() => handleForceDownload(url, previewAttachment.name)}
-                      className="w-full max-w-md p-8 rounded-2xl bg-white border border-slate-200 flex flex-col items-center justify-center gap-4 text-center cursor-pointer shadow-2xl"
-                    >
-                      <Paperclip className="w-16 h-16 text-slate-400" />
-                      <span className="text-sm text-slate-800 font-semibold truncate max-w-[80%]">
-                        {previewAttachment.name}
-                      </span>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div className="w-full max-w-md p-8 rounded-2xl bg-white border border-slate-200 flex items-center justify-center shadow-2xl">
-                    <Paperclip className="w-16 h-16 text-slate-300" />
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <AttachmentLightbox
+        item={previewAttachment}
+        onClose={() => setPreviewAttachment(null)}
+      />
 
       {}
       <Dialog
@@ -2401,228 +2664,21 @@ export function WorkerDetailModal({
         </DialogContent>
       </Dialog>
 
-      {}
-      <Dialog open={isAddNoteOpen} onOpenChange={setIsAddNoteOpen}>
-        <DialogContent
-          showCloseButton={false}
-          className="w-full max-w-[calc(100%-2rem)] min-[450px]:w-[450px] min-[820px]:w-[760px] sm:max-w-[calc(100%-2rem)] outline-none mx-auto p-3 bg-[#f1f5f9] rounded-[24px] min-[820px]:rounded-[32px] border-none shadow-2xl flex flex-col gap-0"
-        >
-          <div className="flex flex-col min-[820px]:flex-row items-stretch w-full" style={{ gap: "12px" }}>
-            {/* Left Column (Hidden on mobile, visible on desktop) */}
-            <div className="hidden min-[820px]:flex flex-col w-[260px] shrink-0 min-[820px]:min-h-[581px]" style={{ gap: "12px" }}>
-              {/* Partner Card */}
-              <div className="relative bg-white rounded-[20px] p-6 shadow-sm border border-slate-100 flex flex-col">
-                <div className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-4">
-                  PARTNER
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-[14px] bg-[#2b5493] text-white flex items-center justify-center text-[18px] font-bold shadow-md shadow-blue-900/20 shrink-0">
-                    {resolvedCustomerName ? getInitials(resolvedCustomerName) : "JN"}
-                  </div>
-                  <div className="flex flex-col overflow-hidden">
-                    <div className="font-bold text-[#0f172a] text-[16px] truncate">
-                      {resolvedCustomerName || "Naročnik"}
-                    </div>
-                    {worker?.location && (
-                      <div className="text-[#64748b] text-[12px] font-medium mt-1 leading-snug">
-                        {worker.location}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Existing Notes Card */}
-              <div className="relative bg-white rounded-[20px] p-6 shadow-sm border border-slate-100 flex-1 flex flex-col">
-                <div className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-4">
-                  OBSTOJEČI ZAZNAMKI
-                </div>
-                <div className="flex flex-col gap-3 overflow-y-auto max-h-[320px] custom-ios-scrollbar pr-1 flex-grow">
-                  {(() => {
-                    const mappedNotes = customerNotes.map((n) => {
-                      const { text, jobId: noteJobId } = parseNoteText(n.note);
-                      return { ...n, noteText: text, noteJobId };
-                    });
-
-                    if (mappedNotes.length === 0) {
-                      return (
-                        <span className="text-xs text-slate-400 font-light">
-                          Ni obstoječih zaznamkov.
-                        </span>
-                      );
-                    }
-
-                    return mappedNotes.map((n, idx) => (
-                      <div key={n.id} className="flex items-start gap-2.5">
-                        <div className="bg-slate-200 text-slate-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 font-mono">
-                          {idx + 1}
-                        </div>
-                        <span className="text-xs text-[#0F172A] flex-1 min-w-0 font-normal leading-relaxed break-words">
-                          {n.noteText}
-                        </span>
-                      </div>
-                    ));
-                  })()}
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column */}
-            <div className="relative flex-1 bg-white rounded-[24px] p-6 sm:p-8 shadow-sm border border-slate-100 flex flex-col min-[820px]:min-h-[581px]">
-              {/* Close Button */}
-              <button
-                type="button"
-                onClick={() => setIsAddNoteOpen(false)}
-                className="absolute top-4 right-4 w-7 h-7 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 transition-colors cursor-pointer border-none"
-              >
-                <svg width="10" height="10" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-
-              <div className="flex flex-col gap-4 flex-grow">
-                <h2 className="text-[22px] font-bold text-[#0f172a] mb-1">
-                  Zaznamki za naročnika
-                </h2>
-                <p className="text-slate-500 text-[13px] font-medium mb-6">
-                  Dodajte opombo ali opomnik za tega partnerja.
-                </p>
-
-                {/* Existing Notes (Mobile only, rendered under the headline/subtitle in the same container) */}
-                <div className="flex min-[820px]:hidden flex-col w-full mb-4 pb-4 border-b border-slate-100">
-                  <div className="text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-3">
-                    OBSTOJEČI ZAZNAMKI
-                  </div>
-                  <div className="flex flex-col gap-3 overflow-y-auto max-h-[160px] custom-ios-scrollbar pr-1">
-                    {(() => {
-                      const mappedNotes = customerNotes.map((n) => {
-                        const { text, jobId: noteJobId } = parseNoteText(n.note);
-                        return { ...n, noteText: text, noteJobId };
-                      });
-
-                      if (mappedNotes.length === 0) {
-                        return (
-                          <span className="text-xs text-slate-400 font-light">
-                            Ni obstoječih zaznamkov.
-                          </span>
-                        );
-                      }
-
-                      return mappedNotes.map((n, idx) => (
-                        <div key={n.id} className="flex items-start gap-2.5">
-                          <div className="bg-slate-200 text-slate-700 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 font-mono">
-                            {idx + 1}
-                          </div>
-                          <span className="text-xs text-[#0F172A] flex-1 min-w-0 font-normal leading-relaxed break-words">
-                            {n.noteText}
-                          </span>
-                        </div>
-                      ));
-                    })()}
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-4">
-                  {/* Naročnik Input */}
-                  <div>
-                    <label className="block text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest mb-1.5">
-                      NAROČNIK:
-                    </label>
-                    <input
-                      type="text"
-                      value={resolvedCustomerName}
-                      disabled
-                      className="w-full h-11 px-4 rounded-[8px] border border-slate-300 bg-slate-100/60 text-slate-500 text-[14px] font-medium cursor-not-allowed select-none focus:outline-none"
-                    />
-                  </div>
-
-                  {/* Note textarea */}
-                  <div>
-                    <div className="flex justify-between items-center mb-1.5">
-                      <label className="block text-[10px] font-bold text-[#9CA9BD] uppercase tracking-widest">
-                        ZAZNAMEK *
-                      </label>
-                      <span className="text-[10px] font-bold text-slate-400">{newNoteText.length}/60</span>
-                    </div>
-                    <textarea
-                      value={newNoteText}
-                      onChange={(e) => setNewNoteText(e.target.value.slice(0, 60))}
-                      maxLength={60}
-                      placeholder="Zapišite poljubno opombo za tega naročnika..."
-                      rows={3}
-                      className="w-full min-h-[80px] p-3 rounded-[8px] border border-slate-300 bg-[#F1F5F9] text-[#0f172a] text-[14px] font-medium focus:outline-none focus:ring-1 focus:ring-[#1B3A6B]/20 focus:border-[#1B3A6B] transition-all placeholder:text-slate-400 resize-none"
-                    />
-                    <p className="mt-1.5 text-[10px] text-slate-400/90 leading-normal">
-                      Če gre za več opomnikov, je priporočljivo, da so zapisani ločeno, vsak za sebe.
-                    </p>
-                  </div>
-
-                  {/* Note type selection */}
-                  <div className="flex flex-col gap-3 my-2 pt-2 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => setNewNoteType("once")}
-                      className="flex items-center gap-3 text-left w-full bg-transparent border-none p-0 outline-none cursor-pointer group"
-                    >
-                      <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-all ${
-                        newNoteType === "once"
-                          ? "border-green-600 bg-green-50 text-green-600"
-                          : "border-slate-300 hover:border-slate-400 text-transparent"
-                      }`}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12"></polyline>
-                        </svg>
-                      </div>
-                      <span className="text-xs font-semibold text-slate-700 leading-snug group-hover:text-slate-900 transition-colors">
-                        Zaznamek samo tokrat
-                      </span>
-                    </button>
-
-                    <div className="text-[9px] font-extrabold text-slate-400/70 tracking-wider pl-8 uppercase">
-                      ali
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setNewNoteType("always")}
-                      className="flex items-center gap-3 text-left w-full bg-transparent border-none p-0 outline-none cursor-pointer group"
-                    >
-                      <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-all ${
-                        newNoteType === "always"
-                          ? "border-green-600 bg-green-50 text-green-600"
-                          : "border-slate-300 hover:border-slate-400 text-transparent"
-                      }`}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12"></polyline>
-                        </svg>
-                      </div>
-                      <span className="text-xs font-semibold text-slate-700 leading-snug group-hover:text-slate-900 transition-colors">
-                        Zaznamek vsakič pri tem naročniku; služi kot opomnik kasneje
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* DODAJ Button */}
-              <div className="flex mt-8 sm:mt-4">
-                <button
-                  type="button"
-                  disabled={newNoteSaving || !newNoteText.trim()}
-                  onClick={() => void handleAddNote()}
-                  className="w-full h-[48px] rounded-[8px] bg-[#0a1128] text-white font-bold text-[12px] uppercase tracking-widest shadow-lg shadow-[#0a1128]/20 hover:bg-[#152042] transition-all disabled:opacity-50 flex items-center justify-center cursor-pointer border-none"
-                >
-                  {newNoteSaving ? (
-                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                  ) : (
-                    "DODAJ"
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AddCustomerNoteDialog
+        open={isAddNoteOpen}
+        onOpenChange={setIsAddNoteOpen}
+        customerName={resolvedCustomerName}
+        location={worker?.location}
+        jobId={jobId}
+        inlineDrawer={inlineDrawer}
+        onSuccess={() => {
+          if (!mountedRef.current) return;
+          void loadCustomerNotes(resolvedCustomerName);
+          void refreshFilesAndTimeline().catch((err) => {
+            if (mountedRef.current) showToast(getErrorMessage(err));
+          });
+        }}
+      />
     </>
   );
 }
